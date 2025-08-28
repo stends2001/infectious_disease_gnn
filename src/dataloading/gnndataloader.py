@@ -2,11 +2,24 @@ import torch
 from torch_geometric.data import Data, DataLoader
 import pandas as pd
 import os
+from typing import Dict, List, Literal, Any, Optional, Tuple
 import numpy as np
 
 from .epidataloader import EpiDataLoader
 
+
 class GNNDataLoader:
+
+    """
+    creates an instance with attributes
+    .dataset_train
+    .dataset_val
+    .dataset_test
+
+    which have an X, y, edge_index and edge_weight (the latter only when applicable!)
+
+    X has shape: [N, F, periods] (nodes/features/periods)
+    """
 
     def __init__(self,
                  epidataloader: EpiDataLoader):
@@ -17,15 +30,15 @@ class GNNDataLoader:
         self.target_column   = epidataloader.target_column
 
         self.train_df        = epidataloader.XYt_train
-        self.val_df        = epidataloader.XYt_val
-        self.test_df        = epidataloader.XYt_test           
-        self.XYt_train        = epidataloader.XYt_train
-        self.XYt_val        = epidataloader.XYt_val
+        self.val_df          = epidataloader.XYt_val
+        self.test_df         = epidataloader.XYt_test           
+        self.XYt_train       = epidataloader.XYt_train
+        self.XYt_val         = epidataloader.XYt_val
         self.XYt_test        = epidataloader.XYt_test  
 
-        self.norm_params   = epidataloader.norm_params['params']
-        self.edge_index = None
-        self.edge_weight = None
+        self.norm_params     = epidataloader.norm_params['params']
+        self.edge_index      = None
+        self.edge_weight     = None
 
     def construct_dataloaders(self, periods):
         self.periods = periods
@@ -52,10 +65,10 @@ class GNNDataLoader:
             y_target = y[start + periods]             # predict next step after window
             
             data = Data(
-                x=torch.tensor(x_seq, dtype=torch.float).permute(1,2,0),      # (periods, N, F)
-                y=torch.tensor(y_target, dtype=torch.float),   # (N, target_dim)
+                x = x_seq.clone().detach().float().permute(1, 2, 0), # (periods, N, F)
+                y = y_target.clone().detach().float(),               # (N, target_dim)
                 edge_index=self.edge_index,
-                edge_attr=self.edge_weight
+                edge_weight=self.edge_weight
             )
             dataset.append(data)
         return dataset        
@@ -63,11 +76,11 @@ class GNNDataLoader:
     def retrieve_graph(self, graphname, graphdirectory='src/dataloading/graphs'):
         graphpath = os.path.join(graphdirectory, graphname)
 
-        edge_index = torch.load(graphpath + '_edge_index.pt')
+        edge_index = torch.load(graphpath + '_edge_index.pt', weights_only = False)
 
         # Try loading edge_weight, fallback to ones if file not found
         try:
-            edge_weight = torch.load(graphpath + '_edge_weight.pt')
+            edge_weight = torch.load(graphpath + '_edge_weight.pt', weights_only = False)
         except FileNotFoundError:
             num_edges = edge_index.shape[1]
             edge_weight = torch.ones(num_edges, dtype=torch.float)

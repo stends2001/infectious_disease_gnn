@@ -89,11 +89,11 @@ class ModelCore:
         ax2.grid()
         ax2.set_title(f'predictions {self.id_column}: {id}')
         ax2.set_xlabel("")
-        sns.lineplot(data=self.evaluation_df[self.evaluation_df[self.id_column] == id], x=self.temporal_column, y=self.target_column, color=testcolor, ax=ax2)
-        sns.lineplot(data=self.evaluation_df[self.evaluation_df[self.id_column] == id], x=self.temporal_column, y='preds', color=self.model_color, ax=ax2)
+        sns.lineplot(data=self.evaluation_df[self.evaluation_df[self.id_column] == id], x=self.temporal_column, y=self.target_column, color=testcolor, marker = "o", ax=ax2)
+        sns.lineplot(data=self.evaluation_df[self.evaluation_df[self.id_column] == id], x=self.temporal_column, y='preds', color=self.model_color, marker = "x",    markeredgecolor='black',  ax=ax2)
     
-        sns.lineplot(data=self.aggregated_evaluation_df, x=self.temporal_column, y=self.target_column, color=testcolor, ax=ax3, label='target')
-        sns.lineplot(data=self.aggregated_evaluation_df, x=self.temporal_column, y='preds', color=self.model_color, ax=ax3, label='preds')
+        sns.lineplot(data=self.aggregated_evaluation_df, x=self.temporal_column, y=self.target_column, color=testcolor, marker = "o", ax=ax3, label='target')
+        sns.lineplot(data=self.aggregated_evaluation_df, x=self.temporal_column, y='preds', color=self.model_color, marker = "x",    markeredgecolor='black', ax=ax3, label='preds')
         ax3.set_title(f"predictions nationally, aggregated {self.name}")
         ax3.grid()
         ax3.legend()
@@ -226,7 +226,7 @@ class DeepLearningModelCore(ModelCore):
 
         - either after patience is reached, or after n_epochs, the model with the best validation loss is saved.
         """
-
+        print(f'single snapshot: {self.dataloader.dataset_train[0]}')
         self.model.train()
         
         best_val_loss    = float('inf')
@@ -243,6 +243,7 @@ class DeepLearningModelCore(ModelCore):
                 self.optimizer.zero_grad()
 
                 y_hat = self.model(snapshot.x, snapshot.edge_index, snapshot.edge_weight)
+                
                 loss  = self.loss(y_hat, snapshot.y)
                 
                 loss.backward()
@@ -312,6 +313,7 @@ class DeepLearningModelCore(ModelCore):
             snapshot = snapshot.to(self.device)
             # Get predictions
             y_hat = self.model(snapshot.x, snapshot.edge_index, snapshot.edge_weight)
+            
             # Mean squared error
             loss = loss + self.loss(y_hat, snapshot.y)
             # Store for analysis below
@@ -327,19 +329,19 @@ class DeepLearningModelCore(ModelCore):
         stacked               = torch.stack(tensor_list_cpu)   # shape [timepoints, n_nodes]
         df                    = pd.DataFrame(stacked.numpy())  
         long_df_predictions   = df.reset_index().melt(id_vars='index', 
-                                                      var_name='id', 
-                                                      value_name='preds').rename(columns = {'index':'timestamp_idx'})
+                                                      var_name=self.id_column, 
+                                                      value_name='preds').rename(columns = {'index':f'{self.temporal_column}_idx'})
         
         # the predicted timestamps are all of those, without the first periods
-        evaluation_timestamps = eval_df['timestamp'].unique()[self.dataloader.periods:]
+        evaluation_timestamps = eval_df[self.temporal_column].unique()[self.dataloader.periods:]
 
         timestamps = {}
 
         for idx, tss in enumerate(evaluation_timestamps):
             timestamps[idx] = tss
 
-        cutperiods                      = eval_df[eval_df['timestamp'].isin(evaluation_timestamps)] 
-        long_df_predictions['timestamp']= long_df_predictions['timestamp_idx'].map(timestamps)
-        self.evaluation_df              = pd.merge(cutperiods,long_df_predictions, on = ['timestamp','id'])  
+        cutperiods                      = eval_df[eval_df[self.temporal_column].isin(evaluation_timestamps)] 
+        long_df_predictions[self.temporal_column]= long_df_predictions[f'{self.temporal_column}_idx'].map(timestamps)
+        self.evaluation_df              = pd.merge(cutperiods,long_df_predictions, on = [self.temporal_column,self.id_column])  
 
         return self              
