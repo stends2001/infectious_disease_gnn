@@ -82,6 +82,8 @@ class GATLSTMModel_Cleaned(DeepLearningModelCore):
         - optimizer: Adam
         - scheduler: step decau using `lr_scheudler.StepLR` 
         """
+        self.model_hparams_set = True
+
         self.model = ArchitectureTemporalGATLSTM(
             node_features=len(self.dataloader.feature_columns),
                                 periods=self.dataloader.periods,

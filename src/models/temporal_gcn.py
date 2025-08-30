@@ -108,6 +108,7 @@ class TemporalGCNModel(DeepLearningModelCore):
     
     def set_model_hparams(self, hidden_size: int = 64, num_layers: int = 2,
                          temporal_layers: int = 2, dropout: float = 0.2):
+        self.model_hparams_set = True
         self.model = TemporalGCN(
             node_features=len(self.dataloader.feature_columns),
             hidden_size=hidden_size,

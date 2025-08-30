@@ -10,8 +10,7 @@ from .modelcore import DeepLearningModelCore
 class LSTMArchitecture(torch.nn.Module):
 
     """
-    'simple' LSTM: a single LSTM that infers the same temporal dependency for each node. In other words, a single model
-    adapts weights and biases. The only difference among the nodes is the features, leading to different predictions.
+
     """
 
     def __init__(self, node_features, periods, lstm_hidden_size, num_layers):
@@ -56,6 +55,8 @@ class LSTMArchitecture(torch.nn.Module):
 
 class NodeLSTM(DeepLearningModelCore):
     """
+    'simple' LSTM: a single LSTM that infers the same temporal dependency for each node. In other words, a single model
+    adapts weights and biases. The only difference among the nodes is the features, leading to different predictions.    
     Single LSTM model making Kreise-specific-predictions
 
     The default has become:
@@ -103,13 +104,7 @@ class NodeLSTM(DeepLearningModelCore):
                             num_layers: int            = 2, 
                             ):
         
-        """ 
-        by default, using the following:
-
-        - optimizer: Adam
-        - scheduler: step decau using `lr_scheudler.StepLR` 
-        """
-
+        self.model_hparams_set = True
         self.model = LSTMArchitecture(node_features    = len(self.dataloader.feature_columns), 
                                       periods          = self.dataloader.periods, 
                                       lstm_hidden_size = hidden_size,
