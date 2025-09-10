@@ -115,7 +115,7 @@ class GNNDataLoader:
             
         return dataset   
 
-    def retrieve_graph(self, graphname: str, graphdirectory:str ='src/dataloading/graphs'):
+    def retrieve_graph(self, graphname: str, graphdirectory:str ='data/graphs'):
         """
         Loads graphstructure into dataloaders
 
