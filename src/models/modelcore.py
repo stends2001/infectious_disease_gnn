@@ -35,6 +35,10 @@ class ModelCore:
         self.temporal_column = dataloader.temporal_column
         self.id_column       = dataloader.id_column
 
+        self.traincolor = '#4a90d9'
+        self.valcolor   = "#1b9e77"
+        self.testcolor  = '#d94e4e'        
+
     def forecast(self):
         """supposed to create the attribute `evaluation_df`"""
         raise NotImplementedError("Each model must implement its own forecast method.")
@@ -226,7 +230,8 @@ class DeepLearningModelCore(ModelCore):
 
     def train(self,
               verbose: int = 1,
-              dataloader_snapshot: bool = True
+              dataloader_snapshot: bool = True,
+              show_loss: bool = True
               ):
 
         """
@@ -243,6 +248,13 @@ class DeepLearningModelCore(ModelCore):
             how frequently performance update is printed
         dataloader_snapshot: bool = True
             whether or not to show the first training dataloader snapshot
+        show_loss: bool = True
+            whether or not to show the curves of train/val loss per epoch
+
+        See also:
+        ---------
+        plot_losses
+            mehtod to visualise train/val loss per epoch
         """
         if not self.model_hparams_set:
             raise ValueError(f'set model hyperparameters first! Use model.set_model_hparams()')
@@ -257,6 +269,9 @@ class DeepLearningModelCore(ModelCore):
         best_val_loss    = float('inf')
         patience_counter = 0
         best_model_state = None
+
+        list_val_loss = []
+        list_train_loss=[]
 
         L_train    = len(list(self.dataloader.dataset_train))
         L_val      = len(list(self.dataloader.dataset_val))
@@ -281,7 +296,7 @@ class DeepLearningModelCore(ModelCore):
                 total_loss += loss.item()
             
             train_mse = total_loss / L_train
-            
+            list_train_loss.append(train_mse)
             # Validation phase
             self.model.eval()
             val_loss = 0
@@ -295,6 +310,7 @@ class DeepLearningModelCore(ModelCore):
                     val_loss += loss.item()
             
             val_mse = val_loss /L_val
+            list_val_loss.append(val_mse)
             
             # Switch back to training mode for next epoch
             self.model.train()
@@ -326,6 +342,31 @@ class DeepLearningModelCore(ModelCore):
             
             # Step scheduler every epoch (or you could tie it to validation improvement)
             self.scheduler.step()
+            self.train_losses = list_train_loss
+            self.val_losses   = list_val_loss
+
+        if show_loss:
+            self.plot_losses()
+
+    def plot_losses(self):
+        """
+        returns plot of train and val losses per epoch, after training model.
+        """
+        fig, axes = plt.subplots(2,1, figsize = (9,5))
+        axes = axes.flatten()
+
+        sns.lineplot(self.train_losses, color = self.traincolor, label = 'train loss', ax = axes[0])
+        sns.lineplot(self.val_losses, color = self.valcolor, label = 'val loss',   ax = axes[1])
+
+        for ax in axes:
+            ax.grid()
+            ax.set_ylabel('loss')
+            ax.legend()
+
+        axes[0].set_title('Loss over epochs')
+        axes[1].set_xlabel('epoch')        
+        
+        return fig, axes
 
     def forecast(self,  
                  ):

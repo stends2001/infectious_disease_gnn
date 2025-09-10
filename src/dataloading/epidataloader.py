@@ -33,7 +33,7 @@ class EpiDataLoader:
     as input for GNNDataLoader
 
     Parameters:
-    ----------
+    -----------
     disease_name: str
         name of survstat file to be openend
     data_env_dir: str
@@ -44,6 +44,15 @@ class EpiDataLoader:
         first date to be excluded (<)
     aggr_level: Literal['03','02'] = '03'
         whether to aggregate onto bundeslander level      
+
+        
+    Attributes:
+    -----------
+    XYt_train: pd.DataFrame
+    
+    XYt_val: pd.DataFrame
+
+    XYt_test: pd.DataFrame
 
     Examples:
     ---------
