@@ -63,8 +63,11 @@ class ModelCore:
 
         agg_target = preds_normalized.groupby(self.temporal_column)[self.target_column].sum().reset_index()
         agg_preds  = preds_normalized.groupby(self.temporal_column)['preds'].sum().reset_index()
-
         self.aggregated_evaluation_df = pd.merge(agg_target, agg_preds, on=self.temporal_column)
+
+        agg_target_denorm = preds_denorm.groupby(self.temporal_column)[self.target_column].sum().reset_index()
+        agg_preds_denorm  = preds_denorm.groupby(self.temporal_column)['preds'].sum().reset_index()
+        self.aggregated_evaluation_df_denorm = pd.merge(agg_target_denorm, agg_preds_denorm, on=self.temporal_column)        
         
         self.XYt_train_denorm =train_denorm
         self.XYt_val_denorm   =val_denorm
@@ -75,7 +78,8 @@ class ModelCore:
 
     
     def show_forecasts(self,
-                       id: int = 0):
+                       id: int = 0,
+                       norm: bool = False):
         """
         previews split and normalized data for a specific node, by default token 0.
         """
@@ -87,13 +91,23 @@ class ModelCore:
         valcolor   = "#1b9e77"
         testcolor  = '#d94e4e'
 
-        XYt_train = self.XYt_train_denorm[self.XYt_train_denorm[self.id_column] == id]
-        XYt_val   = self.XYt_val_denorm[self.XYt_val_denorm[self.id_column] == id]
-        XYt_test  = self.XYt_test_denorm[self.XYt_test_denorm[self.id_column] == id]
+        if norm:
+            XYt_train = self.dataloader.XYt_train[self.dataloader.XYt_train[self.id_column] == id]
+            XYt_val   = self.dataloader.XYt_val[self.dataloader.XYt_val[self.id_column] == id]
+            XYt_test  = self.dataloader.XYt_test[self.dataloader.XYt_test[self.id_column] == id]
+            
+            preds = self.evaluation_df
+            aggr = self.aggregated_evaluation_df
 
-        # XYt_train = self.dataloader.XYt_train[self.dataloader.XYt_train[self.id_column] == id]
-        # XYt_val   = self.dataloader.XYt_val[self.dataloader.XYt_val[self.id_column] == id]
-        # XYt_test  = self.dataloader.XYt_test[self.dataloader.XYt_test[self.id_column] == id]
+
+        else:
+            XYt_train = self.XYt_train_denorm[self.XYt_train_denorm[self.id_column] == id]
+            XYt_val   = self.XYt_val_denorm[self.XYt_val_denorm[self.id_column] == id]
+            XYt_test  = self.XYt_test_denorm[self.XYt_test_denorm[self.id_column] == id]
+
+            preds = self.preds_denorm[self.preds_denorm[self.id_column] == id]
+            aggr  = self.aggregated_evaluation_df_denorm            
+
 
         time_axis_train     = XYt_train[self.temporal_column]
         time_axis_val       = XYt_val[self.temporal_column]
@@ -119,16 +133,16 @@ class ModelCore:
         ax1.legend()
 
         # plot 2: predictions vs groundtruth of selected ID
-        sns.lineplot(data=self.preds_denorm[self.preds_denorm[self.id_column] == id], x=self.temporal_column, y=self.target_column, color=testcolor, marker = "o", ax=ax2)
-        sns.lineplot(data=self.preds_denorm[self.preds_denorm[self.id_column] == id], x=self.temporal_column, y='preds', color=self.model_color, marker = "x",    markeredgecolor='black',  ax=ax2)
+        sns.lineplot(data=preds, x=self.temporal_column, y=self.target_column, color=testcolor, marker = "o", ax=ax2)
+        sns.lineplot(data=preds, x=self.temporal_column, y='preds', color=self.model_color, marker = "x",    markeredgecolor='black',  ax=ax2)
         ax2.set_title(f'predictions {self.id_column}: {id}')
         ax2.set_xlabel("")            
         ax2.grid()
 
         # plot 3: predictions vs groundtruth of aggregation -> over all nodes
-        sns.lineplot(data=self.aggregated_evaluation_df, x=self.temporal_column, y=self.target_column, color=testcolor, marker = "o", ax=ax3, label='target')
-        sns.lineplot(data=self.aggregated_evaluation_df, x=self.temporal_column, y='preds', color=self.model_color, marker = "x",    markeredgecolor='black', ax=ax3, label='preds')
-        ax3.set_title(f"predictions nationally, aggregated {self.name}")
+        sns.lineplot(data=aggr, x=self.temporal_column, y=self.target_column, color=testcolor, marker = "o", ax=ax3, label='target')
+        sns.lineplot(data=aggr, x=self.temporal_column, y='preds', color=self.model_color, marker = "x",    markeredgecolor='black', ax=ax3, label='preds')
+        ax3.set_title(f"predictions nationally, aggregated incidences {self.name}")
         ax3.grid()
         ax3.legend()
         ax3.autoscale(enable=True)
