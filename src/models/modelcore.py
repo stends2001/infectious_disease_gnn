@@ -10,7 +10,7 @@ import torch
 
 
 from ..dataloading import EpiDataLoader
-from ..metrics.spike_weighted_mse import spike_weighted_mse, mse
+from ..metrics.losses import spike_weighted_mse, mse, spike_detection_loss, temporal_smoothness_loss, spatial_consistency_loss
 from ..dataloading.normalization import reverse_zscore_scaling
 
 class ModelCore:
@@ -124,6 +124,8 @@ class DeepLearningModelCore(ModelCore):
         self.model_hparams_set = False
         self.global_hparams_set= False
 
+        self.prediction_horizon = dataloader.prediction_horizon
+
     def _get_optimizer(self, optimizer_name: str, lr: float, optimizer_kwargs: Dict[str, Any]):
         """Factory method to create and return optimizer"""
         optimizer_map = {
@@ -168,6 +170,9 @@ class DeepLearningModelCore(ModelCore):
             'mae':                torch.nn.L1Loss(),
             'huber':              torch.nn.HuberLoss(),
             'smooth_l1':          torch.nn.SmoothL1Loss(),
+            'spatial_consistency': spatial_consistency_loss,
+            'temporal_smoothness' : temporal_smoothness_loss,
+            'spike_detection' : spike_detection_loss
         }
         
         if loss_name.lower() not in loss_map:
@@ -184,7 +189,11 @@ class DeepLearningModelCore(ModelCore):
                             n_epochs: int                              = 5,
                             patience: int                              = 15,
                             min_delta: float                           = 1e-4,
-                            loss: str                                  = 'spike_weighted_mse'
+                            loss: Literal['spike_weighted_mse', 'mse',
+                                          'mae', 'huber','smooth_L1',
+                                          'spatial_consistency',
+                                          'spike_detection',
+                                          'temporal_smoothness']       = 'spike_weighted_mse'
                             ):
         
         """
@@ -383,6 +392,7 @@ class DeepLearningModelCore(ModelCore):
 
         # formatting predictions:
         eval_df     = self.dataloader.test_df
+        prediction_horizon = self.dataloader.prediction_horizon
  
         for snapshot in self.dataloader.dataset_test:
             snapshot = snapshot.to(self.device)
@@ -397,26 +407,116 @@ class DeepLearningModelCore(ModelCore):
         loss = loss / (step+1)
         loss = float(loss)
         print("Test loss: {:.4f}".format(loss))
+        self.test_loss = loss
 
-        tensor_list_cpu       = [t.detach().cpu() for t in predictions]
-        stacked               = torch.stack(tensor_list_cpu)            # shape [timepoints, n_nodes]
-        df                    = pd.DataFrame(stacked.numpy())  
+        # tensor_list_cpu       = [t.detach().cpu() for t in predictions]
+        # stacked               = torch.stack(tensor_list_cpu)            # shape [timepoints, n_nodes]
+        # df                    = pd.DataFrame(stacked.numpy())  
 
-        # reform predictions dataframe into a long df with timestep_indices to merge with timepoints
-        long_df_predictions   = df.reset_index().melt(id_vars='index', 
-                                                      var_name=self.id_column, 
-                                                      value_name='preds').rename(columns = {'index':f'{self.temporal_column}_idx'})
+        # # reform predictions dataframe into a long df with timestep_indices to merge with timepoints
+        # long_df_predictions   = df.reset_index().melt(id_vars='index', 
+        #                                               var_name=self.id_column, 
+        #                                               value_name='preds').rename(columns = {'index':f'{self.temporal_column}_idx'})
         
-        # the predicted timestamps are all of those, without the first periods
-        evaluation_timestamps = eval_df[self.temporal_column].unique()[self.dataloader.periods:]
+        # # the predicted timestamps are all of those, without the first periods
+        # evaluation_timestamps = eval_df[self.temporal_column].unique()[self.dataloader.periods:]
 
-        timestamps = {}
+        # timestamps = {}
 
-        for idx, tss in enumerate(evaluation_timestamps):
-            timestamps[idx] = tss
+        # for idx, tss in enumerate(evaluation_timestamps):
+        #     timestamps[idx] = tss
 
-        cutperiods                               = eval_df[eval_df[self.temporal_column].isin(evaluation_timestamps)] 
-        long_df_predictions[self.temporal_column]= long_df_predictions[f'{self.temporal_column}_idx'].map(timestamps)
-        self.evaluation_df                       = pd.merge(cutperiods,long_df_predictions, on = [self.temporal_column,self.id_column])  
+        # cutperiods                               = eval_df[eval_df[self.temporal_column].isin(evaluation_timestamps)] 
+        # long_df_predictions[self.temporal_column]= long_df_predictions[f'{self.temporal_column}_idx'].map(timestamps)
+        # self.evaluation_df                       = pd.merge(cutperiods,long_df_predictions, on = [self.temporal_column,self.id_column])  
+        
+        
+        # Handle multi-step vs single-step predictions
+        if prediction_horizon == 1:
+            # Single-step prediction (original behavior)
+            tensor_list_cpu = [t.detach().cpu() for t in predictions]
+            stacked = torch.stack(tensor_list_cpu)  # shape [timepoints, n_nodes]
+            df = pd.DataFrame(stacked.numpy())
+            
+            # reform predictions dataframe into a long df with timestep_indices to merge with timepoints
+            long_df_predictions = df.reset_index().melt(id_vars='index', 
+                                                       var_name=self.id_column, 
+                                                       value_name='preds').rename(columns = {'index':f'{self.temporal_column}_idx'})
+            
+            # the predicted timestamps are all of those, without the first periods
+            evaluation_timestamps = eval_df[self.temporal_column].unique()[self.dataloader.periods:]
+            
+            timestamps = {}
+            for idx, tss in enumerate(evaluation_timestamps):
+                timestamps[idx] = tss
+            
+            cutperiods = eval_df[eval_df[self.temporal_column].isin(evaluation_timestamps)] 
+            long_df_predictions[self.temporal_column] = long_df_predictions[f'{self.temporal_column}_idx'].map(timestamps)
+            self.evaluation_df = pd.merge(cutperiods, long_df_predictions, on = [self.temporal_column, self.id_column])
+            
+        else:
+            # Multi-step prediction
+            self._process_multi_step_predictions(predictions, labels, eval_df, prediction_horizon)
 
-        return self              
+        return self
+
+    def _process_multi_step_predictions(self, predictions, labels, eval_df, prediction_horizon):
+        """
+        Process multi-step predictions into evaluation dataframe
+        """
+        # Convert predictions to numpy
+        pred_tensors = [t.detach().cpu() for t in predictions]  # List of [n_nodes, prediction_horizon]
+        label_tensors = [t.detach().cpu() for t in labels]      # List of [prediction_horizon, n_nodes]
+        
+        
+        # Stack predictions: [n_samples, n_nodes, prediction_horizon]
+        stacked_preds = torch.stack(pred_tensors)  # [n_samples, n_nodes, prediction_horizon]
+        stacked_labels = torch.stack(label_tensors)  # [n_samples, prediction_horizon, n_nodes]
+        
+        # Get unique timestamps for evaluation
+        all_timestamps = eval_df[self.temporal_column].unique()
+        evaluation_timestamps = all_timestamps[self.dataloader.periods:]
+        
+        # Create evaluation dataframe
+        eval_rows = []
+        
+        for sample_idx in range(stacked_preds.shape[0]):
+            # Get predictions for this sample: [n_nodes, prediction_horizon]
+            sample_preds = stacked_preds[sample_idx]  # [n_nodes, prediction_horizon]
+            # Get labels for this sample: [prediction_horizon, n_nodes]
+            sample_labels = stacked_labels[sample_idx]  # [prediction_horizon, n_nodes]
+            
+            # For multi-step prediction, we predict multiple future steps
+            for step in range(prediction_horizon):
+                # Calculate the actual timestamp for this prediction step
+                if sample_idx + step < len(evaluation_timestamps):
+                    pred_timestamp = evaluation_timestamps[sample_idx + step]
+                else:
+                    # Handle edge case where we run out of timestamps
+                    continue
+                
+                # Get predictions for this step: [n_nodes]
+                step_preds = sample_preds[:, step]  # [n_nodes]
+                # Get labels for this step: [n_nodes]
+                step_labels = sample_labels[:, step]  # [n_nodes]
+                
+                # For each node
+                for node_idx in range(step_preds.shape[0]):
+                    eval_rows.append({
+                        self.temporal_column: pred_timestamp,
+                        self.id_column: node_idx,
+                        'preds': step_preds[node_idx].item(),
+                        self.target_column: step_labels[node_idx].item(),
+                        'prediction_step': step + 1  # 1-indexed step
+                    })
+        
+        self.evaluation_df = pd.DataFrame(eval_rows)
+        
+        # Also create aggregated version (sum across all nodes for each timestamp)
+        agg_eval = self.evaluation_df.groupby([self.temporal_column, 'prediction_step']).agg({
+            self.target_column: 'sum',
+            'preds': 'sum'
+        }).reset_index()
+        
+        self.aggregated_evaluation_df = agg_eval
+        return self

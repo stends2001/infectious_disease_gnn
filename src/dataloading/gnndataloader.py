@@ -6,6 +6,7 @@ from typing import Dict, List, Literal, Any, Optional, Tuple
 import numpy as np
 from .epidataloader import EpiDataLoader
 
+import matplotlib.pyplot as plt
 
 class GNNDataLoader:
     """
@@ -34,6 +35,8 @@ class GNNDataLoader:
         self.XYt_train       = epidataloader.XYt_train
         self.XYt_val         = epidataloader.XYt_val
         self.XYt_test        = epidataloader.XYt_test  
+
+        self.lags =   epidataloader.lags
 
         self.norm_params     = epidataloader.norm_params['params']
         self.edge_index      = None
@@ -67,18 +70,19 @@ class GNNDataLoader:
         """
 
         self.periods = periods
+        self.prediction_horizon = prediction_horizon
 
         # Separate X,y
         X_train, y_train   = self._separate_Xy(self.train_df)
-        self.dataset_train = self._create_temporal_dataset(X_train, y_train, periods = periods)
+        self.dataset_train = self._create_temporal_dataset(X_train, y_train, periods = periods, prediction_horizon = prediction_horizon)
 
         # For train set
         X_val, y_val = self._separate_Xy(self.val_df)
-        self.dataset_val = self._create_temporal_dataset(X_val, y_val, periods = periods)
+        self.dataset_val = self._create_temporal_dataset(X_val, y_val, periods = periods, prediction_horizon = prediction_horizon)
 
         # For train set
         X_test, y_test = self._separate_Xy(self.test_df)
-        self.dataset_test = self._create_temporal_dataset(X_test, y_test, periods = periods)   
+        self.dataset_test = self._create_temporal_dataset(X_test, y_test, periods = periods, prediction_horizon = prediction_horizon)   
         return self     
 
     def _create_temporal_dataset(self,X: torch.tensor, y: torch.tensor, periods: int, prediction_horizon: int = 1) -> List[Data]:
@@ -100,14 +104,14 @@ class GNNDataLoader:
         for start in range(max_start):
             # Input window: periods consecutive timesteps
             x_seq = X[start : start + periods]  # shape [periods, nodes, features]
-            
-            # Target: prediction_horizon steps after the input window
-            target_timestep = start + periods + prediction_horizon - 1
-            y_target = y[target_timestep]  # shape [nodes]
+
+            target_start = start + periods 
+            target_end   = target_start + prediction_horizon
+            y_target     = y[target_start:target_end]
             
             data = Data(
                 x = x_seq.clone().detach().float().permute(1, 2, 0),  # (nodes, features, periods)
-                y = y_target.clone().detach().float(),                # (nodes,)
+                y = y_target.clone().detach().float().permute(1,0),   # (nodes, horizon)
                 edge_index = self.edge_index,
                 edge_weight = self.edge_weight
             )
@@ -146,6 +150,40 @@ class GNNDataLoader:
 
         return self
     
+    def preview_dataloader(self, node_idx: int, timepoint: int = 22,
+                           dataset: Literal['train','val','test'] = 'test'):
+
+        if len(self.lags) == 1:
+            lag = self.lags[0]
+        else:
+            print('CAREFUL! MULTIPLE LAGS MAY NOT BE HANDLED PROPERLY YET')
+
+        feature_idx = 1
+        if dataset == 'train':
+            df = self.dataset_train
+        elif dataset == 'val':
+            df = self.dataset_val 
+        elif dataset == 'test':
+            df = self.dataset_test
+
+        dataX = torch.stack([entry.x[node_idx, feature_idx, :] for entry in df]).cpu().numpy()  # all inputs
+        dataY = torch.stack([entry.y[node_idx, 0] for entry in df]).cpu().numpy()               # only first target
+
+        if self.prediction_horizon>1:
+            dataY = np.append(dataY, df[-1].y[node_idx, 1:self.prediction_horizon])
+
+        input = dataX[timepoint,:]
+        target= df[timepoint].y[node_idx, :]
+
+
+        fig, ax = plt.subplots(figsize = (14,6))
+        ax.plot(dataY, label='input for selected point')
+        ax.plot(np.arange(timepoint-len(input)-lag,timepoint-lag),input, label='input for selected point', color = "#1b9e77", marker='x', markersize=10)
+        ax.plot(np.arange(timepoint,timepoint+self.prediction_horizon),target, marker='o', markersize=10, color='#d94e4e', label='Target last point')
+        ax.set_title(f'Input vs Target of node {node_idx}')
+        ax.legend()
+        ax.grid()
+
     def _separate_Xy(self,df: pd.DataFrame) -> Tuple[torch.tensor, torch.tensor]:
         """
         separates X and y from an XYt dataframe

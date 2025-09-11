@@ -257,12 +257,13 @@ class EpiDataLoader:
             raise AttributeError("The attribute 'epidemiological_data_normalized' is missing in this instance.\nNormalize first, then lag!")
 
         dfc = self.epidemiological_data_normalized.copy()
-
+        self.lags = []
         new_features = []
         for lag in lags:
             feature = f'{self.target_column}_lag{lag}'
             dfc[feature] = dfc.groupby(self.id_column)[self.target_column].shift(lag)
             new_features.append(feature)
+            self.lags.append(lag)
 
         self.feature_columns = self.feature_columns + new_features
 

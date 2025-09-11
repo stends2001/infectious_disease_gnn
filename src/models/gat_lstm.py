@@ -6,7 +6,6 @@ import pandas as pd
 
 from ..dataloading.gnndataloader import GNNDataLoader
 from .modelcore import ModelCore
-from ..metrics.spike_weighted_mse import spike_weighted_mse
 import torch_geometric.nn as pyg_nn
 
 import torch

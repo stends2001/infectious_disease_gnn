@@ -18,13 +18,14 @@ class TemporalGCN(nn.Module):
     across time steps for infectious disease forecasting.
     """
     def __init__(self, node_features: int, hidden_size: int = 64, num_layers: int = 2, 
-                 dropout: float = 0.2, temporal_layers: int = 2):
+                 dropout: float = 0.2, temporal_layers: int = 2, prediction_horizon: int = 1):
         super(TemporalGCN, self).__init__()
         
         self.node_features = node_features
         self.hidden_size = hidden_size
         self.num_layers = num_layers
         self.temporal_layers = temporal_layers
+        self.prediction_horizon = prediction_horizon
         
         # Spatial GCN layers
         self.spatial_convs = nn.ModuleList()
@@ -45,9 +46,10 @@ class TemporalGCN(nn.Module):
         # Output projection
         self.output_proj = nn.Sequential(
             nn.Linear(hidden_size, hidden_size // 2),
-            nn.ReLU(),
+            # nn.ReLU(),
+            nn.Tanh(),
             nn.Dropout(dropout),
-            nn.Linear(hidden_size // 2, 1)
+            nn.Linear(hidden_size // 2, prediction_horizon)
         )
         
         self.dropout = nn.Dropout(dropout)
@@ -83,15 +85,14 @@ class TemporalGCN(nn.Module):
         # Apply temporal LSTM
         lstm_out, _ = self.temporal_lstm(spatial_seq)  # [num_nodes, time_steps, hidden_size]
         
-        # Use last time step for prediction
+        # Always use the last hidden state for predictions
         last_hidden = lstm_out[:, -1, :]  # [num_nodes, hidden_size]
-        
-        # Output projection
-        output = self.output_proj(last_hidden)  # [num_nodes, 1]
-        
-        return output.squeeze(-1)  # [num_nodes]
+        output = self.output_proj(last_hidden)  # [num_nodes, prediction_horizon]
 
-
+        if self.prediction_horizon == 1:
+            return output.squeeze(-1)  # [num_nodes]
+        else:
+            return output  # [num_nodes, prediction_horizon]
 
 
 class TemporalGCNModel(DeepLearningModelCore):
@@ -114,7 +115,8 @@ class TemporalGCNModel(DeepLearningModelCore):
             hidden_size=hidden_size,
             num_layers=num_layers,
             temporal_layers=temporal_layers,
-            dropout=dropout
+            dropout=dropout,
+            prediction_horizon= self.dataloader.prediction_horizon
         ).to(self.device)
         
         return self
