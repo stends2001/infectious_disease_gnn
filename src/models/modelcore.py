@@ -11,7 +11,7 @@ import torch
 
 from ..dataloading import EpiDataLoader
 from ..metrics.losses import spike_weighted_mse, mse, spike_detection_loss, temporal_smoothness_loss, spatial_consistency_loss
-from ..dataloading.normalization import reverse_zscore_scaling
+from ..dataloading.normalization import reverse_zscore_scaling, reverse_log
 
 class ModelCore:
 
@@ -44,10 +44,33 @@ class ModelCore:
         raise NotImplementedError("Each model must implement its own forecast method.")
     
     def _process_predictions(self):
-        agg_target = self.evaluation_df.groupby(self.temporal_column)[self.target_column].sum().reset_index()
-        agg_preds  = self.evaluation_df.groupby(self.temporal_column)['preds'].sum().reset_index()
+
+        train_normalized = self.dataloader.XYt_train
+        train_denorm     = reverse_zscore_scaling(train_normalized, params = self.dataloader.norm_params['params'])
+        train_denorm     = reverse_log(train_denorm, self.dataloader.logged_params)
+
+        val_normalized   = self.dataloader.XYt_val
+        val_denorm       = reverse_zscore_scaling(val_normalized, params = self.dataloader.norm_params['params'])
+        val_denorm       = reverse_log(val_denorm, self.dataloader.logged_params)
+
+        test_normalized  = self.dataloader.XYt_test
+        test_denorm      = reverse_zscore_scaling(test_normalized, params = self.dataloader.norm_params['params'])
+        test_denorm      = reverse_log(test_denorm, self.dataloader.logged_params)
+
+        preds_normalized = self.evaluation_df
+        preds_denorm      = reverse_zscore_scaling(preds_normalized, params = self.dataloader.norm_params['params'])
+        preds_denorm      = reverse_log(preds_denorm, self.dataloader.logged_params)
+
+        agg_target = preds_normalized.groupby(self.temporal_column)[self.target_column].sum().reset_index()
+        agg_preds  = preds_normalized.groupby(self.temporal_column)['preds'].sum().reset_index()
 
         self.aggregated_evaluation_df = pd.merge(agg_target, agg_preds, on=self.temporal_column)
+        
+        self.XYt_train_denorm =train_denorm
+        self.XYt_val_denorm   =val_denorm
+        self.XYt_test_denorm  =test_denorm
+        self.preds_denorm     =preds_denorm
+
         return self
 
     
@@ -64,9 +87,13 @@ class ModelCore:
         valcolor   = "#1b9e77"
         testcolor  = '#d94e4e'
 
-        XYt_train = self.dataloader.XYt_train[self.dataloader.XYt_train[self.id_column] == id]
-        XYt_val   = self.dataloader.XYt_val[self.dataloader.XYt_val[self.id_column] == id]
-        XYt_test  = self.dataloader.XYt_test[self.dataloader.XYt_test[self.id_column] == id]
+        XYt_train = self.XYt_train_denorm[self.XYt_train_denorm[self.id_column] == id]
+        XYt_val   = self.XYt_val_denorm[self.XYt_val_denorm[self.id_column] == id]
+        XYt_test  = self.XYt_test_denorm[self.XYt_test_denorm[self.id_column] == id]
+
+        # XYt_train = self.dataloader.XYt_train[self.dataloader.XYt_train[self.id_column] == id]
+        # XYt_val   = self.dataloader.XYt_val[self.dataloader.XYt_val[self.id_column] == id]
+        # XYt_test  = self.dataloader.XYt_test[self.dataloader.XYt_test[self.id_column] == id]
 
         time_axis_train     = XYt_train[self.temporal_column]
         time_axis_val       = XYt_val[self.temporal_column]
@@ -92,8 +119,8 @@ class ModelCore:
         ax1.legend()
 
         # plot 2: predictions vs groundtruth of selected ID
-        sns.lineplot(data=self.evaluation_df[self.evaluation_df[self.id_column] == id], x=self.temporal_column, y=self.target_column, color=testcolor, marker = "o", ax=ax2)
-        sns.lineplot(data=self.evaluation_df[self.evaluation_df[self.id_column] == id], x=self.temporal_column, y='preds', color=self.model_color, marker = "x",    markeredgecolor='black',  ax=ax2)
+        sns.lineplot(data=self.preds_denorm[self.preds_denorm[self.id_column] == id], x=self.temporal_column, y=self.target_column, color=testcolor, marker = "o", ax=ax2)
+        sns.lineplot(data=self.preds_denorm[self.preds_denorm[self.id_column] == id], x=self.temporal_column, y='preds', color=self.model_color, marker = "x",    markeredgecolor='black',  ax=ax2)
         ax2.set_title(f'predictions {self.id_column}: {id}')
         ax2.set_xlabel("")            
         ax2.grid()

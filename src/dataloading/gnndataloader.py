@@ -38,7 +38,8 @@ class GNNDataLoader:
 
         self.lags =   epidataloader.lags
 
-        self.norm_params     = epidataloader.norm_params['params']
+        self.norm_params     = epidataloader.norm_params
+        self.logged_params   = epidataloader.logged_params
         self.edge_index      = None
         self.edge_weight     = None
 

@@ -1,3 +1,7 @@
+import pandas as pd
+from typing import *
+import numpy as np
+
 def pipeline_normalization(train_df, 
                             columns):
     """
@@ -109,24 +113,44 @@ def apply_zscore_scaling(val_df, columns, params):
     
     return scaled_df
 
-def reverse_zscore_scaling(scaled_df, columns, params):
+def reverse_zscore_scaling(scaled_df: pd.DataFrame, params: Dict):
     """
     Reverses Z-score scaling using original mean and standard deviation parameters.
-    
     Returns the unscaled DataFrame.
     """
+
+    columns = list(params.keys())
     unscaled_df = scaled_df.copy()
     
     for col in columns:
-        if col not in params:
-            raise ValueError(f"Scaling parameters for column '{col}' not found.")
-        
-        col_mean = params[col]['mean']
-        col_std = params[col]['std']
-        
-        if col_std == 0:
-            unscaled_df[col] = col_mean  # All values were originally the same
+        if col not in scaled_df.columns.tolist():
+            # raise ValueError(f"Scaling parameters for column '{col}' not found.")
+            pass 
+
         else:
-            unscaled_df[col] = scaled_df[col] * col_std + col_mean
+            col_mean = params[col]['mean']
+            col_std  = params[col]['std']
+            
+            if col_std == 0:
+                unscaled_df[col] = col_mean  # All values were originally the same
+
+            else:
+                unscaled_df[col] = scaled_df[col] * col_std + col_mean
             
     return unscaled_df
+
+
+def reverse_log(logged_df: pd.DataFrame, params: Dict):
+
+    columns = list(params.keys())
+
+    unlogged_df = logged_df.copy() 
+
+    for col in columns:
+        if col not in logged_df.columns.tolist():
+            pass 
+            
+        else:
+            unlogged_df[col] = np.exp(unlogged_df[col]) - params[col]['shift']
+
+    return unlogged_df

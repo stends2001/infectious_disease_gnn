@@ -84,10 +84,12 @@ class EpiDataLoader:
         self.data_env_dir       = data_env_dir
         self.aggr_level         = aggr_level
 
+        self.logged_params = None
+
         # import data
         raw_shapedata, raw_epidemiological_data   = self._import_datasets()
         
-        # select columns and aggregate
+        # select columns and aggregate --> incidence per 10_000
         epidemiological_data                      = self._preprocess_epidemiological_data(raw_epidemiological_data)
 
         # tokenize columns
@@ -265,6 +267,11 @@ class EpiDataLoader:
             new_features.append(feature)
             self.lags.append(lag)
 
+            self.norm_params['params'][feature] = self.norm_params['params'][f'{self.target_column}']
+            
+            if self.logged_params is not None:
+                self.logged_params[feature] = {"shift": self.logged_params[f'{self.target_column}']['shift']}
+
         self.feature_columns = self.feature_columns + new_features
 
         dfc = dfc.dropna()
@@ -342,6 +349,7 @@ class EpiDataLoader:
         df_transformed = self.epidemiological_data.copy()
         df_transformed[self.target_column] = np.log(df_transformed[self.target_column] + shift)
         self.epidemiological_data = df_transformed
+        self.logged_params = {self.target_column : {"shift": shift}}
         return self
 
     def __repr__(self):

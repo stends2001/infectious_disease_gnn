@@ -104,7 +104,7 @@ class TemporalGCNModel(DeepLearningModelCore):
         if not self.name:
             self.name = 'TemporalGCN'
         
-        self.model_color = '#FF6B6B'
+        self.model_color = '#1F77B4'
         self.dataloader = dataloader
     
     def set_model_hparams(self, hidden_size: int = 64, num_layers: int = 2,
