@@ -1,0 +1,35 @@
+{
+  "test1": {
+    "model_name": "improved_tgcn_gravity_model_dense_k20",
+    "cosine_similarity": 0.9060847759246826,
+    "mse_difference": 0.01859355717897415,
+    "correlation": 0.9063884615898132,
+    "is_using_graph": false,
+    "pred_actual_mean": -0.026549318805336952,
+    "pred_identity_mean": -0.015658583492040634,
+    "pred_actual_std": 0.30059635639190674,
+    "pred_identity_std": 0.321392685174942
+  },
+  "test2": {
+    "model_name": "improved_tgcn_gravity_model_dense_k20",
+    "cosine_similarity": 0.7818970084190369,
+    "mse_difference": 0.03945312649011612,
+    "is_permutation_invariant": false
+  },
+  "test3": {
+    "model_name": "improved_tgcn_gravity_model_dense_k20",
+    "cosine_sim_removed": 0.8649606108665466,
+    "mse_diff_removed": 0.030462859198451042,
+    "cosine_sim_added": 0.5068724155426025,
+    "mse_diff_added": 0.07029816508293152,
+    "cosine_sim_rewired": 0.49343234300613403,
+    "mse_diff_rewired": 0.10278991609811783,
+    "avg_cosine_similarity": 0.6217551231384277,
+    "avg_mse_difference": 0.06785031408071518,
+    "is_edge_sensitive": true,
+    "substantial_change_detected": true,
+    "edges_removed": 1726,
+    "edges_added": 1726,
+    "edges_rewired": 1294
+  }
+}

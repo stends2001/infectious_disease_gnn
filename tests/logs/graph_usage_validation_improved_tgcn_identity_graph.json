@@ -1,0 +1,35 @@
+{
+  "test1": {
+    "model_name": "improved_tgcn_identity_graph",
+    "cosine_similarity": 1.0,
+    "mse_difference": 0.0,
+    "correlation": 1.0,
+    "is_using_graph": false,
+    "pred_actual_mean": 0.10589973628520966,
+    "pred_identity_mean": 0.10589973628520966,
+    "pred_actual_std": 0.3634563386440277,
+    "pred_identity_std": 0.3634563386440277
+  },
+  "test2": {
+    "model_name": "improved_tgcn_identity_graph",
+    "cosine_similarity": 1.0,
+    "mse_difference": 0.0,
+    "is_permutation_invariant": true
+  },
+  "test3": {
+    "model_name": "improved_tgcn_identity_graph",
+    "cosine_sim_removed": 1.0,
+    "mse_diff_removed": 0.0,
+    "cosine_sim_added": 0.9001042246818542,
+    "mse_diff_added": 0.030008243396878242,
+    "cosine_sim_rewired": 0.7442152500152588,
+    "mse_diff_rewired": 0.0772528275847435,
+    "avg_cosine_similarity": 0.8814398646354675,
+    "avg_mse_difference": 0.03575368970632553,
+    "is_edge_sensitive": false,
+    "substantial_change_detected": true,
+    "edges_removed": 82,
+    "edges_added": 82,
+    "edges_rewired": 61
+  }
+}
