@@ -1,0 +1,35 @@
+{
+  "test1": {
+    "model_name": "sgcn_gravity_model2",
+    "cosine_similarity": 0.4508732557296753,
+    "mse_difference": 0.04851255193352699,
+    "correlation": 0.2593616247177124,
+    "is_using_graph": true,
+    "pred_actual_mean": 0.06398871541023254,
+    "pred_identity_mean": 0.15635772049427032,
+    "pred_actual_std": 0.13856905698776245,
+    "pred_identity_std": 0.1848297268152237
+  },
+  "test2": {
+    "model_name": "sgcn_gravity_model2",
+    "cosine_similarity": 0.25541889667510986,
+    "mse_difference": 0.042689185589551926,
+    "is_permutation_invariant": false
+  },
+  "test3": {
+    "model_name": "sgcn_gravity_model2",
+    "cosine_sim_removed": 0.9791198372840881,
+    "mse_diff_removed": 0.000961043406277895,
+    "cosine_sim_added": 0.9006086587905884,
+    "mse_diff_added": 0.004786841571331024,
+    "cosine_sim_rewired": 0.8251177072525024,
+    "mse_diff_rewired": 0.007748585194349289,
+    "avg_cosine_similarity": 0.9016155004501343,
+    "avg_mse_difference": 0.004498823545873165,
+    "is_edge_sensitive": false,
+    "substantial_change_detected": true,
+    "edges_removed": 739,
+    "edges_added": 738,
+    "edges_rewired": 554
+  }
+}

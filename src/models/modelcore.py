@@ -96,7 +96,7 @@ class ModelCore:
             XYt_val   = self.dataloader.XYt_val[self.dataloader.XYt_val[self.id_column] == id]
             XYt_test  = self.dataloader.XYt_test[self.dataloader.XYt_test[self.id_column] == id]
             
-            preds = self.evaluation_df
+            preds = self.evaluation_df[self.preds_denorm[self.id_column] == id]
             aggr = self.aggregated_evaluation_df
 
 

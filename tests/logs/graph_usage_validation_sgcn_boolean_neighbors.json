@@ -1,0 +1,35 @@
+{
+  "test1": {
+    "model_name": "sgcn_boolean_neighbors",
+    "cosine_similarity": 0.5320786833763123,
+    "mse_difference": 0.11028887331485748,
+    "correlation": 0.4635925889015198,
+    "is_using_graph": true,
+    "pred_actual_mean": 0.0456450991332531,
+    "pred_identity_mean": 0.12865620851516724,
+    "pred_actual_std": 0.111357182264328,
+    "pred_identity_std": 0.3580797016620636
+  },
+  "test2": {
+    "model_name": "sgcn_boolean_neighbors",
+    "cosine_similarity": 0.07508674263954163,
+    "mse_difference": 0.020313197746872902,
+    "is_permutation_invariant": false
+  },
+  "test3": {
+    "model_name": "sgcn_boolean_neighbors",
+    "cosine_sim_removed": 0.9138098359107971,
+    "mse_diff_removed": 0.002512557664886117,
+    "cosine_sim_added": 0.8901115655899048,
+    "mse_diff_added": 0.003422436537221074,
+    "cosine_sim_rewired": 0.8601839542388916,
+    "mse_diff_rewired": 0.003802190301939845,
+    "avg_cosine_similarity": 0.8880351781845093,
+    "avg_mse_difference": 0.003245728090405464,
+    "is_edge_sensitive": false,
+    "substantial_change_detected": false,
+    "edges_removed": 505,
+    "edges_added": 504,
+    "edges_rewired": 379
+  }
+}
