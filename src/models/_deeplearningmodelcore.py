@@ -1,155 +1,7 @@
-import matplotlib.pyplot as plt
-import seaborn as sns
-import matplotlib.gridspec as gridspec
-import seaborn as sns
-import matplotlib.pyplot as plt
-import pandas as pd
-from typing import Optional, Dict, List, Literal, Any
-
-import torch
 
 
-from ..dataloading import EpiDataLoader
-from ..metrics.losses import spike_weighted_mse, mse, spike_detection_loss, temporal_smoothness_loss, spatial_consistency_loss
-from ..dataloading.normalization import reverse_zscore_scaling, reverse_log
-
-class ModelCore:
-
-    """
-    Parent class for all models
-
-    DeepLearningModelCore builds off of this by inheritance
-
-    TODO: de-normalize predictions    
-    """
-
-    def __init__(self, 
-                 dataloader: EpiDataLoader, 
-                 name:       Optional[str] = None):
-        self.dataloader = dataloader
-
-        self.name       = name if name else "unknown"
-
-        # inherit dataloader's metadata
-        self.target_column   = dataloader.target_column
-        self.temporal_column = dataloader.temporal_column
-        self.id_column       = dataloader.id_column
-
-        self.traincolor = '#4a90d9'
-        self.valcolor   = "#1b9e77"
-        self.testcolor  = '#d94e4e'        
-
-    def forecast(self):
-        """supposed to create the attribute `evaluation_df`"""
-        raise NotImplementedError("Each model must implement its own forecast method.")
-    
-    def _process_predictions(self):
-
-        train_normalized = self.dataloader.XYt_train
-        train_denorm     = reverse_zscore_scaling(train_normalized, params = self.dataloader.norm_params['params'])
-        train_denorm     = reverse_log(train_denorm, self.dataloader.logged_params)
-
-        val_normalized   = self.dataloader.XYt_val
-        val_denorm       = reverse_zscore_scaling(val_normalized, params = self.dataloader.norm_params['params'])
-        val_denorm       = reverse_log(val_denorm, self.dataloader.logged_params)
-
-        test_normalized  = self.dataloader.XYt_test
-        test_denorm      = reverse_zscore_scaling(test_normalized, params = self.dataloader.norm_params['params'])
-        test_denorm      = reverse_log(test_denorm, self.dataloader.logged_params)
-
-        preds_normalized = self.evaluation_df
-        preds_denorm      = reverse_zscore_scaling(preds_normalized, params = self.dataloader.norm_params['params'])
-        preds_denorm      = reverse_log(preds_denorm, self.dataloader.logged_params)
-
-        agg_target = preds_normalized.groupby(self.temporal_column)[self.target_column].sum().reset_index()
-        agg_preds  = preds_normalized.groupby(self.temporal_column)['preds'].sum().reset_index()
-        self.aggregated_evaluation_df = pd.merge(agg_target, agg_preds, on=self.temporal_column)
-
-        agg_target_denorm = preds_denorm.groupby(self.temporal_column)[self.target_column].sum().reset_index()
-        agg_preds_denorm  = preds_denorm.groupby(self.temporal_column)['preds'].sum().reset_index()
-        self.aggregated_evaluation_df_denorm = pd.merge(agg_target_denorm, agg_preds_denorm, on=self.temporal_column)        
-        
-        self.XYt_train_denorm =train_denorm
-        self.XYt_val_denorm   =val_denorm
-        self.XYt_test_denorm  =test_denorm
-        self.preds_denorm     =preds_denorm
-
-        return self
-
-    
-    def show_forecasts(self,
-                       id: int = 0,
-                       norm: bool = False):
-        """
-        previews split and normalized data for a specific node, by default token 0.
-        """
-        
-        # create aggregated predictions
-        self._process_predictions()
-
-        traincolor = '#4a90d9'
-        valcolor   = "#1b9e77"
-        testcolor  = '#d94e4e'
-
-        if norm:
-            XYt_train = self.dataloader.XYt_train[self.dataloader.XYt_train[self.id_column] == id]
-            XYt_val   = self.dataloader.XYt_val[self.dataloader.XYt_val[self.id_column] == id]
-            XYt_test  = self.dataloader.XYt_test[self.dataloader.XYt_test[self.id_column] == id]
-            
-            preds = self.evaluation_df[self.preds_denorm[self.id_column] == id]
-            aggr = self.aggregated_evaluation_df
 
 
-        else:
-            XYt_train = self.XYt_train_denorm[self.XYt_train_denorm[self.id_column] == id]
-            XYt_val   = self.XYt_val_denorm[self.XYt_val_denorm[self.id_column] == id]
-            XYt_test  = self.XYt_test_denorm[self.XYt_test_denorm[self.id_column] == id]
-
-            preds = self.preds_denorm[self.preds_denorm[self.id_column] == id]
-            aggr  = self.aggregated_evaluation_df_denorm            
-
-
-        time_axis_train     = XYt_train[self.temporal_column]
-        time_axis_val       = XYt_val[self.temporal_column]
-        time_axis_test      = XYt_test[self.temporal_column]
-
-        cases_train         = XYt_train[self.target_column]
-        cases_val           = XYt_val[self.target_column]
-        cases_test          = XYt_test[self.target_column]
-        
-
-        fig = plt.figure(figsize=(20, 10))
-        gs = gridspec.GridSpec(2, 2, height_ratios=[1, 1])
-        ax1 = fig.add_subplot(gs[0, :])
-        ax2 = fig.add_subplot(gs[1, 0])
-        ax3 = fig.add_subplot(gs[1, 1])
-
-        # plot 1: history of selected ID
-        ax1.plot(time_axis_train, cases_train, color = traincolor,  label = 'train')
-        ax1.plot(time_axis_val,   cases_val,   color = valcolor,    label = 'val')
-        ax1.plot(time_axis_test,  cases_test,  color = testcolor,   label = 'test')
-        ax1.set_title(f'history {self.id_column}: {id}')
-        ax1.grid()
-        ax1.legend()
-
-        # plot 2: predictions vs groundtruth of selected ID
-        sns.lineplot(data=preds, x=self.temporal_column, y=self.target_column, color=testcolor, marker = "o", ax=ax2)
-        sns.lineplot(data=preds, x=self.temporal_column, y='preds', color=self.model_color, marker = "x",    markeredgecolor='black',  ax=ax2)
-        ax2.set_title(f'predictions {self.id_column}: {id}')
-        ax2.set_xlabel("")            
-        ax2.grid()
-
-        # plot 3: predictions vs groundtruth of aggregation -> over all nodes
-        sns.lineplot(data=aggr, x=self.temporal_column, y=self.target_column, color=testcolor, marker = "o", ax=ax3, label='target')
-        sns.lineplot(data=aggr, x=self.temporal_column, y='preds', color=self.model_color, marker = "x",    markeredgecolor='black', ax=ax3, label='preds')
-        ax3.set_title(f"predictions nationally, aggregated incidences {self.name}")
-        ax3.grid()
-        ax3.legend()
-        ax3.autoscale(enable=True)
-
-        plt.tight_layout()
-        return self
-    
 class DeepLearningModelCore(ModelCore):
     """
     Childclass of ModelCore designed to work with GNNs
@@ -279,9 +131,9 @@ class DeepLearningModelCore(ModelCore):
         raise NotImplementedError("deep learning models must have this method")
 
     def train(self,
-              verbose: int = 1,
+              verbose:             Literal[0,1,2] = 1,
               dataloader_snapshot: bool = True,
-              show_loss: bool = True
+              show_loss:           bool = True
               ):
 
         """
@@ -315,13 +167,21 @@ class DeepLearningModelCore(ModelCore):
         if dataloader_snapshot:
             print(f'Dataloader Snapshot: {self.dataloader.dataset_train[0]}')
 
+        if verbose == 1:
+            verbose_loops = list(np.arange(1, self.n_epochs + 1, step=10))
+        elif verbose == 2:
+            verbose_loops = list(np.arange(1, self.n_epochs + 1))
+        else:
+            verbose_loops = []
+
         self.model.train()
         best_val_loss    = float('inf')
         patience_counter = 0
         best_model_state = None
 
-        list_val_loss = []
+        list_val_loss  =[]
         list_train_loss=[]
+        list_patience  =[]
 
         L_train    = len(list(self.dataloader.dataset_train))
         L_val      = len(list(self.dataloader.dataset_val))
@@ -373,14 +233,15 @@ class DeepLearningModelCore(ModelCore):
                 best_val_loss    = val_mse
                 patience_counter = 0
                 best_model_state = self.model.state_dict().copy()
-                if epoch // verbose:
+                if epoch in verbose_loops:
                     print(f"Epoch {epoch} train loss: {train_mse:.4f}, val loss: {val_mse:.4f} ✓ (new best)")
+                list_patience.append(False)
             # Validation didn't improve -> increment patience
             else:
                 patience_counter += 1
-                if epoch // verbose:
+                if epoch in verbose_loops:
                     print(f"Epoch {epoch} train loss: {train_mse:.4f}, val loss: {val_mse:.4f} (patience: {patience_counter}/{self.patience})")
-                
+                list_patience.append(True)
                 # Early stopping if patience exceeded
                 if patience_counter >= self.patience:
                     print(f"Early stopping: Validation loss hasn't improved for {self.patience} epochs")
@@ -392,8 +253,9 @@ class DeepLearningModelCore(ModelCore):
             
             # Step scheduler every epoch (or you could tie it to validation improvement)
             self.scheduler.step()
-            self.train_losses = list_train_loss
-            self.val_losses   = list_val_loss
+            self.train_losses   = list_train_loss
+            self.val_losses     = list_val_loss
+            self.epoch_patience = list_patience
 
         if show_loss:
             self.plot_losses()
@@ -402,23 +264,32 @@ class DeepLearningModelCore(ModelCore):
         """
         returns plot of train and val losses per epoch, after training model.
         """
-        fig, axes = plt.subplots(2,1, figsize = (9,5))
+        epochs          = np.arange(len(self.train_losses))
+        patience_epochs = epochs[np.array(self.epoch_patience)]
+        patience_train_losses = np.array(self.train_losses)[np.array(self.epoch_patience)]
+        patience_val_losses   = np.array(self.val_losses)[np.array(self.epoch_patience)]
+
+        fig, axes = plt.subplots(1,2, figsize = (18,4))
         axes = axes.flatten()
 
-        sns.lineplot(self.train_losses, color = self.traincolor, label = 'train loss', ax = axes[0])
-        sns.lineplot(self.val_losses, color = self.valcolor, label = 'val loss',   ax = axes[1])
+        sns.lineplot(self.train_losses,          color = self.traincolor, label = 'train loss', ax = axes[0])
+        axes[0].scatter(patience_epochs, patience_train_losses, color='red', marker = 'x', label='Patience Epochs')
+        sns.lineplot(self.val_losses,            color = self.valcolor,   label = 'val loss',   ax = axes[1])
+        axes[1].scatter(patience_epochs, patience_val_losses, color='red',marker = 'x', label='Patience Epochs')   
 
         for ax in axes:
             ax.grid()
             ax.set_ylabel('loss')
+            ax.set_xlabel('epoch')
             ax.legend()
 
-        axes[0].set_title('Loss over epochs')
-        axes[1].set_xlabel('epoch')        
+        axes[0].set_title('Training loss')      
+        axes[1].set_title('Validation loss')    
         
         return fig, axes
 
-    def forecast(self,  
+    def forecast(self,
+                 dataset: Literal['train','val','test']  = 'test'
                  ):
         """
         runs the testing dataloader. Prints the loss and sets attribute evluation_df
@@ -431,11 +302,24 @@ class DeepLearningModelCore(ModelCore):
         predictions = []
         labels      = []
 
+        if dataset == 'test':
         # formatting predictions:
-        eval_df     = self.dataloader.test_df
+            eval_df     = self.dataloader.test_df
+            dataloader  = self.dataloader.dataset_test
+
+        if dataset == 'val':
+        # formatting predictions:
+            eval_df     = self.dataloader.val_df
+            dataloader  = self.dataloader.dataset_val           
+
+        if dataset == 'train':
+        # formatting predictions:
+            eval_df     = self.dataloader.train_df
+            dataloader  = self.dataloader.dataset_train  
+
         prediction_horizon = self.dataloader.prediction_horizon
  
-        for snapshot in self.dataloader.dataset_test:
+        for snapshot in dataloader:
             snapshot = snapshot.to(self.device)
             # Get predictions
             y_hat = self.model(snapshot.x, snapshot.edge_index, snapshot.edge_weight)

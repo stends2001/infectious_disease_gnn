@@ -24,6 +24,12 @@ class GNNDataLoader:
                  epidataloader: EpiDataLoader):
         
         # copy metadata from EpiDataLoader
+        if 'population_size' in epidataloader.feature_columns:
+            epidataloader.feature_columns.remove('population_size')
+            print('population_size has been removed from dataloader')
+
+        self.shapedata = epidataloader.shapedata
+
         self.feature_columns = epidataloader.feature_columns
         self.id_column       = epidataloader.id_column
         self.temporal_column = epidataloader.temporal_column
@@ -150,16 +156,12 @@ class GNNDataLoader:
         self.edge_weight = edge_weight
 
         return self
-    
-    def preview_dataloader(self, node_idx: int, timepoint: int = 22,
-                           dataset: Literal['train','val','test'] = 'test'):
+   
+    def preview_dataloader(self, 
+                        node_idx: int, 
+                        timepoint: int = 22, 
+                        dataset: Literal['train','val','test'] = 'test'):
 
-        if len(self.lags) == 1:
-            lag = self.lags[0]
-        else:
-            print('CAREFUL! MULTIPLE LAGS MAY NOT BE HANDLED PROPERLY YET')
-
-        feature_idx = 1
         if dataset == 'train':
             df = self.dataset_train
         elif dataset == 'val':
@@ -167,19 +169,38 @@ class GNNDataLoader:
         elif dataset == 'test':
             df = self.dataset_test
 
-        dataX = torch.stack([entry.x[node_idx, feature_idx, :] for entry in df]).cpu().numpy()  # all inputs
-        dataY = torch.stack([entry.y[node_idx, 0] for entry in df]).cpu().numpy()               # only first target
+        lags = self.lags
 
-        if self.prediction_horizon>1:
-            dataY = np.append(dataY, df[-1].y[node_idx, 1:self.prediction_horizon])
+        lag_cols = []
+        lag_cols_idx = []
+        for idx, cc in enumerate(self.feature_columns):
+            if 'lag' in cc:
+                lag_cols.append(cc)
+                lag_cols_idx.append(idx)
+
+        if self.periods != 1:
+
+            dataX         = torch.stack([entry.x[node_idx, lag_cols_idx, :] for entry in df]).cpu().numpy()  # all inputs [tt, features, periods]
+            last_elements = dataX[:, 0, 1:]
+            to_append     = last_elements[:, ::-1]
+            dataX         = np.concatenate((to_append,dataX[:,:,0]), axis = 1)
+
+
+        else:
+            dataX = torch.stack([entry.x[node_idx, lag_cols_idx, 0] for entry in df]).cpu().numpy()  # all inputs [tt, features, periods]
+
+
+        dataY = torch.stack([entry.y[node_idx, :] for entry in df]).cpu().numpy()                # all targets of the pred horizon [tt, horizon]
 
         input = dataX[timepoint,:]
-        target= df[timepoint].y[node_idx, :]
 
+        input = input[::-1]
+
+        target= dataY[timepoint]
 
         fig, ax = plt.subplots(figsize = (14,6))
-        ax.plot(dataY, label='input for selected point')
-        ax.plot(np.arange(timepoint-len(input)-lag,timepoint-lag),input, label='input for selected point', color = "#1b9e77", marker='x', markersize=10)
+        ax.plot(dataY[:,0], '-o' ,markersize = 5, label=f'entire timeseries for node {node_idx}')
+        ax.plot(np.arange(timepoint-len(input)-lags[0],timepoint-lags[0]),input, label='input for selected point', color = "#1b9e77", marker='s', markersize=10)
         ax.plot(np.arange(timepoint,timepoint+self.prediction_horizon),target, marker='o', markersize=10, color='#d94e4e', label='Target last point')
         ax.set_title(f'Input vs Target of node {node_idx}')
         ax.legend()

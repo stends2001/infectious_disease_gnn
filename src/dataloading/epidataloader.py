@@ -1,4 +1,4 @@
-from typing import Literal, Optional, Tuple
+from typing import Literal, Optional, Dict, Tuple, Union, List
 import re 
 import numpy as np
 import pandas as pd
@@ -8,9 +8,11 @@ from tqdm import tqdm
 from matplotlib.lines import Line2D
 import os
 import geopandas as gpd
-
+import seaborn as sns
 import numpy as np
 import pandas as pd
+import warnings
+from ..utils.constants import traincolor, valcolor, testcolor
 
 class EpiDataLoader:
 
@@ -71,39 +73,51 @@ class EpiDataLoader:
                  data_env_dir: str,
                  min_date:     str     = '2001-01-01',
                  max_date:     str     = '2025-01-01',
-                 aggr_level:   Literal['03','02'] = '03'
+                 aggr_level:   Literal['03','02'] = '03',
+                 include_population: bool = False
                  ):
+        
+        self.data               = {}
         
         self.min_date           = pd.to_datetime(min_date)
         self.max_date           = pd.to_datetime(max_date)
         self.temporal_column    = 'timestamp'
         self.target_column      = 'incidence'
         self.id_column          = 'node' 
+        self.pred_column        = 'pred'
+        self.feature_columns    = []
 
         self.disease            = disease_name
         self.data_env_dir       = data_env_dir
         self.aggr_level         = aggr_level
+        self.transform_params   = {}
 
-        self.logged_params = None
+        self.incidence_scalar   = 10_000
+
+        self.log                = False
 
         # import data
         raw_shapedata, raw_epidemiological_data   = self._import_datasets()
         
         # select columns and aggregate --> incidence per 10_000
         epidemiological_data                      = self._preprocess_epidemiological_data(raw_epidemiological_data)
-
-        # tokenize columns
-        self.epidemiological_data, self.shapedata = self._tokenize_id(epidemiological_data, raw_shapedata)
-
-
-        pop_data                = self.epidemiological_data.groupby(self.id_column)['population_size'].mean().reset_index(drop=False)
-        self.population_by_node = pop_data
-
-        self.feature_columns    = ['population_size']
+        # tokenize id columns (nodes)
+        epidemiological_data, shapedata           = self._tokenize_id(epidemiological_data, raw_shapedata)
 
         # filter on specified timeframe
-        self.epidemiological_data         = self._filter_mindate(self.epidemiological_data,self.min_date)
-        self.epidemiological_data         = self._filter_maxdate(self.epidemiological_data,self.max_date)
+        epidemiological_data                      = self._filter_mindate(epidemiological_data,self.min_date)
+        epidemiological_data                      = self._filter_maxdate(epidemiological_data,self.max_date)
+
+        context_data                              = epidemiological_data
+        epidemiological_data                      = epidemiological_data.drop(labels = ['cases'], axis = 1)
+        
+        if include_population:
+            self.feature_columns                      = self.feature_columns + ['population_size']
+        else:
+            epidemiological_data                      = epidemiological_data.drop(labels = ['population_size'], axis = 1)
+
+        self.data['context']                      = {'epidemiological_data': context_data, 'shapedata': shapedata}
+        self.data['raw']                          = epidemiological_data
 
     def _import_datasets(self) -> Tuple[pd.DataFrame,pd.DataFrame]:
         """
@@ -133,51 +147,60 @@ class EpiDataLoader:
         else:
             raw_epidemiological_data.drop(columns=['week','year'], inplace=True)
 
-        raw_epidemiological_data['incidence'] = raw_epidemiological_data['cases'] / raw_epidemiological_data['population_size'] *10_000
-        raw_epidemiological_data.drop(columns=['cases'], inplace=True)
+        raw_epidemiological_data['incidence'] = raw_epidemiological_data['cases'] / raw_epidemiological_data['population_size'] * self.incidence_scalar
+        # raw_epidemiological_data.drop(columns=['cases'], inplace=True)
 
         preprocessed_epidemiological_data = raw_epidemiological_data
         return preprocessed_epidemiological_data
     
     def _tokenize_id(self, epidemiological_data, shapedata) -> Tuple[pd.DataFrame,pd.DataFrame]:
-        """
-        tokenizes id column into node numbers
-        saves tokenization - information into self.tokens
-        """
 
         unique_ids = sorted(epidemiological_data[f'kz_{self.aggr_level}'].unique())
-        id_idx = {}
-        idx_id = {}
+        id_idx     = {} # kz  : int
+        idx_id     = {} # int : kz
 
         for idx, id in enumerate(unique_ids):
             id_idx[id] = idx                  # id (kz_02 or kz_03) : node_id (zero based)
             idx_id[idx] = id                  # node_id (zero based): id (kz_02 or kz_03)
 
-        self.tokens = {"id_idx": id_idx, "idx_id": idx_id} 
+        shapedata.loc[:, self.id_column]            = shapedata[f'kz_{self.aggr_level}'].map(id_idx)              # replace id column with tokens
+        epidemiological_data.loc[:, self.id_column] = epidemiological_data[f'kz_{self.aggr_level}'].map(id_idx)   # replace id column with tokens
 
-        shapedata[self.id_column]            = shapedata[f'kz_{self.aggr_level}'].map(id_idx)
-        epidemiological_data[self.id_column] = epidemiological_data[f'kz_{self.aggr_level}'].map(id_idx)
+        # Before dropping NaNs, check how many rows have NaN in the new column
+        nan_rows = shapedata[shapedata[self.id_column].isna()]
 
-        shapedata = shapedata.dropna()
+        nan_count = len(nan_rows)
+        if nan_count > 0:
+            dropped_ids = nan_rows[f'kz_{self.aggr_level}'].unique()
+            warnings.warn(
+                f"{nan_count} rows with missing tokenized IDs will be dropped from 'shapedata'. "
+                f"Dropped original IDs: {dropped_ids}",
+                UserWarning
+            )
+        shapedata = shapedata.dropna(subset=[self.id_column]).copy()
 
-        shapedata[self.id_column] =  shapedata[self.id_column].astype(int)
+        shapedata[self.id_column]            =  shapedata[self.id_column].astype(int)
         epidemiological_data[self.id_column] =  epidemiological_data[self.id_column].astype(int)
+
+        # drop original id columns
+        epidemiological_data = epidemiological_data.drop(columns = [f'kz_{self.aggr_level}']).copy()
+        shapedata            = shapedata.drop(columns = [f'kz_{self.aggr_level}']).copy()
+
+        self.tokens = {"id_idx": id_idx, "idx_id": idx_id} 
         
-        return epidemiological_data.drop(columns = [f'kz_{self.aggr_level}']), shapedata.drop(columns = [f'kz_{self.aggr_level}'])
+        return epidemiological_data, shapedata 
 
-    def _filter_mindate(self, df, min_date: str):
+    def _filter_mindate(self, df, min_date: pd.Timestamp) -> pd.DataFrame:
         dfc = df.copy()
-        return dfc[dfc[self.temporal_column] >= min_date].reset_index(drop = True)                
+        return dfc.loc[dfc[self.temporal_column] >= min_date].reset_index(drop = True)                
 
-    def _filter_maxdate(self, df, max_date: str):
+    def _filter_maxdate(self, df, max_date: pd.Timestamp) -> pd.DataFrame:
         dfc = df.copy()
-        return dfc[dfc[self.temporal_column] < max_date].reset_index(drop = True)                
+        return dfc.loc[dfc[self.temporal_column] < max_date].reset_index(drop = True)                
 
-    def add_time_features(self):
-        """
-        Adds cyclical time features (_sin and _cos) based on the temporal column.
-        """
-        dfc = self.epidemiological_data.copy()
+    def add_time_features(self) -> 'EpiDataLoader':
+
+        dfc, _ = self._return_datastage(expected_stage=[2,3])
 
         # Number of weeks per year (approximate)
         periods_per_year = 52
@@ -194,60 +217,40 @@ class EpiDataLoader:
         dfc[sin_col] = np.sin(2 * np.pi * t_of_year / periods_per_year)
         dfc[cos_col] = np.cos(2 * np.pi * t_of_year / periods_per_year)
 
-        self.epidemiological_data = dfc
+        self.data['processed'] = dfc
 
         self.feature_columns = self.feature_columns + [sin_col, cos_col]
         
         return self
     
     def normalize(self, 
-                  split_trainval: str, 
-                  split_valtest: str,
-                  method : Literal['minmax','zscore'] = 'zscore'):
+                  method : Literal['minmax','zscore'] = 'zscore') -> 'EpiDataLoader':
         
-        """
-        does the normalization of train/val/test separately,
-        based on parameters used to normalize the training data (preventing data leakage)
-        """
+        dfc, _ = self._return_datastage(expected_stage=[4])
 
-        split_trainval = pd.to_datetime(split_trainval)
-        split_valtest  = pd.to_datetime(split_valtest)
-
-        self.split_trainval = split_trainval
-        self.split_valtest  = split_valtest
-
-        dataset = self.epidemiological_data.copy()
-
-        XYt_trainval, XYt_test = self._split_XYt(dataset, split_valtest)
-        XYt_train, XYt_val     = self._split_XYt(XYt_trainval, split_trainval)
+        train_df = dfc[dfc['train']]
         
         norm_columns = self.feature_columns + [self.target_column]
 
-
-        if method == 'minmax':
-            XYt_train_norm, norm_parameters = pipeline_normalization(XYt_train, norm_columns)
-            XYt_val_norm                    = apply_minmax_scaling(XYt_val,     norm_columns, norm_parameters)
-            XYt_test_norm                   = apply_minmax_scaling(XYt_test,    norm_columns, norm_parameters)
-
         if method == 'zscore':
-            XYt_train_norm, norm_parameters = pipeline_zscore_normalization(XYt_train, norm_columns)
-            XYt_val_norm                    = apply_zscore_scaling(XYt_val,     norm_columns, norm_parameters)
-            XYt_test_norm                   = apply_zscore_scaling(XYt_test,    norm_columns, norm_parameters)
+            _, norm_parameters = pipeline_zscore_normalization(train_df, norm_columns)
+            dataset_norm       = apply_zscore_scaling(dfc,     norm_columns, norm_parameters)
+
+        elif method == 'minmax':
+            _, norm_parameters = pipeline_normalization(train_df, norm_columns)
+            dataset_norm       = apply_minmax_scaling(dfc,     norm_columns, norm_parameters)
+
+        else:
+            raise ValueError(f'{method} Invalid normalization method')            
 
 
-        self.XYt_train = XYt_train_norm
-        self.XYt_val   = XYt_val_norm
-        self.XYt_test  = XYt_test_norm
+        norm_parameters[self.pred_column] = norm_parameters[self.target_column]
 
-        self.epidemiological_data_normalized = pd.concat([XYt_train_norm,XYt_val_norm,XYt_test_norm])
-        norm_parameters['preds'] = norm_parameters[self.target_column]
-        self.norm_params = {'method': method, "params": norm_parameters}
+        self.transform_params['normalization'] = {'method': method, "params": norm_parameters}
+
+        self.data['normalized'] = dataset_norm
+
         return self
-
-    def _split_XYt(self, XYt, split_date):
-        XYt_lower = XYt[XYt[self.temporal_column] < split_date].reset_index(drop=True)
-        XYt_upper = XYt[XYt[self.temporal_column] >= split_date].reset_index(drop=True)
-        return XYt_lower, XYt_upper
 
     def add_lagged_features(self, lags: range):
         """
@@ -255,84 +258,142 @@ class EpiDataLoader:
         """
 
 
-        if not hasattr(self, 'epidemiological_data_normalized'):
-            raise AttributeError("The attribute 'epidemiological_data_normalized' is missing in this instance.\nNormalize first, then lag!")
-
-        dfc = self.epidemiological_data_normalized.copy()
-        self.lags = []
+        dfc, _       = self._return_datastage(expected_stage=[5])
+        self.lags    = []
         new_features = []
-        for lag in lags:
-            feature = f'{self.target_column}_lag{lag}'
-            dfc[feature] = dfc.groupby(self.id_column)[self.target_column].shift(lag)
-            new_features.append(feature)
-            self.lags.append(lag)
 
-            self.norm_params['params'][feature] = self.norm_params['params'][f'{self.target_column}']
+        for lag in lags:
+            feature      = f'{self.target_column}_lag{lag}'
+            dfc[feature] = dfc.groupby(self.id_column)[self.target_column].shift(lag)
+
+            self.transform_params['normalization']['params'][feature] = self.transform_params['normalization']['params'][self.target_column]
             
-            if self.logged_params is not None:
-                self.logged_params[feature] = {"shift": self.logged_params[f'{self.target_column}']['shift']}
+            if self.log:
+                self.transform_params['log'][feature] = self.transform_params['log'][self.target_column]
+
+            new_features.append(feature)
+            self.lags.append(lag)                
 
         self.feature_columns = self.feature_columns + new_features
 
-        dfc = dfc.dropna()
+        # drop nans from lagging
+        dfc = dfc.dropna().reset_index()
 
-        self.epidemiological_data_normalized = dfc
-
-        # **Re-split the data into train/val/test so these include lagged features**
-        self.XYt_trainval, self.XYt_test = self._split_XYt(dfc, self.split_valtest)
-        self.XYt_train, self.XYt_val     = self._split_XYt(self.XYt_trainval, self.split_trainval)
+        self.data['normalized'] = dfc
 
         return self
 
     def preview(self,
-                id: int = 1):
+                node_idx: Union[List[int], int] = 1,
+                status:   Literal['context', 'raw', 'processed', 'processed_split', 'normalized', 'final']  = 'raw',
+                y:        Literal['incidence','population_size'] = 'incidence'):
         """
         previews split and normalized data for a specific node, by default token 8.
         """
 
-        traincolor = '#4a90d9'
-        valcolor   = "#1b9e77"
-        testcolor  = '#d94e4e'
+        if isinstance(node_idx, int):
+            node_idx = [node_idx]
 
-        cases_train_aggr    = self.XYt_train.groupby(self.temporal_column)[self.target_column].sum().reset_index(drop = False)[self.target_column]
-        cases_val_aggr      = self.XYt_val.groupby(self.temporal_column)[self.target_column].sum().reset_index(drop = False)[self.target_column]
-        cases_test_aggr     = self.XYt_test.groupby(self.temporal_column)[self.target_column].sum().reset_index(drop = False)[self.target_column]   
-
-        XYt_train = self.XYt_train[self.XYt_train[self.id_column] == id]
-        XYt_val   = self.XYt_val[self.XYt_val[self.id_column] == id]
-        XYt_test  = self.XYt_test[self.XYt_test[self.id_column] == id]
-
-        time_axis_train     = XYt_train[self.temporal_column]
-        time_axis_val       = XYt_val[self.temporal_column]
-        time_axis_test      = XYt_test[self.temporal_column]
-
-        cases_train         = XYt_train[self.target_column]
-        cases_val           = XYt_val[self.target_column]
-        cases_test          = XYt_test[self.target_column]
-
-        fig, axes = plt.subplots(2,1, figsize = (22,6))
-        axes      = axes.flatten()
+        if status not in self.data.keys():
+            raise ValueError(f'{status} not yet in data objects. Current objects are {self.data.keys()}')
         
-        ax        = axes[0]
-        ax.plot(time_axis_train, cases_train_aggr, color = traincolor,  label = 'train')
-        ax.plot(time_axis_val, cases_val_aggr,color = valcolor,         label = 'val')
-        ax.plot(time_axis_test, cases_test_aggr,color = testcolor,      label = 'test')
-        ax.grid()
-        ax.legend()
-        ax.set_title(f'national')    
+        n_plots = len(node_idx)
 
-        ax = axes[1]
+
+        fig, axes = plt.subplots(n_plots+1 ,1, figsize = (11,3 * n_plots))
         axes      = axes.flatten()
-        ax.plot(time_axis_train, cases_train, color = traincolor,  label = 'train')
-        ax.plot(time_axis_val, cases_val,color = valcolor,         label = 'val')
-        ax.plot(time_axis_test, cases_test,color = testcolor,      label = 'test')
-        ax.grid()
-        ax.legend()
-        ax.set_title(f'{self.id_column}: {id}')    
 
+        presplit_statuses  = ['context','raw','processed']
+        postsplit_statuses = ['processed_split', 'normalized', 'final']
+        normalized_statuses= ['normalized','final']
+
+        dataset       = self.data[status]
+
+
+        if status in postsplit_statuses:
+            
+            dataset_aggr  = dataset.copy().groupby([self.temporal_column]+self.split_columns)[self.target_column].sum().reset_index(drop = False)
+
+            dataset_train = dataset[dataset['train']]
+            dataset_val   = dataset[dataset['val']]
+            dataset_test  = dataset[dataset['test']]
+
+            # time axes
+            time_axis_train     = list(dataset_train[self.temporal_column].unique())
+            time_axis_val       = list(dataset_val[self.temporal_column].unique())
+            time_axis_test      = list(dataset_test[self.temporal_column].unique())
+
+            # nationally
+            target_aggr_train     = dataset_aggr[dataset_aggr['train']][self.target_column]
+            target_aggr_val       = dataset_aggr[dataset_aggr['val']][self.target_column]
+            target_aggr_test      = dataset_aggr[dataset_aggr['test']][self.target_column]
+
+            ax        = axes[0]
+            ax.plot(time_axis_train, target_aggr_train, color = traincolor,  label = 'train')
+            ax.plot(time_axis_val,   target_aggr_val,   color = valcolor,    label = 'val')
+            ax.plot(time_axis_test,  target_aggr_test,  color = testcolor,   label = 'test')
+            ax.grid()
+            ax.legend()
+
+            if status in normalized_statuses:
+                aggregation_title = f'nationally aggregated (transformed) incidence rates'
+            else:
+                aggregation_title = f'nationally aggregated incidence rates'
+
+            ax.set_title(aggregation_title)    
+
+            for counter, id  in enumerate(node_idx):
+
+                ax = axes[counter + 1]
+
+                XYt_train = dataset_train[dataset_train[self.id_column] == id]
+                XYt_val   = dataset_val[dataset_val[self.id_column] == id]
+                XYt_test  = dataset_test[dataset_test[self.id_column] == id]
+
+                target_train         = XYt_train[self.target_column]
+                target_val           = XYt_val[self.target_column]
+                target_test          = XYt_test[self.target_column]            
+
+                ax.plot(time_axis_train, target_train, color = traincolor)
+                ax.plot(time_axis_val,   target_val,   color = valcolor)
+                ax.plot(time_axis_test,  target_test,  color = testcolor)
+                ax.grid()
+                ax.set_title(f'{self.id_column}: {id}')    
+
+            fig.suptitle(f'Transformed incidence rates of {self.disease}')
+
+        elif status in presplit_statuses:
+            palette = sns.color_palette("Blues", n_colors=len(node_idx) + 3)[::-1]
+
+            time_axis           = list(dataset[self.temporal_column].unique())
+            national_incidences = dataset.groupby(self.temporal_column)[self.target_column].sum().reset_index(drop = False)[self.target_column]
+
+            ax        = axes[0]
+            ax.plot(time_axis, national_incidences, color = palette[1])
+            ax.grid()
+            ax.legend()
+            ax.set_title(f'nationally aggregated incidence rates')                
+
+            for counter, id  in enumerate(node_idx):
+
+                ax = axes[counter + 1]
+
+                regional_cases  = dataset[dataset[self.id_column] == id][y] 
+
+                ax.plot(time_axis, regional_cases, color = palette[counter+2])
+                ax.grid()
+                ax.legend()
+                ax.set_title(f'{y} in {self.id_column}: {id}')    
+
+            fig.suptitle(f'{self.disease}')
+
+        else:
+            raise ValueError(f'{status} not among the optinos of {presplit_statuses + postsplit_statuses}')
+        
+        plt.tight_layout()
         return fig, ax
 
-    def log_transform_target(self, shift: float = 1) -> pd.DataFrame:
+    def log_transform_target(self, shift: float = 1) -> 'EpiDataLoader':
         """
         Applies log(x + shift) transform to specified columns to handle zeros.
 
@@ -346,24 +407,189 @@ class EpiDataLoader:
         df_transformed : pd.DataFrame
             DataFrame with specified columns log-transformed.
         """
-        df_transformed = self.epidemiological_data.copy()
+
+        dfc, _ = self._return_datastage(expected_stage=[2,3])
+
+        df_transformed                     = dfc
         df_transformed[self.target_column] = np.log(df_transformed[self.target_column] + shift)
-        self.epidemiological_data = df_transformed
-        self.logged_params = {self.target_column : {"shift": shift}}
+        self.transform_params['log']       = {self.target_column : {"shift": shift},
+                                              self.pred_column   : {"shift": shift}}
+        
+        self.data['processed']             = df_transformed
+        self.log                           = True
         return self
 
     def __repr__(self):
-        disease = getattr(self, 'disease', 'N/A')
-        aggr_level = getattr(self, 'aggr_level', 'N/A')
-        min_date = getattr(self, 'min_date', 'N/A')
-        max_date = getattr(self, 'max_date', 'N/A')
-        n_regions = len(self.tokens['id_idx']) if hasattr(self, 'tokens') else 'N/A'
-        n_rows = len(self.epidemiological_data) if hasattr(self, 'epidemiological_data') else 'N/A'
-        norm_status = 'Yes' if hasattr(self, 'epidemiological_data_normalized') else 'No'
+        disease     = getattr(self, 'disease', 'N/A')
+        aggr_level  = getattr(self, 'aggr_level', 'N/A')
+        min_date    = getattr(self, 'min_date', 'N/A')
+        max_date    = getattr(self, 'max_date', 'N/A')
+        split_summary= getattr(self, 'split_summary',None)
 
-        return (f"<EpiDataLoader(disease={disease}, aggr_level={aggr_level}, "
-                f"date_range=({min_date.date() if min_date != 'N/A' else 'N/A'} - {max_date.date() if max_date != 'N/A' else 'N/A'}), "
-                f"regions={n_regions}, data_rows={n_rows}, normalized={norm_status})>")
+        if isinstance(min_date, pd.Timestamp):
+            min_date = min_date.date()
+        if isinstance(max_date, pd.Timestamp):
+            max_date = max_date.date()
+
+        n_nodes     = len(self.tokens['id_idx']) if hasattr(self, 'tokens') else 'N/A'
+        n_rows      = len(self.data['raw'])
+        features    = getattr(self, 'feature_columns', 'N/A')
+        data_stages = list(self.data.keys())
+
+        representation = (f"<EpiDataLoader(disease={disease},\n"
+                f"data stages: {data_stages}, \n" 
+                f"features: {features}, \n"
+                f"aggr_level={aggr_level}, \n"
+                f"date_range=({min_date} - {max_date}), \n"
+                f"nodes={n_nodes}, data_rows={n_rows}")
+        
+        if split_summary:
+            representation = representation + "\nsplit summary: " + split_summary
+
+        return representation
+
+    def set_splits(self, 
+                split_trainval: Union[str, pd.Timestamp] = '2018-06-01', 
+                split_valtest: Union[str, pd.Timestamp]  = '2019-06-01') -> 'EpiDataLoader':
+        
+        dfc, _ = self._return_datastage(expected_stage=[3])
+        
+        # Convert to timestamps
+        split_trainval = pd.to_datetime(split_trainval)
+        split_valtest  = pd.to_datetime(split_valtest)
+        
+        # Validation: Check split order
+        if split_trainval >= split_valtest:
+            raise ValueError(f"split_trainval ({split_trainval.date()}) must be before split_valtest ({split_valtest.date()})")
+        
+        # Validation: Check splits are within data range
+        data_min_date = dfc[self.temporal_column].min()
+        data_max_date = dfc[self.temporal_column].max()
+        
+        if split_trainval <= data_min_date:
+            warnings.warn(
+                f"split_trainval ({split_trainval.date()}) is at or before the earliest data date "
+                f"({data_min_date.date()}). Training set will be very small or empty."
+            )
+        
+        if split_valtest >= data_max_date:
+            warnings.warn(
+                f"split_valtest ({split_valtest.date()}) is at or after the latest data date "
+                f"({data_max_date.date()}). Test set will be very small or empty."
+            )
+        
+        # Validation: Check for reasonable split proportions
+        total_timespan = data_max_date - data_min_date
+        train_timespan = split_trainval - data_min_date
+        val_timespan   = split_valtest - split_trainval
+        test_timespan  = data_max_date - split_valtest
+        
+        train_pct      = train_timespan / total_timespan * 100
+        val_pct        = val_timespan / total_timespan * 100
+        test_pct       = test_timespan / total_timespan * 100
+        
+        if train_pct < 50:
+            warnings.warn(f"Training set is only {train_pct:.1f}% of total timespan. Consider expanding training period.")
+        
+        if val_pct < 5:
+            warnings.warn(f"Validation set is only {val_pct:.1f}% of total timespan. Very small validation set.")
+            
+        if test_pct < 5:
+            warnings.warn(f"Test set is only {test_pct:.1f}% of total timespan. Very small test set.")
+        
+        # Store split dates
+        self.split_trainval = split_trainval 
+        self.split_valtest  = split_valtest
+        
+        # Create split columns
+        dfc['train'] = dfc[self.temporal_column] < split_trainval
+        dfc['val']   = (dfc[self.temporal_column] >= split_trainval) & (dfc[self.temporal_column] < split_valtest)
+        dfc['test']  = dfc[self.temporal_column] >= split_valtest
+        
+        self.split_columns = ['train', 'val', 'test']
+        self.data['processed_split'] = dfc
+    
+        self.split_summary = f"train / val / test: {train_pct:.1f}% / {val_pct:.1f}% / {test_pct:.1f}%"
+        
+        return self
+           
+    def _return_datastage(self, expected_stage: Union[int, List[int]]) -> Tuple[pd.DataFrame, str]:
+        """
+        Returns a copy of the DataFrame corresponding to the requested data stage,
+        along with the stage name string.
+
+        If a list of stages is passed, returns the DataFrame of the highest stage number
+        that exists in self.data among those requested.
+
+        Warns if a higher stage already exists in self.data.
+
+        Parameters:
+            expected_stage (int or List[int]): An integer or list of integers indicating the data stage(s).
+
+        Returns:
+            Tuple[pd.DataFrame, str]: A tuple of (DataFrame copy, stage name).
+        
+        Raises:
+            ValueError: If none of the requested stages exist in self.data.
+        """
+        stages = {
+            1: 'context',
+            2: 'raw',
+            3: 'processed',
+            4: 'processed_split',
+            5: 'normalized'
+        }
+
+        if isinstance(expected_stage, list):
+            valid_stages = [s for s in expected_stage if s in stages]
+            if not valid_stages:
+                raise ValueError(f'None of the provided stages are valid. Valid stages: {list(stages.keys())}')
+            
+            # Now filter to stages that actually exist in self.data
+            existing_requested_stages = [s for s in valid_stages if stages[s] in self.data]
+            
+            if not existing_requested_stages:
+                raise ValueError(f'None of the requested stages exist in self.data. Requested stages: {[stages[s] for s in valid_stages]}')
+            
+            # Pick the highest existing stage among the requested ones
+            stage_int = max(existing_requested_stages)
+
+        else:
+            if expected_stage not in stages:
+                raise ValueError(f'Invalid expected_stage: {expected_stage}. Must be one of {list(stages.keys())}.')
+            if stages[expected_stage] not in self.data:
+                raise ValueError(f"Requested stage '{stages[expected_stage]}' does not exist in self.data.")
+            stage_int = expected_stage
+
+        # Check if there's a higher stage already in self.data
+        existing_higher_stages = [(key, name) for key, name in stages.items()
+                                if name in self.data and key > stage_int]
+
+        if existing_higher_stages:
+            highest_existing_stage = max(existing_higher_stages, key=lambda x: x[0])
+            warnings.warn(
+                f"Higher stage '{highest_existing_stage[1]}' (stage {highest_existing_stage[0]}) "
+                f"already exists in self.data than requested stage '{stages[stage_int]}' (stage {stage_int})."
+            )
+
+        stage_str = stages[stage_int]
+        dfc = self.data[stage_str].copy()
+
+        return dfc, stage_str
+
+    def finalize(self) -> 'EpiDataLoader':
+        dfc, _       = self._return_datastage(expected_stage=[5])
+        column_order = [self.temporal_column, self.id_column] + self.feature_columns + [self.target_column] + self.split_columns
+
+        self.data['final'] = _reorder_columns(dfc, column_order)        
+        return self
+        
+
+def _reorder_columns(df: pd.DataFrame, column_order: List[str]) -> pd.DataFrame:
+    missing_cols = [col for col in column_order if col not in df.columns]
+    if missing_cols:
+        raise ValueError(f"Missing columns in dataframe: {missing_cols}")
+    return df[column_order]
 
 def return_population_including_berlin_districts(population_data: pd.DataFrame):
     """

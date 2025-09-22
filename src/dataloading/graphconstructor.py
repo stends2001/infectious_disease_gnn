@@ -245,6 +245,50 @@ class GraphConstructor:
 
         fig.show()
 
+    def preview_shape_object(self):
+
+        global_shapes = self.shapes
+        fig, ax_main = plt.subplots(figsize = (10,8))
+
+        global_shapes.plot(color = 'lightgrey',
+                                    edgecolor='white',
+                                    linewidth= 0.1,
+                                    ax = ax_main)
+        
+        points = global_shapes.geometry.centroid
+
+        import seaborn as sns
+        import numpy as np
+
+        n_points = len(points)
+        palette = sns.color_palette("Blues", n_points)
+        np.random.shuffle(palette)  # shuffle to get random shades        
+        
+
+        # Plot points with random blue shades
+        for i, point in enumerate(points):
+            ax_main.plot(point.x, point.y, 'o', color=palette[i], markersize=5.5, markeredgecolor = 'black', markeredgewidth = 0.6)
+
+        ax_main.set_title('Shape object')
+
+        ax_main.tick_params(
+            left=False, right=False, bottom=False, top=False,  # no ticks
+            labelleft=False, labelbottom=False                 # no labels
+        )        
+
+        fig.show()
+
+    def rename_graph(self, old_graphname:str, 
+                     new_graphname: str):
+
+        self.dict_graphs[new_graphname] = self.dict_graphs[old_graphname]
+
+        del self.dict_graphs[old_graphname]
+
+        print(f'{old_graphname} has been replaced by {new_graphname}')
+
+        return self 
+
     def save_graph(self, graphname):
 
         """Save edge index (and if applicable edge weight) from dictionary"""

@@ -195,8 +195,8 @@ class GRU_GATv2_Model(nn.Module):
         h_processed = F.leaky_relu(h_processed, negative_slope=0.2)
         h_processed = self.dropout(h_processed)
         
-        # Now do explicit neighbor aggregation
-        if edge_weight is not None:
+        # Now do explicit neighbor aggregation (but make it optional and less aggressive)
+        if edge_weight is not None and edge_index.shape[1] > 0:
             # Compute weighted neighbor features using scatter operations
             src_nodes = edge_index[0]  # Source nodes
             dst_nodes = edge_index[1]  # Destination nodes
@@ -208,9 +208,10 @@ class GRU_GATv2_Model(nn.Module):
             neighbor_features = torch.zeros_like(h_processed)
             neighbor_features.scatter_add_(0, dst_nodes.unsqueeze(1).expand(-1, h_processed.size(1)), weighted_features)
             
-            # Combine with original features - make it HIGHLY dependent on neighbors
-            final_output = h_processed + 5.0 * neighbor_features  # Much higher weight to force spatial learning
+            # Combine with original features - use moderate weight to avoid overwhelming node features
+            final_output = h_processed + 0.5 * neighbor_features  # Much lower weight to preserve node features
         else:
+            # No neighbor aggregation - use only node features
             final_output = h_processed
         
         # Additional processing for more capacity

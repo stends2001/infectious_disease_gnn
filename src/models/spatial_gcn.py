@@ -1,65 +1,47 @@
-
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
+from torch_geometric.data import Data
+import torch.nn as nn
 from torch_geometric.nn import GCNConv, GATConv, ChebConv, GINConv
 from torch_geometric_temporal.nn.recurrent import DCRNN, TGCN, A3TGCN
 import pandas as pd
 import numpy as np
 from typing import Optional, Tuple
 
-from ..dataloading.gnndataloader import GNNDataLoader
 from .modelcore import DeepLearningModelCore
+from ..dataloading.gnndataloader import GNNDataLoader
 
-class SpatialGCN(nn.Module):
-    """
-    Spatial Graph Convolutional Network that only uses graph structure
-    """
-    def __init__(self, 
-                 node_features: int, 
-                 hidden_size:   int = 64, 
-                 num_layers:    int = 2, 
-                 dropout: float     = 0.2):
-        super(SpatialGCN, self).__init__()
-        
-        self.hidden_size = hidden_size
-        self.dropout     = nn.Dropout(dropout)
+class SpatialGNN(torch.nn.Module):
+    def __init__(self, node_features, hidden_size, out_size):
+        super().__init__()
+        # 1st GCN layer: transforms input features -> hidden_dim
+        self.conv1 = GCNConv(node_features, hidden_size)
+        # 2nd GCN layer: hidden_dim -> hidden_dim (can be stacked)
+        self.conv2 = GCNConv(hidden_size, hidden_size)
+        # Final linear layer for prediction
+        self.linear = torch.nn.Linear(hidden_size, out_size)
 
-        # Build GCN layers
-        self.gcn_layers = nn.ModuleList()
-        self.gcn_layers.append(GCNConv(node_features, hidden_size))
-        
-        for _ in range(num_layers - 1):
-            self.gcn_layers.append(GCNConv(hidden_size, hidden_size))
+    def forward(self, x, edge_index, edge_weight, debug=False):
+        x_squeezed = x.squeeze(-1)
+        # x: node features matrix (num_nodes x feature_dim)
+        # edge_index: graph connectivity (2 x num_edges)
 
-        # Output projection
-        self.output_proj = nn.Sequential(
-            nn.Linear(hidden_size, hidden_size // 2),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(hidden_size // 2, 1)
-        )
+        # 1) First GCN layer + activation
+        x1 = self.conv1(x_squeezed, edge_index, edge_weight)
+        if debug:
+            print("After conv1:", x1)
+        x1 = F.relu(x1)
 
-    def forward(self, 
-                x: torch.Tensor, 
-                edge_index: torch.Tensor, 
-                edge_weight: Optional[torch.Tensor] = None) -> torch.Tensor:
-        """
-        x: [num_nodes, node_features, time_steps]
-        edge_index: [2, num_edges]
-        edge_weight: [num_edges] (optional)
-        """
-        # Use only the most recent time step
-        x_t = x[:, :, -1]  # [num_nodes, node_features]
+        # 2) Second GCN layer + activation
+        x2 = self.conv2(x1, edge_index, edge_weight)
+        if debug:
+            print("After conv2:", x2)
+        x2 = F.relu(x2)
 
-        h = x_t
-        for conv in self.gcn_layers:
-            h = conv(h, edge_index, edge_weight)
-            h = F.relu(h)
-            h = self.dropout(h)
+        # 3) Final prediction layer (no activation, regression)
+        out = self.linear(x2)
 
-        output = self.output_proj(h)  # [num_nodes, 1]
-        return output.squeeze(-1)     # [num_nodes]
+        return out.squeeze(-1)
 
 
 class SpatialGCNModel(DeepLearningModelCore):
@@ -78,15 +60,12 @@ class SpatialGCNModel(DeepLearningModelCore):
         self.dataloader = dataloader
 
     def set_model_hparams(self, 
-                          hidden_size: int = 64, 
-                          num_layers: int = 2, 
-                          dropout: float = 0.2):
+                          hidden_size: int = 256):
         self.model_hparams_set = True
-        self.model = SpatialGCN(
+        self.model = SpatialGNN(
             node_features=len(self.dataloader.feature_columns),
             hidden_size=hidden_size,
-            num_layers=num_layers,
-            dropout=dropout
+            out_size = self.prediction_horizon
         ).to(self.device)
 
         return self
