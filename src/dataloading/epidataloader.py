@@ -3,7 +3,7 @@ import re
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from .normalization import pipeline_normalization, apply_minmax_scaling, pipeline_zscore_normalization, apply_zscore_scaling
+from .normalization import pipeline_minmax_normalization, apply_minmax_scaling, pipeline_zscore_normalization, apply_zscore_scaling
 from tqdm import tqdm
 from matplotlib.lines import Line2D
 import os
@@ -44,7 +44,7 @@ class EpiDataLoader:
         first date to be included (>=)
     max_date: str
         first date to be excluded (<)
-    aggr_level: Literal['03','02'] = '03'
+    nuts_level: Literal['03','02'] = '03'
         whether to aggregate onto bundeslander level      
 
         
@@ -59,12 +59,14 @@ class EpiDataLoader:
     Examples:
     ---------
 
-    >>> influenza_data = EpiDataLoader('influenza', data_env, aggr_level= '02', min_date='2012-06-01',max_date='2020-06-01')
-    >>> influenza_data.add_time_features()
-    >>> influenza_data.log_transform_target()
-    >>> influenza_data.normalize('2018-06-01','2019-06-01','zscore')
-    >>> influenza_data.add_lagged_features(range(2,3))
-    >>> influenza_data.preview()    
+    epidata = EpiDataLoader('influenza', data_env, nuts_level= '03', min_date='2006-05-15',max_date='2020-06-01', include_population=True)
+    epidata.add_time_features()
+    epidata.log_transform_target()
+    epidata.set_splits()
+    epidata.normalize()
+    epidata.add_lagged_features(lags = range(1,4))
+    epidata.finalize()
+    epidata.preview([token_munich,token_jena,token_oberhausen], status = 'processed_split', y ='incidence')  
         
     """
 
@@ -73,12 +75,12 @@ class EpiDataLoader:
                  data_env_dir: str,
                  min_date:     str     = '2001-01-01',
                  max_date:     str     = '2025-01-01',
-                 aggr_level:   Literal['03','02'] = '03',
+                 nuts_level:   Literal['nuts1','nuts2','nuts3'] = 'nuts3',
                  include_population: bool = False
                  ):
         
         self.data               = {}
-        
+        self.include_population = include_population
         self.min_date           = pd.to_datetime(min_date)
         self.max_date           = pd.to_datetime(max_date)
         self.temporal_column    = 'timestamp'
@@ -89,7 +91,7 @@ class EpiDataLoader:
 
         self.disease            = disease_name
         self.data_env_dir       = data_env_dir
-        self.aggr_level         = aggr_level
+        self.nuts_level         = nuts_level
         self.transform_params   = {}
 
         self.incidence_scalar   = 10_000
@@ -111,7 +113,7 @@ class EpiDataLoader:
         context_data                              = epidemiological_data
         epidemiological_data                      = epidemiological_data.drop(labels = ['cases'], axis = 1)
         
-        if include_population:
+        if self.include_population:
             self.feature_columns                      = self.feature_columns + ['population_size']
         else:
             epidemiological_data                      = epidemiological_data.drop(labels = ['population_size'], axis = 1)
@@ -119,20 +121,20 @@ class EpiDataLoader:
         self.data['context']                      = {'epidemiological_data': context_data, 'shapedata': shapedata}
         self.data['raw']                          = epidemiological_data
 
-    def _import_datasets(self) -> Tuple[pd.DataFrame,pd.DataFrame]:
+    def _import_datasets(self):
         """
         sets self.epidemiological data and self.shapedata 
-        depending on self.aggr_level          
+        depending on self.nuts_level          
 
         also adds population data for Berlin - Kreisen
         """
-        disease_data     = pd.read_csv(os.path.join(self.data_env_dir, f'processed/germany/epidemiology/casedata/survstat/{self.disease}.csv'), parse_dates = ['timestamp'], dtype = {'kz_kreis': str}).rename(columns = {'kz_kreis':'kz_03'})
-        population_data  = pd.read_csv(os.path.join(self.data_env_dir, 'processed/germany/sociodemography/population_size_03.csv'), dtype = {'kz_2021': 'str'}).rename(columns = {'kz_2021':'kz_03'})
-        shapedata        = gpd.read_file(os.path.join(self.data_env_dir, f'processed/germany/geospatial/shapefiles/shape_{self.aggr_level}.shp')).rename(columns={'kz':f'kz_{self.aggr_level}'}).drop(labels = ['level'],axis = 1)
+        disease_data     = pd.read_csv(os.path.join(self.data_env_dir, f'processed/germany/epidemiology/casedata/survstat/{self.disease}.csv'), parse_dates = ['timestamp'], dtype = {'kz_kreis': str}).rename(columns = {'kz_kreis':'nuts3'})
+        population_data  = pd.read_csv(os.path.join(self.data_env_dir, 'processed/germany/sociodemography/population_size_03.csv'), dtype = {'kz_2021': 'str'}).rename(columns = {'kz_2021':'nuts3'})
+        shapedata        = gpd.read_file(os.path.join(self.data_env_dir, f'processed/germany/geospatial/shapefiles/shape_{self.nuts_level}.shp')).drop(labels = ['level'],axis = 1)
 
         population_data  = return_population_including_berlin_districts(population_data)
 
-        epidemiological_data = pd.merge(disease_data, population_data, on = ['kz_03','year'])
+        epidemiological_data = pd.merge(disease_data, population_data, on = ['nuts3','year'])
 
         return shapedata, epidemiological_data
     
@@ -140,11 +142,15 @@ class EpiDataLoader:
         """ 
         removes columns, sets incidence, and aggregates to BL level if necessary.
         """
-        if self.aggr_level == '02':
-            raw_epidemiological_data['kz_02'] = raw_epidemiological_data['kz_03'].str[:2]
-            raw_epidemiological_data = raw_epidemiological_data.groupby(['timestamp','kz_02']).aggregate({'population_size':'sum', 'cases':'sum'}).reset_index()
+        if self.nuts_level == "nuts1":
+            raw_epidemiological_data['nuts1'] = raw_epidemiological_data['nuts3'].str[:2]     
+            raw_epidemiological_data = raw_epidemiological_data.groupby(['timestamp','nuts1']).aggregate({'population_size':'sum', 'cases':'sum'}).reset_index()                   
+        
+        elif self.nuts_level == 'nuts2':
+            raw_epidemiological_data['nuts2'] = raw_epidemiological_data['nuts3'].str[:3]
+            raw_epidemiological_data = raw_epidemiological_data.groupby(['timestamp','nuts2']).aggregate({'population_size':'sum', 'cases':'sum'}).reset_index()
 
-        else:
+        elif self.nuts_level == 'nuts3':
             raw_epidemiological_data.drop(columns=['week','year'], inplace=True)
 
         raw_epidemiological_data['incidence'] = raw_epidemiological_data['cases'] / raw_epidemiological_data['population_size'] * self.incidence_scalar
@@ -155,23 +161,23 @@ class EpiDataLoader:
     
     def _tokenize_id(self, epidemiological_data, shapedata) -> Tuple[pd.DataFrame,pd.DataFrame]:
 
-        unique_ids = sorted(epidemiological_data[f'kz_{self.aggr_level}'].unique())
-        id_idx     = {} # kz  : int
-        idx_id     = {} # int : kz
+        unique_ids = sorted(epidemiological_data[f'{self.nuts_level}'].unique())
+        id_idx     = {} # nuts  : int
+        idx_id     = {} # int : nuts
 
         for idx, id in enumerate(unique_ids):
-            id_idx[id] = idx                  # id (kz_02 or kz_03) : node_id (zero based)
-            idx_id[idx] = id                  # node_id (zero based): id (kz_02 or kz_03)
+            id_idx[id] = idx                  # id (nuts1, nuts2 or nuts3) : node_id (zero based)
+            idx_id[idx] = id                  # node_id (zero based): id (nuts1, nuts2 or nuts3)
 
-        shapedata.loc[:, self.id_column]            = shapedata[f'kz_{self.aggr_level}'].map(id_idx)              # replace id column with tokens
-        epidemiological_data.loc[:, self.id_column] = epidemiological_data[f'kz_{self.aggr_level}'].map(id_idx)   # replace id column with tokens
+        shapedata.loc[:, self.id_column]            = shapedata[f'{self.nuts_level}'].map(id_idx)              # replace id column with tokens
+        epidemiological_data.loc[:, self.id_column] = epidemiological_data[f'{self.nuts_level}'].map(id_idx)   # replace id column with tokens
 
         # Before dropping NaNs, check how many rows have NaN in the new column
         nan_rows = shapedata[shapedata[self.id_column].isna()]
 
         nan_count = len(nan_rows)
         if nan_count > 0:
-            dropped_ids = nan_rows[f'kz_{self.aggr_level}'].unique()
+            dropped_ids = nan_rows[f'{self.nuts_level}'].unique()
             warnings.warn(
                 f"{nan_count} rows with missing tokenized IDs will be dropped from 'shapedata'. "
                 f"Dropped original IDs: {dropped_ids}",
@@ -183,8 +189,8 @@ class EpiDataLoader:
         epidemiological_data[self.id_column] =  epidemiological_data[self.id_column].astype(int)
 
         # drop original id columns
-        epidemiological_data = epidemiological_data.drop(columns = [f'kz_{self.aggr_level}']).copy()
-        shapedata            = shapedata.drop(columns = [f'kz_{self.aggr_level}']).copy()
+        epidemiological_data = epidemiological_data.drop(columns = [f'{self.nuts_level}']).copy()
+        shapedata            = shapedata.drop(columns = [f'{self.nuts_level}']).copy()
 
         self.tokens = {"id_idx": id_idx, "idx_id": idx_id} 
         
@@ -237,7 +243,7 @@ class EpiDataLoader:
             dataset_norm       = apply_zscore_scaling(dfc,     norm_columns, norm_parameters)
 
         elif method == 'minmax':
-            _, norm_parameters = pipeline_normalization(train_df, norm_columns)
+            _, norm_parameters = pipeline_minmax_normalization(train_df, norm_columns)
             dataset_norm       = apply_minmax_scaling(dfc,     norm_columns, norm_parameters)
 
         else:
@@ -421,7 +427,7 @@ class EpiDataLoader:
 
     def __repr__(self):
         disease     = getattr(self, 'disease', 'N/A')
-        aggr_level  = getattr(self, 'aggr_level', 'N/A')
+        nuts_level  = getattr(self, 'nuts_level', 'N/A')
         min_date    = getattr(self, 'min_date', 'N/A')
         max_date    = getattr(self, 'max_date', 'N/A')
         split_summary= getattr(self, 'split_summary',None)
@@ -439,7 +445,7 @@ class EpiDataLoader:
         representation = (f"<EpiDataLoader(disease={disease},\n"
                 f"data stages: {data_stages}, \n" 
                 f"features: {features}, \n"
-                f"aggr_level={aggr_level}, \n"
+                f"nuts_level={nuts_level}, \n"
                 f"date_range=({min_date} - {max_date}), \n"
                 f"nodes={n_nodes}, data_rows={n_rows}")
         
@@ -581,15 +587,17 @@ class EpiDataLoader:
         dfc, _       = self._return_datastage(expected_stage=[5])
         column_order = [self.temporal_column, self.id_column] + self.feature_columns + [self.target_column] + self.split_columns
 
-        self.data['final'] = _reorder_columns(dfc, column_order)        
+        self.data['final'] = _reorder_df(dfc, column_order)        
         return self
         
 
-def _reorder_columns(df: pd.DataFrame, column_order: List[str]) -> pd.DataFrame:
+def _reorder_df(df: pd.DataFrame, column_order: List[str]) -> pd.DataFrame:
     missing_cols = [col for col in column_order if col not in df.columns]
     if missing_cols:
         raise ValueError(f"Missing columns in dataframe: {missing_cols}")
-    return df[column_order]
+    df_sorted = df.sort_values(['timestamp', 'node'])
+    return df_sorted[column_order].reset_index(drop = True)
+
 
 def return_population_including_berlin_districts(population_data: pd.DataFrame):
     """
@@ -616,13 +624,13 @@ def return_population_including_berlin_districts(population_data: pd.DataFrame):
 
     total_population     = sum(population_districts_berlin.values())
     population_fractions = {district: pop / total_population for district, pop in population_districts_berlin.items()}
-    df_11000             = df[df['kz_03'] == '11000'][['year', 'population_size']].set_index('year')
+    df_11000             = df[df['nuts3'] == '11000'][['year', 'population_size']].set_index('year')
 
     rows = []
     for year, base_pop in df_11000['population_size'].items():
         for district, pct in population_fractions.items():
             rows.append({
-                'kz_03': district,
+                'nuts3': district,
                 'year': year,
                 'population_size': base_pop * pct
             })

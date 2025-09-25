@@ -1,9 +1,9 @@
 import pandas as pd
-from typing import *
+from typing import List, Tuple, Dict, Union
 import numpy as np
 
-def pipeline_normalization(train_df, 
-                            columns):
+def pipeline_minmax_normalization(train_df: pd.DataFrame, 
+                            columns: List[str]) -> Tuple[pd.DataFrame, Dict[str, Dict[str, float]]]:
     """
     takes training data and standardizes the columns specified into minmax
     
@@ -24,7 +24,7 @@ def pipeline_normalization(train_df,
     
     return scaled_df, params
 
-def apply_minmax_scaling(val_df, columns, params):
+def apply_minmax_scaling(val_df: pd.DataFrame, columns: List[str], params: Dict[str, Dict[str, float]]) -> pd.DataFrame:
     """
     takes data and standardizes following parameters given. 
     This will be used for the validation dataset after having standardized the training dataset.
@@ -47,7 +47,7 @@ def apply_minmax_scaling(val_df, columns, params):
     
     return scaled_df
 
-def reverse_minmax_scaling(scaled_df, columns, params):
+def reverse_minmax_scaling(scaled_df: pd.DataFrame, columns: List[str], params: Dict[str, Dict[str, float]]) -> pd.DataFrame:
     """
     Reverses min-max scaling using original min-max parameters.
     
@@ -55,21 +55,20 @@ def reverse_minmax_scaling(scaled_df, columns, params):
     """
     unscaled_df = scaled_df.copy()
     
-    cases_min = params['min']
-    cases_max = params['max']
-
     for col in columns:
-        
-        if cases_max - cases_min == 0:
-            unscaled_df[col] = cases_min  # All values were originally the same
+        col_min = params[col]['min']
+        col_max = params[col]['max']
+
+        if col_max - col_min == 0:
+            unscaled_df[col] = col_min  # All values were originally the same
         else:
-            unscaled_df[col] = scaled_df[col] * (cases_max - cases_min) + cases_min
+            unscaled_df[col] = scaled_df[col] * (col_max - col_min) + col_min
             
     return unscaled_df
 
 # Z-Score Normalization Functions
 
-def pipeline_zscore_normalization(train_df, columns):
+def pipeline_zscore_normalization(train_df: pd.DataFrame, columns: List[str]) -> Tuple[pd.DataFrame, Dict[str, Dict[str, float]]]:
     """
     takes training data and standardizes the columns specified using Z-score normalization
     
@@ -90,7 +89,7 @@ def pipeline_zscore_normalization(train_df, columns):
     
     return scaled_df, params
 
-def apply_zscore_scaling(val_df, columns, params):
+def apply_zscore_scaling(val_df: pd.DataFrame, columns: List[str], params:Dict[str, Dict[str, float]]) -> pd.DataFrame:
     """
     takes data and standardizes following Z-score parameters given. 
     This will be used for the validation dataset after having standardized the training dataset.
@@ -113,7 +112,7 @@ def apply_zscore_scaling(val_df, columns, params):
     
     return scaled_df
 
-def reverse_zscore_scaling(scaled_df: pd.DataFrame, params: Dict):
+def reverse_zscore_scaling(scaled_df: pd.DataFrame, params: Dict[str, Dict[str, float]]) -> pd.DataFrame:
     """
     Reverses Z-score scaling using original mean and standard deviation parameters.
     Returns the unscaled DataFrame.
@@ -139,8 +138,7 @@ def reverse_zscore_scaling(scaled_df: pd.DataFrame, params: Dict):
             
     return unscaled_df
 
-
-def reverse_log(logged_df: pd.DataFrame, params: Dict):
+def reverse_log(logged_df: pd.DataFrame, params: Dict[str, Dict[str, float]]) -> pd.DataFrame:
 
     columns = list(params.keys())
 

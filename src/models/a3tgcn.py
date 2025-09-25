@@ -1,50 +1,78 @@
-from tqdm import tqdm
-from torch_geometric_temporal.nn.recurrent import A3TGCN
-import torch.nn.functional as F
-import torch.nn as nn
+from ._deepmodel import DeepModel
+
 import torch
-from .modelcore import DeepLearningModelCore
+import torch.nn.functional as F
+from torch_geometric.data import Data
+import torch.nn as nn
+
+import pandas as pd
+import numpy as np
+from typing import Optional, Tuple
+
 from ..dataloading.gnndataloader import GNNDataLoader
-from typing import Optional
+from torch_geometric_temporal.nn.recurrent import A3TGCN2
 
 
-class A3TGCNArchitecture(nn.Module):
-    def __init__(self, node_features, a3tgcn_dim, periods):
-        super(A3TGCNArchitecture, self).__init__()
-        self.recurrent = A3TGCN(node_features, a3tgcn_dim, periods)
-        self.linear = nn.Linear(a3tgcn_dim, 1)
+class A3TGCN2Module(torch.nn.Module):
+    def __init__(self, node_features, hidden_size, periods, horizon, self_loops):
+        super(A3TGCN2Module, self).__init__()
 
-    def forward(self, x, edge_index, edge_weight):
-        x = x.squeeze(2)
-        h = self.recurrent(x.view(x.shape[0], 1, x.shape[1]), edge_index, edge_weight)
-        h = F.relu(h)
-        h = self.linear(h)
-        return h
+        # Attention Temporal Graph Convolutional Cell
+        self.tgnn = A3TGCN2(in_channels=node_features,  out_channels=hidden_size, periods=periods, batch_size = 1, add_self_loops=self_loops) # node_features=2, periods=12
         
+        # Equals single-shot prediction
+        self.linear = torch.nn.Linear(hidden_size, horizon)
 
-class A3TGCN(DeepLearningModelCore):
+    def forward(self, x, edge_index, edge_weight, debug=False):
+        """
+        x = Node features for T time steps
+        edge_index = Graph edge indices
+        """
+        if debug:
+            print('shape x:', x.shape)
+
+        x = x.unsqueeze(0)        
+
+        if debug:
+            print('shape unsqueezed x:', x.shape)
+
+        h = self.tgnn(x, edge_index, edge_weight)
+        if debug:
+            print('shape h:', h.shape)        
+        h = F.relu(h) 
+        h = self.linear(h)
+
+        h = h.squeeze(0)
+        if debug:
+            print('shape output:', h.shape)
+        
+        return h
+    
+class A3TGCNModel(DeepModel):
     """
-    Pytorch - example of a A3TGCN model.
-    Inspired from : https://github.com/benedekrozemberczki/pytorch_geometric_temporal/blob/master/examples/recurrent/a3tgcn_example.py
-
-    TODO: deal with multitude of features that are not related to the lags (week sin/cos)
+    Purely spatial GCN model that does nto use temporal axis into account.
+    Useful to validate the use of graph-structure
     """
     def __init__(self, 
                  dataloader: GNNDataLoader, 
                  name: Optional[str] = None):
         super().__init__(dataloader, name=name)
         if not self.name:
-            self.name = 'pytorch example - A3TGCN'
+            self.name = 'A3TGCN'
 
-        self.model_color = '#4ECDC4'
+        self.model_color = "#3E6BCD"
         self.dataloader = dataloader
 
-    def set_model_hparams(self, a3tgcn_dim):
+    def set_model_hparams(self, 
+                          hidden_size: int = 32,
+                          self_loops: bool = True):
         self.model_hparams_set = True
-        self.model = A3TGCNArchitecture(
-            node_features=1,
-            a3tgcn_dim = a3tgcn_dim,
-            periods = self.dataloader.periods, 
+        self.model = A3TGCN2Module(
+            node_features=len(self.gnn_dataloader.feature_columns),
+            hidden_size=hidden_size,
+            periods = self.gnn_dataloader.periods,
+            horizon = self.prediction_horizon,
+            self_loops = self_loops
         ).to(self.device)
 
-        return self
+        return self    

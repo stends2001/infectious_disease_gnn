@@ -3,7 +3,7 @@ from ._basemodel import BaseModel, EpiDataLoader, pd, Optional
 
 class ShallowModel(BaseModel):
 
-    def __init__(self, dataloader: EpiDataLoader, name: Optional[str] = None, node_label: bool = True):
+    def __init__(self, dataloader: 'EpiDataLoader', name: Optional[str] = None, node_label: bool = True):
         self.node_label = node_label
         super().__init__(dataloader, name)  
 

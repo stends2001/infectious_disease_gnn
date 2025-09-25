@@ -7,7 +7,8 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from typing import Optional, Dict, List, Literal, Any, Union
 import torch
-from ..dataloading import EpiDataLoader
+from ..dataloading.epidataloader import EpiDataLoader
+from ..dataloading.gnndataloader import GNNDataLoader
 from ..metrics.losses import spike_weighted_mse, mse, spike_detection_loss, temporal_smoothness_loss, spatial_consistency_loss
 from ..dataloading.normalization import reverse_zscore_scaling, reverse_log
 from ..utils.constants import traincolor, valcolor, testcolor
@@ -24,7 +25,7 @@ class BaseModel:
     """
 
     def __init__(self, 
-                 dataloader: EpiDataLoader, 
+                 dataloader: Union['EpiDataLoader', 'GNNDataLoader'], 
                  name:       Optional[str] = None):
         
         self.dataloader = dataloader
@@ -43,7 +44,15 @@ class BaseModel:
     def show_forecasts(self,
                        dataset: Literal['train','val','test'],
                        node_idx: Union[List[int], int] = 1,
-                       timeframe: Optional[List[str]] = None):
+                       timeframe: Optional[List[str]] = None,
+                       target_h: Optional[int] = None):
+
+        if target_h is None:
+            target_column = 'incidence'
+            pred_column   = 'pred'
+        else:
+            target_column = f'incidence_h{target_h}'
+            pred_column = f'pred_h{target_h}'
 
         evaluation_df = self.evaluation_datasets[dataset]
 
@@ -51,7 +60,7 @@ class BaseModel:
             node_idx = [node_idx]
         n_plots = len(node_idx)
 
-        fig, axes = plt.subplots(n_plots+1 ,1, figsize = (16,3 * n_plots))
+        fig, axes = plt.subplots(n_plots+1 ,1, figsize = (16, 5 + (5 * n_plots)))
         axes      = axes.flatten()
 
         if timeframe:
@@ -62,10 +71,10 @@ class BaseModel:
             evaluation_df = evaluation_df[evaluation_df[self.dataloader.temporal_column]< date1] 
 
 
-        evaluation_df_aggr= evaluation_df.copy().groupby(self.dataloader.temporal_column).agg({'incidence': 'sum','pred': 'sum'})
+        evaluation_df_aggr= evaluation_df.copy().groupby(self.dataloader.temporal_column).agg({target_column: 'sum', pred_column: 'sum'})
         ax = axes[0]
-        sns.lineplot(data=evaluation_df_aggr, x=self.dataloader.temporal_column, y=self.dataloader.target_column, color=testcolor, marker = "o",           ax=ax)
-        sns.lineplot(data=evaluation_df_aggr, x=self.dataloader.temporal_column, y='pred', color=self.model_color, markeredgecolor='black', marker = "x",  ax=ax)
+        sns.lineplot(data=evaluation_df_aggr, x=self.dataloader.temporal_column, y=target_column, color=testcolor, marker = "o",           ax=ax)
+        sns.lineplot(data=evaluation_df_aggr, x=self.dataloader.temporal_column, y=pred_column, color=self.model_color, markeredgecolor='black', marker = "x",  ax=ax)
         ax.set_title(f'National aggregation of incidence')
         ax.set_xlabel("")            
         ax.grid()          
@@ -77,8 +86,8 @@ class BaseModel:
 
             df_node = evaluation_df[evaluation_df[self.dataloader.id_column] == id]
 
-            sns.lineplot(data=df_node, x=self.dataloader.temporal_column, y=self.dataloader.target_column, color=testcolor, marker = "o",           ax=ax)
-            sns.lineplot(data=df_node, x=self.dataloader.temporal_column, y='pred', color=self.model_color, markeredgecolor='black', marker = "x",  ax=ax)
+            sns.lineplot(data=df_node, x=self.dataloader.temporal_column, y=target_column, color=testcolor, marker = "o",           ax=ax)
+            sns.lineplot(data=df_node, x=self.dataloader.temporal_column, y=pred_column, color=self.model_color, markeredgecolor='black', marker = "x",  ax=ax)
             ax.set_title(f'predictions {self.dataloader.id_column}: {id}')
             ax.set_xlabel("")            
             ax.grid()  
