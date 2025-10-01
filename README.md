@@ -53,6 +53,3 @@ One thing I struggle with is that I don't how to weight my predictions. Should I
 [[Grasslyl, 2006]] --> seasonality
 
 ## Resources
-https://github.com/benedekrozemberczki/pytorch_geometric_temporal/blob/master/examples/recurrent/a3tgcn_example.py
-
-https://github.com/twitter-research/tgn
