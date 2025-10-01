@@ -14,6 +14,7 @@ import numpy as np
 from typing import Optional, Tuple, cast
 from ..metrics.losses import spike_weighted_mse, mse, spike_timing_weighted_mse, temporal_smoothness_loss, spike_detection_loss, spatial_consistency_loss
 import seaborn as sns
+from .weights_manager import ModelWeightsManager
 
 from ..dataloading.graphdataloader import GraphDataLoader
 
@@ -23,6 +24,8 @@ from torch.optim.optimizer import Optimizer
 
 from torch.optim.lr_scheduler import _LRScheduler
 from abc import ABC, abstractmethod
+from matplotlib.figure import Figure 
+from matplotlib.axes import Axes
 
 def _check_dataloader_validity(dataloader: 'GNNDataLoader') -> Tuple[GraphDataLoader, GraphDataLoader, GraphDataLoader]:
 
@@ -36,38 +39,76 @@ def _check_dataloader_validity(dataloader: 'GNNDataLoader') -> Tuple[GraphDataLo
     return train, val, test
 
 
-class DeepModel(BaseModel):
+class DeepModel(BaseModel, ABC):
     """
-    Childclass of ModelCore designed to work with GNNs
-    Each GNN model inherits from here
+    Parent (model) class for all deep models. 
+
+    Parameters:
+    ----------
+    Inherits parameters from parent
+
+    Updated attributes:
+    ------------------
+    Only those associated with metadata from GNNDataLoader.
+
+    Workflow:
+    --------
+    set_model_hparams
+
+    set_global_hparams
+        the same function for all models.
+
+    train
+
+    predict
+
+    show_forecasts
     """    
     def __init__(self, dataloader: 'GNNDataLoader', name: Optional[str] = None):
         super().__init__(dataloader, name)    
 
         
-        self.gnn_dataloader: 'GNNDataLoader' = dataloader
-
+        self.gnn_dataloader: 'GNNDataLoader'                 = dataloader
         self.train_loader, self.val_loader, self.test_loader = _check_dataloader_validity(dataloader)
-        
+        self.device                                          = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.model: Optional[torch.nn.Module]                = None 
+        self.optimizer: Optional[optim.optimizer.Optimizer]  = None
+        self.scheduler: Optional[_LRScheduler]               = None
 
-        self.device    = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.model: Optional[torch.nn.Module]     = None
+        # Add weights manager
+        self.weights_manager = ModelWeightsManager()
 
-        self.optimizer: Optional[optim.optimizer.Optimizer]    = None
-        self.scheduler: Optional[_LRScheduler] = None
+        self.config_info['task'] = self.gnn_dataloader.task_config
 
-        self.model_hparams_set = False
-        self.global_hparams_set= False
-        self.model_set         = False
+        self.config_info['child'] = 'deepmodel'
+
+        # State tracking
+        self._state = {
+            'model_initialized': False,
+            'global_hparams_set': False,
+            'trained': False
+        }
 
         self.prediction_horizon = dataloader.prediction_horizon
 
-    def _get_optimizer(self, optimizer_name: str, lr: float, optimizer_kwargs: Dict[str, Any]) -> Optimizer:
+    @abstractmethod
+    def set_model_hparams(self):
+        pass
 
+    def _check_state(self, required_states: List[str]) -> None:
+        """Validate that required setup steps have been completed."""
+        missing = [s for s in required_states if not self._state.get(s, False)]
+        if missing:
+            raise ValueError(
+                f"Missing required setup steps: {', '.join(missing)}. "
+                f"Call the corresponding methods first."
+            )
+
+    def _get_optimizer(self, optimizer_name: str, lr: float, optimizer_kwargs: Dict[str, Any]) -> Optimizer:
+        """Factory method to create and return optimizer"""
         if self.model is None:
             raise ValueError('Please initiate a model')
 
-        """Factory method to create and return optimizer"""
         # pylance struggles with torch typing?
         optimizer_map = {
             'adam':    optim.Adam,     # type: ignore
@@ -128,30 +169,64 @@ class DeepModel(BaseModel):
 
     def set_global_hparams(self, 
                             lr: float                                  = 0.001,
+                            n_epochs: int                              = 5,
+                            patience: int                              = 15,
+                            min_delta: float                           = 1e-4,                            
                             optimizer: str                             = 'adam',
                             optimizer_kwargs: Optional[Dict[str, Any]] = None,
                             scheduler: Optional[str]                   = 'step',
                             scheduler_kwargs: Optional[Dict[str, Any]] = None,
-                            n_epochs: int                              = 5,
-                            patience: int                              = 15,
-                            min_delta: float                           = 1e-4,
                             loss: Literal['spike_weighted_mse', 'mse',
                                           'mae', 'huber','smooth_L1',
                                           'spatial_consistency',
                                           'spike_detection',
-                                          'temporal_smoothness']       = 'spike_weighted_mse'
+                                          'temporal_smoothness']       = 'mse'
                             ):
         
         """
         Prepares model for training using global hyperparameters. 
         Set model hyperparameters first!
+
+        Parameters:
+        ----------
+        lr: float = 0.001,
+            learning rate. Typically used between 10E-6 - 10E-3
+        n_epochs: int = 5
+            number of epochs to train the model
+        patience: int = 15
+            the number of patience loops
+        min_delta: float = 1e-4
+            minimal change in loss for model to be updated (and exit patience loop)            
+        optimizer: str = 'adam'
+            optimizer. Mostly use adam.
+        optimizer_kwargs: Optional[Dict[str, Any]] = None
+            additional arguments needed to initiate the optimizer
+        scheduler: Optional[str] = 'step'
+            scheduler.
+        scheduler_kwargs: Optional[Dict[str, Any]] = None
+            additional arguments needed to initiate the scheduler.
+        loss: Literal['spike_weighted_mse', 'mse',
+                        'mae', 'huber','smooth_L1',
+                        'spatial_consistency',
+                        'spike_detection',
+                        'temporal_smoothness'] = 'mse'
+            loss function
+
         """
-        if self.model is None:
-            raise ValueError('Please initiate a model')
+        self._check_state(['model_initialized'])
 
-        if not self.model_hparams_set:
-            raise ValueError(f'set model hyperparameters first! Use model.set_model_hparams()')
-
+        global_params_config = {
+            'lr': lr,
+            'n_epochs': n_epochs,
+            'patience': patience,
+            'min_delta': min_delta  ,                       
+            'optimizer': optimizer,
+            'optimizer_kwargs': optimizer_kwargs,
+            'scheduler': scheduler,
+            'scheduler_kwargs': scheduler_kwargs,
+            'loss': loss
+        }
+        
         self.global_hparams_set = True
         # Set training parameters
         self.n_epochs  = n_epochs
@@ -180,13 +255,10 @@ class DeepModel(BaseModel):
         else:
             self.scheduler = None
 
-        return self
 
-    class DeepModel(ABC):
-        @abstractmethod
-        def set_model_hparams(self, *args, **kwargs):
-            """Child classes must implement this with explicit arguments."""
-            pass
+        self.config_info['global_hparams'] = global_params_config
+        self._state['global_hparams_set'] = True
+        return self
 
     def train(self,
               verbose:             Literal[0,1,2] = 1,
@@ -204,8 +276,11 @@ class DeepModel(BaseModel):
 
         Parameters:
         -----------
-        verbose : int = 1
-            how frequently performance update is printed
+        verbose : Literal[0,1,2] = 1
+            how frequently performance update is printed. 
+            - 0: no updates
+            - 1: update per 10 epochs
+            - 2: update per 1 epoch
         dataloader_snapshot: bool = True
             whether or not to show the first training dataloader snapshot
         show_loss: bool = True
@@ -224,16 +299,13 @@ class DeepModel(BaseModel):
 
         if self.scheduler is None:
             raise ValueError('no valid optimizer found')
-
-        if not self.model_hparams_set:
-            raise ValueError(f'set model hyperparameters first! Use model.set_model_hparams()')
-
-        if not self.global_hparams_set:
-            raise ValueError(f'set global hyperparameters first! Use model.set_global_hparams()')
+        
+        self._check_state(['model_initialized', 'global_hparams_set'])
 
         if dataloader_snapshot:
             print(f'Dataloader Snapshot: {self.train_loader[0]}')
 
+        # verbose
         if verbose == 1:
             verbose_loops = list(np.arange(1, self.n_epochs + 1, step=10))
         elif verbose == 2:
@@ -246,37 +318,47 @@ class DeepModel(BaseModel):
         patience_counter = 0
         best_model_state = None
 
+        # save loss in lists
         list_val_loss  =[]
         list_train_loss=[]
         list_patience  =[]
 
+        # number of datapoints
         L_train    = len(list(self.train_loader))
         L_val      = len(list(self.val_loader))
         
         # each epoch is divided into a training phase and a validation phase
         for epoch in range(self.n_epochs):
 
-            # Training phase
+        # Training phase
             total_loss = 0
             
+            # per snapshot
             for snapshot in self.train_loader:
+                # move snapshot to device
                 snapshot = snapshot.to(self.device)
+                # reset optimzer
                 self.optimizer.zero_grad()
-
+                # get predictions
                 y_hat = self.model(snapshot.x, snapshot.edge_index, snapshot.edge_weight)
-                
+                # calculate loss
                 loss  = self.loss(y_hat, snapshot.y)
-                
+                # backward pass: compute gradients
                 loss.backward()
+                # update model parameters based on computed gradients
                 self.optimizer.step()
-
+                # sum loss over all datapoints this epoch
                 total_loss += loss.item()
             
+            # calculate average training loss
             train_mse = total_loss / L_train
             list_train_loss.append(train_mse)
-            # Validation phase
+        
+        # Validation phase
             self.model.eval()
             val_loss = 0
+
+            # disable gradient-calculation -> no parameters to be updated
             with torch.no_grad():
                 for snapshot in self.val_loader:
                     snapshot = snapshot.to(self.device)
@@ -286,6 +368,7 @@ class DeepModel(BaseModel):
                     
                     val_loss += loss.item()
             
+            # average loss
             val_mse = val_loss /L_val
             list_val_loss.append(val_mse)
             
@@ -303,6 +386,7 @@ class DeepModel(BaseModel):
                 if epoch in verbose_loops:
                     print(f"Epoch {epoch} train loss: {train_mse:.4f}, val loss: {val_mse:.4f} ✓ (new best)")
                 list_patience.append(False)
+
             # Validation didn't improve -> increment patience
             else:
                 patience_counter += 1
@@ -323,29 +407,32 @@ class DeepModel(BaseModel):
             self.train_losses   = list_train_loss
             self.val_losses     = list_val_loss
             self.epoch_patience = list_patience
-
+        
+        self._state['trained'] = True
         if show_loss:
             self.plot_losses()
 
-    def plot_losses(self):
+    def plot_losses(self) -> Tuple[Figure, Axes]:
         """
         returns plot of train and val losses per epoch, after training model.
         """
+
         if self.model is None:
             raise ValueError('Please initiate a model')
 
-        epochs          = np.arange(len(self.train_losses))
-        patience_epochs = epochs[np.array(self.epoch_patience)]
+        epochs                = np.arange(len(self.train_losses))
+        patience_epochs       = epochs[np.array(self.epoch_patience)]
         patience_train_losses = np.array(self.train_losses)[np.array(self.epoch_patience)]
         patience_val_losses   = np.array(self.val_losses)[np.array(self.epoch_patience)]
 
         fig, axes = plt.subplots(1,2, figsize = (18,4))
-        axes = axes.flatten()
+        axes      = axes.flatten()
 
-        sns.lineplot(self.train_losses,          color = traincolor, label = 'train loss', ax = axes[0])
+        sns.lineplot(self.train_losses, color = traincolor, label = 'train loss', ax = axes[0])
+        sns.lineplot(self.val_losses,   color = valcolor,   label = 'val loss',   ax = axes[1])
+        
         axes[0].scatter(patience_epochs, patience_train_losses, color='red', marker = 'x', label='Patience Epochs')
-        sns.lineplot(self.val_losses,            color = valcolor,   label = 'val loss',   ax = axes[1])
-        axes[1].scatter(patience_epochs, patience_val_losses, color='red',marker = 'x', label='Patience Epochs')   
+        axes[1].scatter(patience_epochs, patience_val_losses,   color='red', marker = 'x', label='Patience Epochs')   
 
         for ax in axes:
             ax.grid()
@@ -356,7 +443,7 @@ class DeepModel(BaseModel):
         axes[0].set_title('Training loss')      
         axes[1].set_title('Validation loss')    
         
-        return fig, axes
+        return (fig, axes)
 
     def run_snapshot(self, index: int = 0, debug: bool = False):
         """
@@ -391,12 +478,175 @@ class DeepModel(BaseModel):
 
         return y_hat, y_true
 
+    def save_weights(self,
+                     filename: Optional[str] = None,
+                     save_optimizer: bool = True,
+                     save_scheduler: bool = True,
+                     metadata: Optional[Dict] = None) -> str:
+        """
+        Save model weights only (not configuration).
+        
+        For saving configuration, use the parent's save_model() method.
+        
+        Parameters:
+        ----------
+        filename : Optional[str]
+            Custom filename (without extension)
+        save_optimizer : bool
+            Save optimizer state for training resumption
+        save_scheduler : bool
+            Save scheduler state for training resumption
+        metadata : Optional[Dict]
+            Additional metadata to store
+            
+        Returns:
+        -------
+        str : Path to saved weights file
+        
+        Example:
+        -------
+        >>> # Save config once (in BaseModel)
+        >>> model.save_model()  # Saves config to YAML
+        >>> 
+        >>> # Save weights multiple times during training
+        >>> model.save_weights(filename='epoch_50')
+        >>> model.save_weights(filename='epoch_100')
+        >>> model.save_weights(filename='best_model', save_optimizer=False)
+        """
+        if self.model is None:
+            raise ValueError('No model to save')
+        
+        weights_path = self.weights_manager.save_weights(
+            model=self,
+            filename=filename,
+            save_optimizer=save_optimizer,
+            save_scheduler=save_scheduler,
+            metadata=metadata
+        )
+        
+        return weights_path
+    
+    def _load_weights(self,
+                     model_number: int) -> 'DeepModel':
+        """
+        Load model weights.
+        Model architecture should already be initialized via set_model_hparams().
+        
+        Parameters:
+        ----------
+        weights_path : str
+            Path to the weights file
+        load_optimizer : bool
+            Load optimizer state
+        load_scheduler : bool
+            Load scheduler state
+        strict : bool
+            Strictly enforce key matching
+            
+        Returns:
+        -------
+        self : For method chaining
+        """
+        metadata = self.weights_manager.load_weights(
+            model=self,
+            model_number=model_number
+        )
+        
+        # Update config_info with loaded metadata
+        if metadata.get('config_id'):
+            self.config_info['id'] = metadata['config_id']
+        
+        return self
+    
+    def load_config(self, model_name: str):
+
+        cfg      = self.config_manager.load_entry(entry_name = model_name)
+        entry_id = cfg['id']
+
+        if self.__class__.__name__.lower() != cfg['model']:
+            raise ValueError(f'The config loaded is one of a {cfg["model"]} which does not work for {self.name}, given it is a {self.__class__.__name__}')
+
+        self.set_model_hparams(**cfg['model_hparams'])
+        self.set_global_hparams(**cfg['global_hparams'])
+        self._load_weights(model_number= entry_id)
+        print(f"✓ Model loaded")
+
+    # @classmethod
+    # def from_checkpoint(cls,
+    #                    config_name: str,
+    #                    weights_path: str,
+    #                    dataloader: 'GNNDataLoader',
+    #                    name: Optional[str] = None) -> 'DeepModel':
+    #     """
+    #     Class method to load complete model from config + weights.
+        
+    #     Note: This is a class method, so it doesn't take 'self' as first argument.
+    #     It creates and returns a NEW instance of the model class.
+        
+    #     Parameters:
+    #     ----------
+    #     config_name : str
+    #         Name of the config file (without .yaml extension)
+    #     weights_path : str
+    #         Path to the weights file
+    #     dataloader : GNNDataLoader
+    #         Dataloader instance
+    #     name : Optional[str]
+    #         Optional custom name (overrides config name)
+            
+    #     Returns:
+    #     -------
+    #     DeepModel : A new model instance with loaded config and weights
+            
+    #     Example:
+    #     -------
+    #     >>> # This creates a NEW model instance
+    #     >>> model = SpatialGCNModel.from_checkpoint(
+    #     ...     config_name='my_spatial_gcn_model',
+    #     ...     weights_path='saved_models/my_model_0001_20240101.pt',
+    #     ...     dataloader=my_dataloader
+    #     ... )
+    #     >>> 
+    #     >>> # 'model' is now a fully initialized SpatialGCNModel
+    #     >>> model.forecast(dataset='test')
+    #     """
+    #     # Load config
+    #     config_manager = ConfigRegistryManager()
+    #     config = config_manager.load_config(config_name)
+        
+    #     # Create NEW instance (that's why it's a classmethod - no 'self' yet)
+    #     model = cls(dataloader=dataloader, name=name or config.get('name'))
+        
+    #     # Reconstruct model architecture from config
+    #     if 'model_hparams' in config:
+    #         model.set_model_hparams(**config['model_hparams'])
+        
+    #     if 'global_hparams' in config:
+    #         model.set_global_hparams(**config['global_hparams'])
+        
+    #     # Load weights into the newly created model
+    #     model.load_weights(weights_path)
+        
+    #     return model
+
+
+
     def forecast(self,
                  dataset: Literal['train','val','test']  = 'test'
                  ):
         """
-        runs the testing dataloader. Prints the loss and sets attribute evluation_df
+        Forecasts and evaluates on dataset specified.
+
+        Parameters:
+        ----------
+        dataset: Literal['train','val','test'] = 'test'
+            which dataset to be used
+
+        Updated Attributes:
+        ------------------
+
         """
+        self._check_state(['model_initialized', 'global_hparams_set','trained'])
         if self.model is None:
             raise ValueError('Please initiate a model')
 
@@ -438,7 +688,6 @@ class DeepModel(BaseModel):
         self.test_loss = loss
 
         # Processing prediction format
-
         tensor_list_cpu       = [t.detach().cpu() for t in predictions]
         stacked               = torch.stack(tensor_list_cpu)   
         num_timepoints, n_nodes, horizon = stacked.shape
@@ -449,17 +698,14 @@ class DeepModel(BaseModel):
 
         # Create MultiIndex for rows
         timepoints = np.repeat(np.arange(num_timepoints), n_nodes)  # repeats each timepoint n_nodes times
-        nodes = np.tile(np.arange(n_nodes), num_timepoints)         # repeats nodes for all timepoints
-
-        index = pd.MultiIndex.from_arrays([timepoints, nodes], names=['timestamp_idx', 'node'])
+        nodes      = np.tile(np.arange(n_nodes), num_timepoints)         # repeats nodes for all timepoints
+        index      = pd.MultiIndex.from_arrays([timepoints, nodes], names=['timestamp_idx', 'node'])
 
         # Create column names for horizon steps
         columns = [f"pred_h{h}" for h in range(horizon)]
-
         df_pred = pd.DataFrame(reshaped, index=index, columns=columns).reset_index(drop = False)
 
         # targets
-
         tensor_list_cpu       = [t.detach().cpu() for t in labels]
         stacked               = torch.stack(tensor_list_cpu)   
         num_timepoints, n_nodes, horizon = stacked.shape
@@ -470,26 +716,36 @@ class DeepModel(BaseModel):
 
         # Create MultiIndex for rows
         timepoints = np.repeat(np.arange(num_timepoints), n_nodes)  # repeats each timepoint n_nodes times
-        nodes = np.tile(np.arange(n_nodes), num_timepoints)         # repeats nodes for all timepoints
-
-        index = pd.MultiIndex.from_arrays([timepoints, nodes], names=['timestamp_idx', 'node'])
+        nodes      = np.tile(np.arange(n_nodes), num_timepoints)         # repeats nodes for all timepoints
+        index      = pd.MultiIndex.from_arrays([timepoints, nodes], names=['timestamp_idx', 'node'])
 
         # Create column names for horizon steps
-        columns = [f"incidence_h{h}" for h in range(horizon)]
-
-        df_target = pd.DataFrame(reshaped, index=index, columns=columns).reset_index(drop = False)
-
-        merged = pd.merge(df_pred, df_target, on = ['timestamp_idx','node'])
+        columns                 = [f"incidence_h{h}" for h in range(horizon)]
+        df_target               = pd.DataFrame(reshaped, index=index, columns=columns).reset_index(drop = False)
+        merged                  = pd.merge(df_pred, df_target, on = ['timestamp_idx','node'])
         merged['timestamp_idx'] = merged['timestamp_idx'] + (self.gnn_dataloader.periods - 1)
-
-        timestamp_map                  = eval_df[['timestamp']].drop_duplicates().reset_index(drop = True).reset_index(drop=False).rename(columns={'index': 'timestamp_idx'})
-
-        merged['timestamp'] = merged['timestamp_idx'].map(dict(zip(timestamp_map['timestamp_idx'], timestamp_map['timestamp'])))
+        timestamp_map           = eval_df[['timestamp']].drop_duplicates().reset_index(drop = True).reset_index(drop=False).rename(columns={'index': 'timestamp_idx'})
+        merged['timestamp']     = merged['timestamp_idx'].map(dict(zip(timestamp_map['timestamp_idx'], timestamp_map['timestamp'])))
 
         formatted_eval = eval_df.merge(
             merged[['timestamp', 'node', 'pred_h0', 'pred_h1', 'pred_h2', 'pred_h3']],
             on=['timestamp', 'node'],
             how='left'
         )
-        self.evaluation_datasets[dataset] = formatted_eval
+
+        columns_context = [self.dataloader.temporal_column, self.dataloader.id_column] + self.dataloader.feature_columns + self.dataloader.split_columns + ['incidence_h0']
+
+        horizon_prediction_dict = {}
+
+        for hh in range(horizon):
+
+            horizon_predictions         = formatted_eval[columns_context+ [f'pred_h{hh}']]
+            horizon_predictions         = horizon_predictions.rename(columns = {f'pred_h{hh}'  : 'pred',
+                                                                                 'incidence_h0': 'incidence'})
+            horizon_predictions['pred'] = horizon_predictions['pred'].shift(-hh)
+
+            horizon_prediction_dict[f'horizon_{hh}'] = horizon_predictions
+
+
+        self.evaluation_datasets[dataset] = horizon_prediction_dict
         return self

@@ -53,7 +53,7 @@ class SpatialGNN(torch.nn.Module):
 
 class SpatialGCNModel(DeepModel):
     """
-    Purely spatial GCN model that does nto use temporal axis into account.
+    Purely spatial GCN model that does not use temporal axis.
     Useful to validate the use of graph-structure
     """
     def __init__(self, 
@@ -65,14 +65,26 @@ class SpatialGCNModel(DeepModel):
 
         self.model_color = '#4ECDC4'
         self.dataloader = dataloader
+        self.config_info['model'] = 'spatialgcnmodel'
 
     def set_model_hparams(self, 
-                          hidden_size: int = 256):
-        self.model_hparams_set = True
+                          hidden_size: int = 256) -> 'SpatialGCNModel':
+        """
+        Initalizes SpatialGCNModel
+
+        Parameters:
+        ----------
+        hidden_size: int = 256
+        """
         self.model = SpatialGNN(
-            node_features=len(self.gnn_dataloader.feature_columns),
-            hidden_size=hidden_size,
-            out_size = self.gnn_dataloader.prediction_horizon
+            node_features = len(self.gnn_dataloader.feature_columns),
+            hidden_size   = hidden_size,
+            out_size      = self.gnn_dataloader.prediction_horizon
         ).to(self.device)
+
+        model_hparams_config = {'hidden_size': hidden_size}
+
+        self.config_info['model_hparams'] = model_hparams_config
+        self._state['model_initialized'] = True
 
         return self

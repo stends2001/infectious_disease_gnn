@@ -1,7 +1,27 @@
 from ._basemodel import BaseModel, EpiDataLoader, pd, Optional
-
+from typing import Dict, Tuple, Union
 
 class ShallowModel(BaseModel):
+
+    """
+    Parent (model) class for all shallow models. 
+
+    Parameters:
+    ----------
+    Inherits parameters from parent, with the addition of:
+
+    node_label: bool = True
+        Whether or not to use the node identifier as variable.
+
+    Updated attributes:
+    ------------------
+    self.dataloaders: Dict[str, Dict[str,pd.DataFrame]]
+        A dictionary of train/val/test dataloaders per X, y and c (context)
+
+    Note:
+    ----
+    EpiDataLoader must have the final dataset!
+    """
 
     def __init__(self, dataloader: 'EpiDataLoader', name: Optional[str] = None, node_label: bool = True):
         self.node_label = node_label
@@ -9,7 +29,7 @@ class ShallowModel(BaseModel):
 
         self.dataloaders = self.get_dataloaders(node_label=self.node_label)   
 
-    def get_dataloaders(self, node_label: bool = True):
+    def get_dataloaders(self, node_label: bool = True) -> Dict[str, Dict[str,pd.DataFrame]]:
         dataset = self.dataloader.data['final']
         train   = dataset[dataset['train']]
         val     = dataset[dataset['val']]
@@ -26,7 +46,7 @@ class ShallowModel(BaseModel):
         }
         return dataloaders
 
-    def _split_Xyc(self, df: pd.DataFrame, node_label: bool = True):
+    def _split_Xyc(self, df: pd.DataFrame, node_label: bool = True) -> Tuple[pd.DataFrame, Union[pd.DataFrame, pd.Series], pd.DataFrame]:
 
         # Conditionally include the node_label column (your id_column)
         if node_label:

@@ -20,6 +20,17 @@ class GraphDataLoaderEntry:
             edge_index=self.edge_index.to(device),
             edge_weight=self.edge_weight.to(device)
         )        
+    
+    def __repr__(self):
+        cls = self.__class__.__name__
+        info = (
+            f"x={list(self.x.shape)}, "
+            f"y={list(self.y.shape)}, "
+            f"edge_index={list(self.edge_index.shape)}, "
+            f"edge_weight={list(self.edge_weight.shape)}"
+        )
+        return f"{cls}({info})"
+
 
 class GraphDataLoader:
     def __init__(self, data_list: List[GraphDataLoaderEntry]):
@@ -33,3 +44,18 @@ class GraphDataLoader:
 
     def __getitem__(self, idx: int) -> GraphDataLoaderEntry:
         return self.data_list[idx]
+    
+    def __repr__(self):
+        cls = self.__class__.__name__
+        if not self.data_list:
+            return f"{cls}(empty)"
+        
+        snapshot = self.data_list[0]
+        info = (
+            f"{len(self.data_list)} datapoints, "
+            f"sample: x={list(snapshot.x.shape)}, "
+            f"y={list(snapshot.y.shape)}, "
+            f"edge_index={list(snapshot.edge_index.shape)}, "
+            f"edge_weight={list(snapshot.edge_weight.shape)}"
+        )
+        return f"{cls}({info})"      

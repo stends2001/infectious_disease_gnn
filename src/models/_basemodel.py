@@ -5,7 +5,7 @@ import matplotlib.gridspec as gridspec
 import seaborn as sns
 import matplotlib.pyplot as plt
 import pandas as pd
-from typing import Optional, Dict, List, Literal, Any, Union
+from typing import Optional, Dict, List, Literal, Any, Union, Tuple
 import torch
 from ..dataloading.epidataloader import EpiDataLoader
 from ..dataloading.gnndataloader import GNNDataLoader
@@ -13,51 +13,108 @@ from ..metrics.losses import spike_weighted_mse, mse, spike_detection_loss, temp
 from ..dataloading.normalization import reverse_zscore_scaling, reverse_log
 from ..utils.constants import traincolor, valcolor, testcolor
 import geopandas as gpd
+import matplotlib.pyplot as plt
+import matplotlib.cm as cm
+import matplotlib.colors as colors
+
+
+from ..configmanager.registry import ModelConfigManager
+
+from matplotlib.figure import Figure
+from matplotlib.axes import Axes
 
 class BaseModel:
 
     """
-    Parent class for all models
+    Parent class for all models. 
 
-    DeepLearningModelCore builds off of this by inheritance
+    Children:
+    --------
+    ShallowModel
+        non deep-learning models
 
-    TODO: de-normalize predictions    
+    DeepModel
+        deep learning models
+
+    Parameters:
+    ----------
+    dataloader: Union['EpiDataLoader','GNNDataLoader']
+        the dataloader class from which to take the actual dataloaders.
+        For shallow models, use an instance of EpiDataLoader. For 
+        deep models use GNNDataLoader.
+    name: Optional[str]
+        the name associated with the model. Mostly used for plotting and
+        saving predicitons.
+
+    TODO: de-normalize predictions 
+    TODO: repair show_forecasts_maps   
     """
 
     def __init__(self, 
                  dataloader: Union['EpiDataLoader', 'GNNDataLoader'], 
                  name:       Optional[str] = None):
         
-        self.dataloader = dataloader
-        self.name       = name if name else "unknown"    
-        self.evaluation_datasets = {} 
-        self.model_color= None
+        self.dataloader         = dataloader
+        self.name               = name if name else "unknown"    
+        self.evaluation_datasets= {} 
+        self.model_color        = None
+        self.config_info        = {}
+        self.config_info['name'] = name
+
+       # Managers
+        self.config_manager = ModelConfigManager()
+        self.weights_manager = None  # Only for DeepModel
 
     def forecast(self):
         """supposed to create the attribute `evaluation_df`"""
         raise NotImplementedError("Each model must implement its own forecast method.")
 
-    def denorm_predictions(self):
-        print('denormalizing predictions not implemented yet!!!!')
-        return self
-    
+    def _denorm_predictions(self, df: pd.DataFrame) -> pd.DataFrame:
+
+        zscore_rev = reverse_zscore_scaling(df, params = self.dataloader.transform_params['normalization']['params'])
+        log_rev    = reverse_log(zscore_rev, params = self.dataloader.transform_params['log']) 
+        return log_rev
+
     def show_forecasts(self,
                        dataset: Literal['train','val','test'],
                        node_idx: Union[List[int], int] = 1,
                        timeframe: Optional[List[str]] = None,
-                       target_h: Optional[int] = None):
+                       target_h: Optional[int] = 0,
+                       transformed: bool = False) -> Tuple[Figure, Axes]:
+        """
+        Visualizes forecasts made
 
-        if target_h is None:
-            target_column = 'incidence'
-            pred_column   = 'pred'
-        else:
-            target_column = f'incidence_h{target_h}'
-            pred_column = f'pred_h{target_h}'
+        Parameters:
+        ----------
+        dataset: Literal['train','val','test']
+            based on whcih dataloader predictions have been made
+        node_idx: Union[List[int], int] = 1
+            node - label to plot predictions of. If multiple supplied
+            (in a list) then multiple subplots are shown.
+        timeframe: Optional[List[str]] = None
+            List of min-date and max-date
+        target_h: Optional[int] = 0
+            target-horizon. Please supply in case DeepModel has been
+            used.
+        transformed: bool = False
+            whether to show the transformed or the nontransformed data
 
-        evaluation_df = self.evaluation_datasets[dataset]
+        Returns:
+        -------
+        (fig, axes) -> first figure is the national aggregation of 
+        incidence, the remaining figures represent one per node.
+        """
+    
+        target_column = self.dataloader.target_column
+        pred_column   = 'pred'
+        evaluation_df = self.evaluation_datasets[dataset][f'horizon_{target_h}']
+
+        if not transformed:
+            evaluation_df = self._denorm_predictions(evaluation_df)
 
         if isinstance(node_idx, int):
             node_idx = [node_idx]
+
         n_plots = len(node_idx)
 
         fig, axes = plt.subplots(n_plots+1 ,1, figsize = (16, 5 + (5 * n_plots)))
@@ -94,37 +151,73 @@ class BaseModel:
 
         plt.tight_layout()
         plt.show()
+        return fig, axes
 
     def show_forecasts_maps(self,
                             dataset: Literal['train','val','test'],                       
                             tt: int,
-                            scale: Literal['constant','equal','individual']):
-        
-        evaluation_df = self.evaluation_datasets[dataset]
-        dates = evaluation_df[self.dataloader.temporal_column].unique()
+                            scale: Literal['constant','equal','individual'],
+                            target_h: Optional[int] = 0) -> Tuple[Figure, Axes]:
 
+        target_column = self.dataloader.target_column
+        pred_column   = 'pred'
+        evaluation_df = self.evaluation_datasets[dataset][f'horizon_{target_h}']
+
+        dates      = evaluation_df[self.dataloader.temporal_column].unique()
         date       = dates[tt]
-        shapedata = self.dataloader.data['context']['shapedata']
-        map_tt    = gpd.GeoDataFrame(pd.merge(evaluation_df[evaluation_df[self.dataloader.temporal_column] == date], shapedata, on = 'node'))
-
+        print(date)
+        shapedata  = self.dataloader.data['context']['shapedata']
+        map_tt     = gpd.GeoDataFrame(pd.merge(evaluation_df[evaluation_df[self.dataloader.temporal_column] == date], shapedata, on = 'node'))
 
         if scale == 'constant':
-            vmin, vmax = evaluation_df['incidence'].min(), evaluation_df['incidence'].max()
-
+            vmin, vmax = evaluation_df[target_column].min(), evaluation_df[target_column].max()
         elif scale == 'equal':
-            vmin, vmax = map_tt['incidence'].min(), map_tt['incidence'].max()
-
+            vmin, vmax = map_tt[target_column].min(), map_tt[target_column].max()
         else:
             vmin = vmax = None
 
-        fig, axes = plt.subplots(1,2, figsize = (14,8))
+        fig, axes = plt.subplots(1, 2, figsize=(12,9))
         axes = axes.flatten()
 
-        map_tt.plot(column = 'incidence', legend = True, cmap = 'coolwarm', ax = axes[0], vmin = vmin, vmax= vmax)
-        axes[0].set_title('true incidence')
-        map_tt.plot(column = 'pred',legend = True, cmap = 'coolwarm', ax = axes[1], vmin = vmin, vmax= vmax)
-        axes[1].set_title('predicted incidence')
+        cmap = 'Blues'
 
-        fig.suptitle(f'Predicted incidence rates at {date.date()}')
+        # Plot without individual legend/colorbar
+        map_tt.plot(column=target_column, cmap=cmap, ax=axes[0], vmin=vmin, vmax=vmax, legend=False)
+        # axes[0].set_title('true incidence')
+        axes[0].axis('off')  # Remove axes box and ticks
+
+        map_tt.plot(column=pred_column, cmap=cmap, ax=axes[1], vmin=vmin, vmax=vmax, legend=False)
+        # axes[1].set_title('predicted incidence')
+        axes[1].axis('off')  # Remove axes box and ticks
+
+        axes[0].text(0.01, 0.98, 'A', transform=axes[0].transAxes, fontsize=16, fontweight='bold', va='top', ha='left')
+
+        axes[1].text(0.01, 0.98, 'B', transform=axes[1].transAxes, fontsize=16, fontweight='bold', va='top', ha='left')
+
+
+
+        # Create a single colorbar for both plots:
+        sm = cm.ScalarMappable(cmap=cmap, norm=colors.Normalize(vmin=vmin, vmax=vmax))
+        sm.set_array([])  # the public API to set data for the colorbar
+
+        cbar = fig.colorbar(sm, ax=axes, orientation='vertical', fraction=0.03, pad=0.02)
+        cbar.set_label('transformed incidence')
 
         fig.show()
+        return fig, axes
+    
+    def save_model(self):
+        """
+        Save model configuration (hyperparameters, settings).
+        This is the main save method - child classes should override
+        if they need to save additional things (like weights).
+        
+        Returns:
+        -------
+        str : The assigned model ID
+        """
+        if self.name == 'unknown':
+            raise ValueError('Model needs a valid name before saving')
+        
+        model_id = self.config_manager.register_entry(self.config_info)
+        self.config_info['id'] = model_id

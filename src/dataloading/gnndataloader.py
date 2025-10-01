@@ -35,6 +35,17 @@ class GNNDataLoader(EpiDataLoader):
         self.user_max_date      = pd.to_datetime(max_date)
         self.periods            = periods
         self.prediction_horizon = prediction_horizon
+
+        self.task_config        = {}
+        self.task_config['init'] = {
+            'disease_name'      : disease_name,
+            'min_date'          : min_date,
+            'max_date'          : max_date,
+            'nuts_level'        : nuts_level,
+            'include_population': include_population,
+            'periods'           : periods,
+            'prediction_horizon': prediction_horizon
+        }
         
         # Calculate extended date for data collection
         extension_weeks         = periods + prediction_horizon - 1
@@ -80,6 +91,9 @@ class GNNDataLoader(EpiDataLoader):
         
         self.split_summary = f"train / val / test: {train_pct:.1f}% / {val_pct:.1f}% / {test_pct:.1f}% (original timespan)"
         
+        self.task_config['set_splits'] = {'split_trainval': split_trainval,
+                                          'split_valtest' : split_valtest}
+
         return self
 
     def construct_dataloaders(self):
@@ -147,7 +161,7 @@ class GNNDataLoader(EpiDataLoader):
             
             data = GraphDataLoaderEntry(
                 x = x_seq.clone().detach().float().permute(1, 2, 0),  # (nodes, features, periods)
-                y = y_seq.clone().detach().float(),      # (nodes, horizon)
+                y = y_seq.clone().detach().float(),                   # (nodes, horizon)
                 edge_index = edge_index,
                 edge_weight =edge_weight
             )
@@ -251,6 +265,9 @@ class GNNDataLoader(EpiDataLoader):
 
         self.edge_index  = edge_index
         self.edge_weight = edge_weight
+
+        self.task_config['graph'] = {'graphname': graphname,
+                                     'graphdirectory' : graphdirectory}
         return self
    
     def finalize(self) -> 'GNNDataLoader':
@@ -363,6 +380,9 @@ class GNNDataLoader(EpiDataLoader):
             
             if hasattr(self, 'split_summary'):
                 new_instance.split_summary = self.split_summary
+
+            if hasattr(self, 'transform_params'):
+                new_instance.transform_params = self.transform_params                
                 
             # Copy column definitions
             for attr in ['feature_columns', 'target_columns', 'split_columns']:

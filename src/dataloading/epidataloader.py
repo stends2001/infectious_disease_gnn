@@ -416,7 +416,7 @@ class EpiDataLoader:
 
         dfc, _ = self._return_datastage(expected_stage=[2,3])
 
-        df_transformed                     = dfc
+        df_transformed                     = dfc.copy()
         df_transformed[self.target_column] = np.log(df_transformed[self.target_column] + shift)
         self.transform_params['log']       = {self.target_column : {"shift": shift},
                                               self.pred_column   : {"shift": shift}}

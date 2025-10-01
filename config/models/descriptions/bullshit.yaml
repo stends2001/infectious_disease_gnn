@@ -1,0 +1,30 @@
+name: bullshit
+id: '0005'
+task:
+  init:
+    disease_name: influenza
+    min_date: '2006-05-15'
+    max_date: '2020-06-01'
+    nuts_level: nuts2
+    include_population: true
+    periods: 12
+    prediction_horizon: 4
+  graph:
+    graphname: identity_graph
+    graphdirectory: data/graphs
+child: deepmodel
+model: spatialgcnmodel
+model_hparams:
+  hidden_size: 256
+global_hparams:
+  lr: 0.0001
+  n_epochs: 5
+  patience: 15
+  min_delta: 1.0e-05
+  optimizer: adam
+  optimizer_kwargs: null
+  scheduler: step
+  scheduler_kwargs:
+    step_size: 20
+    gamma: 0.95
+  loss: mse

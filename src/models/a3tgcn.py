@@ -50,8 +50,7 @@ class A3TGCN2Module(torch.nn.Module):
     
 class A3TGCNModel(DeepModel):
     """
-    Purely spatial GCN model that does nto use temporal axis into account.
-    Useful to validate the use of graph-structure
+    A3TGCN-based GNN model
     """
     def __init__(self, 
                  dataloader: GNNDataLoader, 
@@ -63,16 +62,34 @@ class A3TGCNModel(DeepModel):
         self.model_color = "#3E6BCD"
         self.dataloader = dataloader
 
+        self.config_info['model'] = 'a3tgcnmodel'
+
     def set_model_hparams(self, 
                           hidden_size: int = 32,
-                          self_loops: bool = True):
-        self.model_hparams_set = True
+                          self_loops: bool = True) -> 'A3TGCNModel':
+        """
+        initializes a3tgcn model
+
+        Parameters:
+        ----------
+        hidden_size: int = 32
+
+        self_loops: bool = True
+            Whether or not to add self loops, model-internally
+        """
         self.model = A3TGCN2Module(
-            node_features=len(self.gnn_dataloader.feature_columns),
-            hidden_size=hidden_size,
-            periods = self.gnn_dataloader.periods,
-            horizon = self.prediction_horizon,
-            self_loops = self_loops
+            node_features= len(self.gnn_dataloader.feature_columns),
+            hidden_size  = hidden_size,
+            periods      = self.gnn_dataloader.periods,
+            horizon      = self.prediction_horizon,
+            self_loops   = self_loops
         ).to(self.device)
+
+        model_hparams_config = {'hidden_size': hidden_size,
+                                'self_loops' : self_loops}
+
+        self.config_info['model_hparams'] = model_hparams_config
+
+        self._state['model_initialized'] = True
 
         return self    
