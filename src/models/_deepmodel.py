@@ -728,7 +728,7 @@ class DeepModel(BaseModel, ABC):
         merged['timestamp']     = merged['timestamp_idx'].map(dict(zip(timestamp_map['timestamp_idx'], timestamp_map['timestamp'])))
 
         formatted_eval = eval_df.merge(
-            merged[['timestamp', 'node', 'pred_h0', 'pred_h1', 'pred_h2', 'pred_h3']],
+            merged[['timestamp', 'node'] + [f'pred_h{hh}' for hh in range(horizon)]],
             on=['timestamp', 'node'],
             how='left'
         )

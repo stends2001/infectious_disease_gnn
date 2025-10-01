@@ -230,7 +230,7 @@ class EpiDataLoader:
         return self
     
     def normalize(self, 
-                  method : Literal['minmax','zscore'] = 'zscore') -> 'EpiDataLoader':
+                  normalization_method : Literal['minmax','zscore'] = 'zscore') -> 'EpiDataLoader':
         
         dfc, _ = self._return_datastage(expected_stage=[4])
 
@@ -238,11 +238,11 @@ class EpiDataLoader:
         
         norm_columns = self.feature_columns + [self.target_column]
 
-        if method == 'zscore':
+        if normalization_method == 'zscore':
             _, norm_parameters = pipeline_zscore_normalization(train_df, norm_columns)
             dataset_norm       = apply_zscore_scaling(dfc,     norm_columns, norm_parameters)
 
-        elif method == 'minmax':
+        elif normalization_method == 'minmax':
             _, norm_parameters = pipeline_minmax_normalization(train_df, norm_columns)
             dataset_norm       = apply_minmax_scaling(dfc,     norm_columns, norm_parameters)
 
@@ -252,7 +252,7 @@ class EpiDataLoader:
 
         norm_parameters[self.pred_column] = norm_parameters[self.target_column]
 
-        self.transform_params['normalization'] = {'method': method, "params": norm_parameters}
+        self.transform_params['normalization'] = {'method': normalization_method, "params": norm_parameters}
 
         self.data['normalized'] = dataset_norm
 

@@ -18,7 +18,7 @@ import matplotlib.cm as cm
 import matplotlib.colors as colors
 
 
-from ..configmanager.registry import ModelConfigManager
+from ..configmanager.modelconfigmanager import ModelConfigManager
 
 from matplotlib.figure import Figure
 from matplotlib.axes import Axes

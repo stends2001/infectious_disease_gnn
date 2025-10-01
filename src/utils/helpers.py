@@ -1,5 +1,6 @@
 from typing import Optional, List, Dict
 from pathlib import Path
+import os
 
 import yaml
 
@@ -35,3 +36,12 @@ def reorder_dict(d: dict, elements: List[str]) -> dict:
         if key not in reordered:
             reordered[key] = d[key]
     return reordered
+
+def get_data_env() -> str:
+    tmpdir          = os.environ.get('TMPDIR', None)
+    if tmpdir is None:
+        raise ValueError('No temporary directory found!')
+    
+    wissdaten_dir   = os.path.join(tmpdir, 'wissdaten')
+    data_env        = os.path.join(wissdaten_dir, 'ZKI-PH4/deschrijvers_wissdaten/data')
+    return data_env
