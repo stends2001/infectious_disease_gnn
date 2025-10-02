@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import matplotlib.colors as mcolors
 from .epidataloader import EpiDataLoader
+from statistics import mean
 
 import matplotlib.cm as cm
 
@@ -72,7 +73,7 @@ class GraphConstructor:
                                 'distance_threshold', 'k_nearest', 'population_weighted', 
                                 'gravity_model'] = 'boolean_neighbors',
                 name_addition:   Optional[str]    = None,
-                self_connection: Literal['1','0'] = '1',
+                self_connection: Literal['1','0','mean'] = '1',
                 scaling_method:  Optional[Literal['log', 'minmax']] = None,
                 **kwargs) -> 'GraphConstructor':
         
@@ -157,9 +158,9 @@ class GraphConstructor:
             elif self_connection == '0':
                 # Use 0 for self-connections
                 weights += [0 for _ in node_ids]
-            else:
-                # Default case - you might want to handle this
-                weights += [1 for _ in node_ids]  # or some other default
+            elif self_connection == 'mean':
+                mean_weight = mean(weights)
+                weights += [mean_weight for _ in node_ids]
                 
               
         # remove zero-valued connections
