@@ -23,6 +23,7 @@ from ..configmanager.modelconfigmanager import ModelConfigManager
 from matplotlib.figure import Figure
 from matplotlib.axes import Axes
 
+
 class BaseModel:
 
     """
@@ -150,18 +151,22 @@ class BaseModel:
             ax.grid()  
 
         plt.tight_layout()
-        plt.show()
+        plt.suptitle(f'Predictions by {self.name}')
         return fig, axes
 
     def show_forecasts_maps(self,
                             dataset: Literal['train','val','test'],                       
                             tt: int,
                             scale: Literal['constant','equal','individual'],
-                            target_h: Optional[int] = 0) -> Tuple[Figure, Axes]:
+                            target_h: Optional[int] = 0,
+                       transformed: bool = False) -> Tuple[Figure, Axes]:
 
         target_column = self.dataloader.target_column
         pred_column   = 'pred'
         evaluation_df = self.evaluation_datasets[dataset][f'horizon_{target_h}']
+
+        if not transformed:
+            evaluation_df = self._denorm_predictions(evaluation_df)
 
         dates      = evaluation_df[self.dataloader.temporal_column].unique()
         date       = dates[tt]

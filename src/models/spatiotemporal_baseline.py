@@ -8,7 +8,7 @@ import numpy as np
 from typing import Optional, Tuple
 from ..dataloading.gnndataloader import GNNDataLoader
 from ._deepmodel import DeepModel
-
+from ..utils.constants import paired_colors
 
 class TemporalGCN(nn.Module):
     """
@@ -103,7 +103,7 @@ class TGCNModel(DeepModel):
         if not self.name:
             self.name = 'TGCN'
 
-        self.model_color = '#4ECDC4'
+        self.model_color = paired_colors[2]
         self.dataloader = dataloader
         self.config_info['model'] = 'tgcnmodel'
 

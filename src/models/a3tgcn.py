@@ -11,7 +11,7 @@ from typing import Optional, Tuple
 
 from ..dataloading.gnndataloader import GNNDataLoader
 from torch_geometric_temporal.nn.recurrent import A3TGCN2
-
+from ..utils.constants import paired_colors
 
 class A3TGCN2Module(torch.nn.Module):
     def __init__(self, node_features, hidden_size, periods, horizon, self_loops):
@@ -59,7 +59,7 @@ class A3TGCNModel(DeepModel):
         if not self.name:
             self.name = 'A3TGCN'
 
-        self.model_color = "#3E6BCD"
+        self.model_color = paired_colors[0]
         self.dataloader = dataloader
 
         self.config_info['model'] = 'a3tgcnmodel'

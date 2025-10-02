@@ -412,7 +412,8 @@ class GraphConstructor:
         fig.show()
         return self
 
-    def preview_shape_object(self) -> 'GraphConstructor':
+    def preview_shape_object(self, local_nodes: Optional[Union[List[int],int]] = None) -> 'GraphConstructor':
+
 
         global_shapes = self.shapes
         fig, ax_main = plt.subplots(figsize = (10,8))
@@ -439,6 +440,17 @@ class GraphConstructor:
             left=False, right=False, bottom=False, top=False,  # no ticks
             labelleft=False, labelbottom=False                 # no labels
         )        
+
+        if local_nodes:
+            if isinstance(local_nodes, int):
+                local_nodes = [local_nodes]
+
+            local_shapes = global_shapes[global_shapes['node'].isin(local_nodes)]
+            points_local = local_shapes.geometry.centroid
+            for i, point in enumerate(points_local):
+                x, y = point.coords[0]  # Get coordinates from the point
+                ax_main.plot(x, y, 'o', color='red', markersize=6, 
+                            markeredgecolor='black', markeredgewidth=0.6)            
 
         fig.show()
         return self

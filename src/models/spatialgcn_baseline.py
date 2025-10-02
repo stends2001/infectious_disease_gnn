@@ -48,8 +48,8 @@ class SpatialGNN(torch.nn.Module):
         # 3) Final prediction layer (no activation, regression)
         out = self.linear(x2)
 
-        return out.squeeze(-1)
-
+        return out
+from ..utils.constants import paired_colors
 
 class SpatialGCNModel(DeepModel):
     """
@@ -63,7 +63,7 @@ class SpatialGCNModel(DeepModel):
         if not self.name:
             self.name = 'SpatialGCN'
 
-        self.model_color = '#4ECDC4'
+        self.model_color = paired_colors[1]
         self.dataloader = dataloader
         self.config_info['model'] = 'spatialgcnmodel'
 

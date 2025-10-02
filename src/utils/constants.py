@@ -7,4 +7,5 @@ token_jena       = 391
 token_oberhausen = 69
 token_hannover   = 26
 
-# modelcolors = []
+import seaborn as sns
+paired_colors = sns.color_palette("Paired")

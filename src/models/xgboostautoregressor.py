@@ -4,7 +4,7 @@ import xgboost as xgb
 import pandas as pd
 import numpy as np
 from tqdm import tqdm
-
+from ..utils.constants import paired_colors
 class XGBoostAutoRegressor(ShallowModel):
     """
     XGBoost-based autoregressive model for time series forecasting.
@@ -39,7 +39,7 @@ class XGBoostAutoRegressor(ShallowModel):
         
         # Set default name and styling
         self.name = name or 'XGBoostAutoRegressor'
-        self.model_color = '#1F77B4'
+        self.model_color = paired_colors[3]
         self.model = None
         
         # Initialize DMatrix objects for efficient XGBoost training
