@@ -448,13 +448,13 @@ class EpiDataLoader:
         self.log                           = True
         return self
 
-    def __repr__(self):
+    def __str__(self):
         disease         = getattr(self, 'disease', 'N/A')
         nuts_level      = getattr(self, 'nuts_level', 'N/A')
         min_date        = getattr(self, 'min_date', 'N/A')
         max_date        = getattr(self, 'max_date', 'N/A')
         split_summary   = getattr(self, 'split_summary',None)
-        horizon_size    = getattr(self, 'horizon_sizegetattr', 'N/A')
+        horizon_size    = getattr(self, 'horizon_size', 'N/A')
         horizon_leadtime= getattr(self, 'horizon_leadtime', 'N/A')
         sequence_length = getattr(self, 'sequence_length', 'N/A')     
 
@@ -476,21 +476,42 @@ class EpiDataLoader:
         nuts_level      : {nuts_level},
         date_range      : [{min_date} - {max_date}],
         nodes           : {n_nodes},
-        data_rows       : {n_rows},
+        data_rows       : {n_rows}
+
         ------------- TASK -----------------
         horizon size    : {horizon_size},
         horizon leadtime: {horizon_leadtime},
+
         ------------- LOAD -----------------
         data stages     : {data_stages},
-        sequence length : {sequence_length}\n"""
+        sequence length : {sequence_length}"""
 
         if split_summary is not None:
             representation += f"""
-        split summary   : {split_summary}\n"""
+        split summary   : {split_summary}"""
 
-        representation += ")>"
+        representation += "\n)>"
 
         return representation
+
+    def __repr__(self):
+        disease         = getattr(self, 'disease', 'N/A')
+        nuts_level      = getattr(self, 'nuts_level', 'N/A')
+        min_date        = getattr(self, 'min_date', 'N/A')
+        max_date        = getattr(self, 'max_date', 'N/A')
+        horizon_size    = getattr(self, 'horizon_size', 'N/A')
+        horizon_leadtime= getattr(self, 'horizon_leadtime', 'N/A')
+        sequence_length = getattr(self, 'sequence_length', 'N/A')     
+
+        if isinstance(min_date, pd.Timestamp):
+            min_date = min_date.date()
+        if isinstance(max_date, pd.Timestamp):
+            max_date = max_date.date()
+
+        representation = f"EpiDataLoader(disease={disease}, nuts_level={nuts_level}, min_date={min_date}, max_date={max_date}, horizon_size={horizon_size}, horizon_leadtime={horizon_leadtime}, sequence_length={sequence_length})"
+
+        return representation
+
 
     def set_splits(self, 
                 split_trainval: Union[str, pd.Timestamp] = '2018-06-01', 
