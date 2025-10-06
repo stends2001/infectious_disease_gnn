@@ -22,79 +22,22 @@ class GNNDataLoader(EpiDataLoader):
     X has shape: [N, F, periods] (nodes/features/periods)
     """
     def __init__(self, 
-                 disease_name:       str,
-                 data_env_dir:       str,
-                 min_date:           str                = '2001-01-01',
-                 max_date:           str                = '2025-01-01',
+                 disease_name: str,
+                 data_env_dir: str,
+                 min_date:     str     = '2001-01-01',
+                 max_date:     str     = '2025-01-01',
                  nuts_level:   Literal['nuts1','nuts2','nuts3'] = 'nuts3',
-                 include_population: bool               = False,
-                 periods:            int                = 1,
-                 prediction_horizon: int                = 1
-                 ):
-        
-        self.user_max_date      = pd.to_datetime(max_date)
-        self.periods            = periods
-        self.prediction_horizon = prediction_horizon
+                 include_population: bool = False,
+                 horizon_size: int     = 1,
+                 horizon_leadtime:int  = 1,
+                 sequence_length: int  = 1):
+        self.task_config = {}
 
-        self.task_config        = {}
-        self.task_config['init'] = {
-            'disease_name'      : disease_name,
-            'min_date'          : min_date,
-            'max_date'          : max_date,
-            'nuts_level'        : nuts_level,
-            'include_population': include_population,
-            'periods'           : periods,
-            'prediction_horizon': prediction_horizon
-        }
-        
-        # Calculate extended date for data collection
-        extension_weeks         = periods + prediction_horizon - 1
-        extended_max_date       = pd.to_datetime(max_date) + pd.Timedelta(weeks=extension_weeks)        
-
-        print(f"GNN temporal windowing: extending data collection from {max_date} "
-              f"to {extended_max_date.date()} (+{extension_weeks} weeks)")
-
-        super().__init__(disease_name, data_env_dir, min_date, extended_max_date.strftime('%Y-%m-%d'), nuts_level, include_population)
+        super().__init__(disease_name, data_env_dir, min_date, max_date, nuts_level, include_population, horizon_size, horizon_leadtime, sequence_length)
          
         self.edge_index:  Optional[torch.Tensor] = None
         self.edge_weight: Optional[torch.Tensor] = None
         self.dataloader_train, self.dataloader_val, self.dataloader_test = None, None, None
-
-    def set_splits(self, 
-                   split_trainval: Union[str, pd.Timestamp] = '2018-06-01', 
-                   split_valtest:  Union[str, pd.Timestamp]  = '2019-06-01') -> 'GNNDataLoader':
-        """
-        Split setting that validates against user's original intentions.
-        """
-        split_trainval = pd.to_datetime(split_trainval)
-        split_valtest  = pd.to_datetime(split_valtest)
-        
-        # Validate against USER's original max_date, not the extended one
-        if split_valtest > self.user_max_date:
-            raise ValueError(
-                f"split_valtest ({split_valtest.date()}) cannot be after your "
-                f"intended max_date ({self.user_max_date.date()})"
-            )
-        
-        # Call parent method
-        super().set_splits(split_trainval, split_valtest)
-        
-        # Recalculate split summary using user's original timespan for clarity
-        original_timespan = self.user_max_date - self.min_date
-        train_timespan = split_trainval - self.min_date  
-        val_timespan = split_valtest - split_trainval
-        test_timespan = self.user_max_date - split_valtest
-        
-        train_pct = train_timespan / original_timespan * 100
-        val_pct = val_timespan / original_timespan * 100  
-        test_pct = test_timespan / original_timespan * 100
-        
-        self.split_summary = f"train / val / test: {train_pct:.1f}% / {val_pct:.1f}% / {test_pct:.1f}% (original timespan)"
-        
-        self.task_config['set_splits'] = {'split_trainval': split_trainval,
-                                          'split_valtest' : split_valtest}
-
-        return self
 
     def construct_dataloaders(self):
         """
@@ -123,9 +66,9 @@ class GNNDataLoader(EpiDataLoader):
             - edge_weight   => [edge_number]
         """
 
-        X,y          = self._construct_Xy(self.data['final-horizon'])
+        X,y             = self._construct_Xy(self.data['final'])
 
-        main_dataloader = self._construct_main_dataloader(X = X, y = y, periods = self.periods)
+        main_dataloader = self._construct_main_dataloader(X = X, y = y, sequence_length = self.sequence_length)
         dataloaders     = self._split_dataloader(main_dataloader = main_dataloader)
         self.dataloader_main = main_dataloader
         self.dataloader_train, self.dataloader_val, self.dataloader_test = dataloaders
@@ -134,7 +77,7 @@ class GNNDataLoader(EpiDataLoader):
     def _construct_main_dataloader(self, 
                               X: torch.Tensor,
                               y: torch.Tensor, 
-                              periods: int) -> GraphDataLoader:
+                              sequence_length: int) -> GraphDataLoader:
         edge_index  = self.edge_index 
         edge_weight = self.edge_weight
 
@@ -148,16 +91,16 @@ class GNNDataLoader(EpiDataLoader):
 
         # Calculate maximum valid start position
         # Need: start + periods + prediction_horizon - 1 < T
-        max_start = T - periods + 1
+        max_start = T - sequence_length - self.horizon_leadtime - self.horizon_size + 1
         self.max_start = max_start
         if max_start <= 0:
-            raise ValueError(f"Not enough data: T={T}, periods={periods}"
-                            f"Need at least {periods} timesteps.")
+            raise ValueError(f"Not enough data: T={T}, periods={sequence_length}"
+                            f"Need at least {sequence_length} timesteps.")
 
         for start in range(max_start):
             # Input window: periods consecutive timesteps
-            x_seq = X[start : start + periods]  # shape [periods, nodes, features]
-            y_seq = y[start + periods -1]
+            x_seq = X[start : start + sequence_length]  # shape [periods, nodes, features]
+            y_seq = y[start + sequence_length -1]
             
             data = GraphDataLoaderEntry(
                 x = x_seq.clone().detach().float().permute(1, 2, 0),  # (nodes, features, periods)
@@ -187,7 +130,7 @@ class GNNDataLoader(EpiDataLoader):
 
         dfc            = df.copy()
         feature_arrays = []
-        target_arrays = []
+        target_arrays  = []
         timestamps     = list(dfc[self.temporal_column].unique())
         time_splits    = dfc[[self.temporal_column] + self.split_columns].drop_duplicates().reset_index(drop = True)
 
@@ -211,8 +154,8 @@ class GNNDataLoader(EpiDataLoader):
 
         X_np = np.stack(feature_arrays, axis=-1)
 
-        for target in self.target_columns:
-            
+        for target in self.target_column:
+
             # Pivot from long to wide: rows=time, columns=nodes, values=feature
             pivoted = dfc.pivot(index=['timestamp'], columns=self.id_column, values=target).reset_index(drop = True)
 
@@ -266,22 +209,31 @@ class GNNDataLoader(EpiDataLoader):
         self.edge_index  = edge_index
         self.edge_weight = edge_weight
 
-        self.task_config['graph'] = {'graphname': graphname,
-                                     'graphdirectory' : graphdirectory}
+        # self.task_config['graph'] = {'graphname': graphname,
+        #                              'graphdirectory' : graphdirectory}
         return self
    
-    def finalize(self) -> 'GNNDataLoader':
-        dfc, _       = self._return_datastage(expected_stage=[5])
-        column_order = [self.temporal_column, self.id_column] + self.feature_columns + [self.target_column] + self.split_columns
+    # def finalize(self) -> 'GNNDataLoader':
+    #     dfc, _       = self._return_datastage(expected_stage=[5])
 
-        self.data['final']         = _reorder_df(dfc, column_order)        
-        self.data['final-horizon'] = add_horizon_shifts(self.data['final'], group_column=self.id_column, target_column=self.target_column, horizons = self.prediction_horizon)
+    #     target_columns = []
 
-        target_columns = []
-        for hh in range(self.prediction_horizon):
-            target_columns.append(f'{self.target_column}_h{hh}')
-        self.target_columns = target_columns
-        return self
+    #     for horizon in range(self.horizon_size):
+    #         dfc[f'{self.target_column}_h{horizon}'] = dfc[self.target_column].shift(-horizon)
+    #         target_columns.append(f'{self.target_column}_h{horizon}')
+
+    #     dfc = dfc.drop(labels = self.target_column, axis = 1)       
+
+    #     column_order = [self.temporal_column, self.id_column] + self.feature_columns + target_columns + self.split_columns
+
+    #     self.data['final']         = _reorder_df(dfc, column_order)        
+    #     # self.data['final-horizon'] = add_horizon_shifts(self.data['final'], group_column=self.id_column, target_column=self.target_column, horizons = self.prediction_horizon)
+
+    #     target_columns = []
+    #     for hh in range(self.prediction_horizon):
+    #         target_columns.append(f'{self.target_column}_h{hh}')
+    #     self.target_columns = target_columns
+    #     return self
 
     def preview_dataloader(self, 
                         node_idx: int, 
@@ -312,7 +264,7 @@ class GNNDataLoader(EpiDataLoader):
                 lag_cols.append(cc)
                 lag_cols_idx.append(idx)
 
-        if self.periods != 1:
+        if self.sequence_length > 1:
             
             dataX         = torch.stack([entry.x[node_idx, lag_cols_idx, :] for entry in df]).cpu().numpy()  # all inputs [tt, features, periods]
             last_elements = dataX[:, 0, 1:]
@@ -334,8 +286,8 @@ class GNNDataLoader(EpiDataLoader):
 
         fig, ax = plt.subplots(figsize = (14,6))
         ax.plot(dataY[:,0], '-o' ,markersize = 5, label=f'entire timeseries for node {node_idx}')
-        ax.plot(np.arange(timepoint-len(input)-lags[0]+1,timepoint-lags[0]+1),input, label='input for selected point', color = "#1b9e77", marker='s', markersize=10)
-        ax.plot(np.arange(timepoint,timepoint+self.prediction_horizon),target, marker='o', markersize=10, color='#d94e4e', label='Target last point')
+        ax.plot(np.arange(timepoint-len(input)-lags[0]+1-self.horizon_leadtime,timepoint-lags[0]+1-self.horizon_leadtime),input, label='input for selected point', color = "#1b9e77", marker='s', markersize=10)
+        ax.plot(np.arange(timepoint,timepoint+self.horizon_size),target, marker='o', markersize=10, color='#d94e4e', label='Target last point')
         ax.set_title(f'Input vs Target of node {node_idx}')
         ax.legend()
         ax.grid()
@@ -361,15 +313,19 @@ class GNNDataLoader(EpiDataLoader):
             disease_name       = self.disease,
             data_env_dir       = self.data_env_dir,
             min_date           = self.min_date if isinstance(self.min_date, str) else self.min_date.strftime('%Y-%m-%d'),
-            max_date           = self.user_max_date.strftime('%Y-%m-%d'),
+            max_date           = self.max_date if isinstance(self.max_date, str) else self.max_date.strftime('%Y-%m-%d'),
             nuts_level         = cast(Literal['nuts1', 'nuts2', 'nuts3'], self.nuts_level),
             include_population = self.include_population,
-            periods            = self.periods,
-            prediction_horizon = self.prediction_horizon
+            horizon_size       = self.horizon_size,
+            horizon_leadtime   = self.horizon_leadtime,
+            sequence_length    = self.sequence_length
         )
+        
         
         # Copy all attributes from parent class (EpiDataLoader)
         if deep:
+            new_instance.target_column = copy.deepcopy(self.target_column)
+
             # Deep copy data structures
             if hasattr(self, 'data') and self.data:
                 new_instance.data = copy.deepcopy(self.data)

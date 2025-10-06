@@ -76,7 +76,10 @@ class EpiDataLoader:
                  min_date:     str     = '2001-01-01',
                  max_date:     str     = '2025-01-01',
                  nuts_level:   Literal['nuts1','nuts2','nuts3'] = 'nuts3',
-                 include_population: bool = False
+                 include_population: bool = False,
+                 horizon_size: int     = 1,
+                 horizon_leadtime:int  = 1,
+                 sequence_length: int  = 1
                  ):
         
         self.data               = {}
@@ -96,7 +99,20 @@ class EpiDataLoader:
 
         self.incidence_scalar   = 10_000
 
+        self.horizon_size     = horizon_size
+        self.horizon_leadtime = horizon_leadtime
+        self.sequence_length  = sequence_length
+
         self.log                = False
+
+        # Calculate extended date for data collection
+        extension_weeks         = sequence_length + horizon_size + horizon_leadtime- 1
+        extended_min_date       = pd.to_datetime(min_date) - pd.Timedelta(weeks=extension_weeks)        
+        self.min_date           = extended_min_date
+
+        print(f"Dataloader temporal windowing: extending data collection from {min_date} "
+              f"to {extended_min_date.date()} (+{extension_weeks} weeks)")
+
 
         # import data
         raw_shapedata, raw_epidemiological_data   = self._import_datasets()
@@ -249,7 +265,9 @@ class EpiDataLoader:
         else:
             raise ValueError(f'{method} Invalid normalization method')            
 
-
+        if not isinstance(self.target_column, str):
+            raise ValueError(f'{self.target_column} is supposed to be a string, but is a {type(self.target_column)}. Likely finalized before normalized!')
+        
         norm_parameters[self.pred_column] = norm_parameters[self.target_column]
 
         self.transform_params['normalization'] = {'method': normalization_method, "params": norm_parameters}
@@ -258,7 +276,7 @@ class EpiDataLoader:
 
         return self
 
-    def add_lagged_features(self, lags: range):
+    def add_lagged_features(self, lags: int):
         """
         adds lagged target as features, those specified in parameter 'lags'
         """
@@ -268,9 +286,10 @@ class EpiDataLoader:
         self.lags    = []
         new_features = []
 
-        for lag in lags:
-            feature      = f'{self.target_column}_lag{lag}'
-            dfc[feature] = dfc.groupby(self.id_column)[self.target_column].shift(lag)
+        for lag in range(lags):
+            difference   = lag + self.horizon_leadtime
+            feature      = f'{self.target_column}_lag{difference}'
+            dfc[feature] = dfc.groupby(self.id_column)[self.target_column].shift(difference)
 
             self.transform_params['normalization']['params'][feature] = self.transform_params['normalization']['params'][self.target_column]
             
@@ -283,7 +302,7 @@ class EpiDataLoader:
         self.feature_columns = self.feature_columns + new_features
 
         # drop nans from lagging
-        dfc = dfc.dropna().reset_index()
+        dfc = dfc.dropna().reset_index(drop = True)
 
         self.data['normalized'] = dfc
 
@@ -315,10 +334,11 @@ class EpiDataLoader:
 
         dataset       = self.data[status]
 
-
+        target = self.target_column[0]
+        print(f'for the sake of simplification, the first target will be plotted: {target}')
         if status in postsplit_statuses:
             
-            dataset_aggr  = dataset.copy().groupby([self.temporal_column]+self.split_columns)[self.target_column].sum().reset_index(drop = False)
+            dataset_aggr  = dataset.copy().groupby([self.temporal_column]+self.split_columns)[target].sum().reset_index(drop = False)
 
             dataset_train = dataset[dataset['train']]
             dataset_val   = dataset[dataset['val']]
@@ -330,9 +350,9 @@ class EpiDataLoader:
             time_axis_test      = list(dataset_test[self.temporal_column].unique())
 
             # nationally
-            target_aggr_train     = dataset_aggr[dataset_aggr['train']][self.target_column]
-            target_aggr_val       = dataset_aggr[dataset_aggr['val']][self.target_column]
-            target_aggr_test      = dataset_aggr[dataset_aggr['test']][self.target_column]
+            target_aggr_train     = dataset_aggr[dataset_aggr['train']][target]
+            target_aggr_val       = dataset_aggr[dataset_aggr['val']][target]
+            target_aggr_test      = dataset_aggr[dataset_aggr['test']][target]
 
             ax        = axes[0]
             ax.plot(time_axis_train, target_aggr_train, color = traincolor,  label = 'train')
@@ -356,9 +376,9 @@ class EpiDataLoader:
                 XYt_val   = dataset_val[dataset_val[self.id_column] == id]
                 XYt_test  = dataset_test[dataset_test[self.id_column] == id]
 
-                target_train         = XYt_train[self.target_column]
-                target_val           = XYt_val[self.target_column]
-                target_test          = XYt_test[self.target_column]            
+                target_train         = XYt_train[target]
+                target_val           = XYt_val[target]
+                target_test          = XYt_test[target]            
 
                 ax.plot(time_axis_train, target_train, color = traincolor)
                 ax.plot(time_axis_val,   target_val,   color = valcolor)
@@ -372,7 +392,7 @@ class EpiDataLoader:
             palette = sns.color_palette("Blues", n_colors=len(node_idx) + 3)[::-1]
 
             time_axis           = list(dataset[self.temporal_column].unique())
-            national_incidences = dataset.groupby(self.temporal_column)[self.target_column].sum().reset_index(drop = False)[self.target_column]
+            national_incidences = dataset.groupby(self.temporal_column)[target].sum().reset_index(drop = False)[target]
 
             ax        = axes[0]
             ax.plot(time_axis, national_incidences, color = palette[1])
@@ -415,6 +435,9 @@ class EpiDataLoader:
         """
 
         dfc, _ = self._return_datastage(expected_stage=[2,3])
+
+        if not isinstance(self.target_column, str):
+            raise ValueError(f'{self.target_column} is supposed to be a string, but is a {type(self.target_column)}. Likely finalized before log-transformed!')
 
         df_transformed                     = dfc.copy()
         df_transformed[self.target_column] = np.log(df_transformed[self.target_column] + shift)
@@ -585,7 +608,24 @@ class EpiDataLoader:
 
     def finalize(self) -> 'EpiDataLoader':
         dfc, _       = self._return_datastage(expected_stage=[5])
-        column_order = [self.temporal_column, self.id_column] + self.feature_columns + [self.target_column] + self.split_columns
+
+        target_columns: List[str] = []
+
+        for horizon in range(self.horizon_size):
+            target = f'{self.target_column}_h{horizon}'
+
+            dfc[target] = dfc.groupby(self.id_column)[self.target_column].shift(-horizon)
+            
+            target_columns.append(f'{self.target_column}_h{horizon}')
+        
+        # drop old target
+        dfc = dfc.drop(labels = self.target_column, axis = 1)     
+        # save new target(s)
+        self.target_column = target_columns
+
+          
+
+        column_order = [self.temporal_column, self.id_column] + self.feature_columns + target_columns + self.split_columns
 
         self.data['final'] = _reorder_df(dfc, column_order)        
         return self

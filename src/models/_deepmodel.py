@@ -89,10 +89,10 @@ class DeepModel(BaseModel, ABC):
             'trained': False
         }
 
-        self.prediction_horizon = dataloader.prediction_horizon
+        self.horizon_size = dataloader.horizon_size
 
     @abstractmethod
-    def set_model_hparams(self):
+    def set_model_hparams(self) -> Any:
         pass
 
     def _check_state(self, required_states: List[str]) -> None:
@@ -571,66 +571,6 @@ class DeepModel(BaseModel, ABC):
         self._load_weights(model_number= entry_id)
         print(f"✓ Model loaded")
 
-    # @classmethod
-    # def from_checkpoint(cls,
-    #                    config_name: str,
-    #                    weights_path: str,
-    #                    dataloader: 'GNNDataLoader',
-    #                    name: Optional[str] = None) -> 'DeepModel':
-    #     """
-    #     Class method to load complete model from config + weights.
-        
-    #     Note: This is a class method, so it doesn't take 'self' as first argument.
-    #     It creates and returns a NEW instance of the model class.
-        
-    #     Parameters:
-    #     ----------
-    #     config_name : str
-    #         Name of the config file (without .yaml extension)
-    #     weights_path : str
-    #         Path to the weights file
-    #     dataloader : GNNDataLoader
-    #         Dataloader instance
-    #     name : Optional[str]
-    #         Optional custom name (overrides config name)
-            
-    #     Returns:
-    #     -------
-    #     DeepModel : A new model instance with loaded config and weights
-            
-    #     Example:
-    #     -------
-    #     >>> # This creates a NEW model instance
-    #     >>> model = SpatialGCNModel.from_checkpoint(
-    #     ...     config_name='my_spatial_gcn_model',
-    #     ...     weights_path='saved_models/my_model_0001_20240101.pt',
-    #     ...     dataloader=my_dataloader
-    #     ... )
-    #     >>> 
-    #     >>> # 'model' is now a fully initialized SpatialGCNModel
-    #     >>> model.forecast(dataset='test')
-    #     """
-    #     # Load config
-    #     config_manager = ConfigRegistryManager()
-    #     config = config_manager.load_config(config_name)
-        
-    #     # Create NEW instance (that's why it's a classmethod - no 'self' yet)
-    #     model = cls(dataloader=dataloader, name=name or config.get('name'))
-        
-    #     # Reconstruct model architecture from config
-    #     if 'model_hparams' in config:
-    #         model.set_model_hparams(**config['model_hparams'])
-        
-    #     if 'global_hparams' in config:
-    #         model.set_global_hparams(**config['global_hparams'])
-        
-    #     # Load weights into the newly created model
-    #     model.load_weights(weights_path)
-        
-    #     return model
-
-
-
     def forecast(self,
                  dataset: Literal['train','val','test']  = 'test'
                  ):
@@ -658,7 +598,7 @@ class DeepModel(BaseModel, ABC):
         predictions = []
         labels      = []
 
-        eval_df = self.gnn_dataloader.data['final-horizon'][self.gnn_dataloader.data['final-horizon'][dataset]]
+        eval_df = self.gnn_dataloader.data['final'][self.gnn_dataloader.data['final'][dataset]]
 
         if dataset == 'train':
             dataloader  = self.train_loader
@@ -723,16 +663,12 @@ class DeepModel(BaseModel, ABC):
         columns                 = [f"incidence_h{h}" for h in range(horizon)]
         df_target               = pd.DataFrame(reshaped, index=index, columns=columns).reset_index(drop = False)
         merged                  = pd.merge(df_pred, df_target, on = ['timestamp_idx','node'])
-        merged['timestamp_idx'] = merged['timestamp_idx'] + (self.gnn_dataloader.periods - 1)
+        merged['timestamp_idx'] = merged['timestamp_idx'] + (self.gnn_dataloader.sequence_length - 1)
         timestamp_map           = eval_df[['timestamp']].drop_duplicates().reset_index(drop = True).reset_index(drop=False).rename(columns={'index': 'timestamp_idx'})
         merged['timestamp']     = merged['timestamp_idx'].map(dict(zip(timestamp_map['timestamp_idx'], timestamp_map['timestamp'])))
-
-        formatted_eval = eval_df.merge(
-            merged[['timestamp', 'node'] + [f'pred_h{hh}' for hh in range(horizon)]],
-            on=['timestamp', 'node'],
-            how='left'
-        )
-
+        # return merged, eval_df
+        formatted_eval = pd.merge(merged[['timestamp', 'node'] + [f'pred_h0']], eval_df, on =['timestamp','node'], how = 'right')
+        
         columns_context = [self.dataloader.temporal_column, self.dataloader.id_column] + self.dataloader.feature_columns + self.dataloader.split_columns + ['incidence_h0']
 
         horizon_prediction_dict = {}

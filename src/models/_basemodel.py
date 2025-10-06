@@ -80,7 +80,7 @@ class BaseModel:
                        dataset: Literal['train','val','test'],
                        node_idx: Union[List[int], int] = 1,
                        timeframe: Optional[List[str]] = None,
-                       target_h: Optional[int] = 0,
+                       target_h: int = 0,
                        transformed: bool = False) -> Tuple[Figure, Axes]:
         """
         Visualizes forecasts made
@@ -106,7 +106,7 @@ class BaseModel:
         incidence, the remaining figures represent one per node.
         """
     
-        target_column = self.dataloader.target_column
+        target_column = 'incidence'
         pred_column   = 'pred'
         evaluation_df = self.evaluation_datasets[dataset][f'horizon_{target_h}']
 
@@ -161,7 +161,7 @@ class BaseModel:
                             target_h: Optional[int] = 0,
                        transformed: bool = False) -> Tuple[Figure, Axes]:
 
-        target_column = self.dataloader.target_column
+        target_column: str = self.dataloader.target_column # type: ignore
         pred_column   = 'pred'
         evaluation_df = self.evaluation_datasets[dataset][f'horizon_{target_h}']
 
