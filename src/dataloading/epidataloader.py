@@ -449,11 +449,14 @@ class EpiDataLoader:
         return self
 
     def __repr__(self):
-        disease     = getattr(self, 'disease', 'N/A')
-        nuts_level  = getattr(self, 'nuts_level', 'N/A')
-        min_date    = getattr(self, 'min_date', 'N/A')
-        max_date    = getattr(self, 'max_date', 'N/A')
-        split_summary= getattr(self, 'split_summary',None)
+        disease         = getattr(self, 'disease', 'N/A')
+        nuts_level      = getattr(self, 'nuts_level', 'N/A')
+        min_date        = getattr(self, 'min_date', 'N/A')
+        max_date        = getattr(self, 'max_date', 'N/A')
+        split_summary   = getattr(self, 'split_summary',None)
+        horizon_size    = getattr(self, 'horizon_sizegetattr', 'N/A')
+        horizon_leadtime= getattr(self, 'horizon_leadtime', 'N/A')
+        sequence_length = getattr(self, 'sequence_length', 'N/A')     
 
         if isinstance(min_date, pd.Timestamp):
             min_date = min_date.date()
@@ -465,15 +468,27 @@ class EpiDataLoader:
         features    = getattr(self, 'feature_columns', 'N/A')
         data_stages = list(self.data.keys())
 
-        representation = (f"<EpiDataLoader(disease={disease},\n"
-                f"data stages: {data_stages}, \n" 
-                f"features: {features}, \n"
-                f"nuts_level={nuts_level}, \n"
-                f"date_range=({min_date} - {max_date}), \n"
-                f"nodes={n_nodes}, data_rows={n_rows}")
-        
-        if split_summary:
-            representation = representation + "\nsplit summary: " + split_summary
+        representation = f"""
+        <EpiDataLoader(
+        ------------- DATA -----------------
+        disease         : {disease},
+        features        : {features},
+        nuts_level      : {nuts_level},
+        date_range      : [{min_date} - {max_date}],
+        nodes           : {n_nodes},
+        data_rows       : {n_rows},
+        ------------- TASK -----------------
+        horizon size    : {horizon_size},
+        horizon leadtime: {horizon_leadtime},
+        ------------- LOAD -----------------
+        data stages     : {data_stages},
+        sequence length : {sequence_length}\n"""
+
+        if split_summary is not None:
+            representation += f"""
+        split summary   : {split_summary}\n"""
+
+        representation += ")>"
 
         return representation
 
