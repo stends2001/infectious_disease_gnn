@@ -45,7 +45,7 @@ class TemporalGCN(nn.Module):
         self.output_proj = nn.Sequential(
             nn.Linear(hidden_size, hidden_size // 2),
             # nn.ReLU(),
-            nn.Tanh(),
+            # nn.Tanh(),
             nn.Dropout(dropout),
             nn.Linear(hidden_size // 2, prediction_horizon)
         )

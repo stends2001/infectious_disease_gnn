@@ -153,8 +153,9 @@ class BaseModel:
             ax.set_xlabel("")            
             ax.grid()  
 
-        plt.tight_layout()
+        
         plt.suptitle(f'Predictions by {self.name}')
+        plt.tight_layout()
         return fig, axes
 
     def show_forecasts_maps(self,

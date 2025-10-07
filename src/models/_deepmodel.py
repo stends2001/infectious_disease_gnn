@@ -71,7 +71,8 @@ class DeepModel(BaseModel, ABC):
     def __init__(self, dataloader: 'GNNDataLoader', name: Optional[str] = None):
         super().__init__(dataloader, name)    
 
-        
+        self.horizon_size = dataloader.horizon_size
+
         self.gnn_dataloader: 'GNNDataLoader'                 = dataloader
         self.train_loader, self.val_loader, self.test_loader = _check_dataloader_validity(dataloader)
         self.device                                          = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -93,7 +94,11 @@ class DeepModel(BaseModel, ABC):
             'trained': False
         }
 
-        self.horizon_size = dataloader.horizon_size
+        # monitoring training
+        self.train_losses   = []
+        self.val_losses     = []
+        self.epoch_patience = []
+        self.learning_rates = [] 
 
     @abstractmethod
     def set_model_hparams(self) -> Any:
@@ -420,10 +425,15 @@ class DeepModel(BaseModel, ABC):
             else:
                 self.scheduler.step()  # Other schedulers don't need it
                 
+            # NEW: Track learning rate AFTER scheduler step
+            current_lr = self.optimizer.param_groups[0]['lr']
+            self.learning_rates.append(current_lr)
+            
+            # Store losses (this should already exist)
             self.train_losses   = list_train_loss
             self.val_losses     = list_val_loss
             self.epoch_patience = list_patience
-        
+
         self._state['trained'] = True
         if show_loss:
             self.plot_losses()
@@ -441,14 +451,16 @@ class DeepModel(BaseModel, ABC):
         patience_train_losses = np.array(self.train_losses)[np.array(self.epoch_patience)]
         patience_val_losses   = np.array(self.val_losses)[np.array(self.epoch_patience)]
 
-        fig, axes = plt.subplots(1,2, figsize = (18,4))
-        axes      = axes.flatten()
+        fig, axes = plt.subplots(1, 3, figsize=(24, 4))
+        axes = axes.flatten()
 
         sns.lineplot(self.train_losses, color = traincolor, label = 'train loss', ax = axes[0])
         sns.lineplot(self.val_losses,   color = valcolor,   label = 'val loss',   ax = axes[1])
+        sns.lineplot(self.learning_rates, color='green', label='learning rate', ax=axes[2])
         
         axes[0].scatter(patience_epochs, patience_train_losses, color='red', marker = 'x', label='Patience Epochs')
         axes[1].scatter(patience_epochs, patience_val_losses,   color='red', marker = 'x', label='Patience Epochs')   
+        axes[2].scatter(patience_epochs, patience_val_losses,   color='red', marker = 'x', label='Patience Epochs')           
 
         for ax in axes:
             ax.grid()
@@ -458,7 +470,12 @@ class DeepModel(BaseModel, ABC):
 
         axes[0].set_title('Training loss')      
         axes[1].set_title('Validation loss')    
+        axes[2].set_title('Learning Rate Schedule')
         
+        # Learning rate
+        axes[2].set_ylabel('Learning Rate')
+        axes[2].set_yscale('log')
+
         return (fig, axes)
 
     def run_snapshot(self, index: int = 0, debug: bool = False):

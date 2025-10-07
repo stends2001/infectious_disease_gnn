@@ -71,18 +71,20 @@ class Evaluator:
             node_specific_corr = predictions_df.groupby(self.id_col).apply(self._return_spearman_corr).rename("corr").reset_index()
             node_specific_mse = predictions_df.groupby(self.id_col).apply(self._return_mse).rename("mse").reset_index()
             node_specific_rmse = predictions_df.groupby(self.id_col).apply(self._return_rmse).rename("rmse").reset_index()
+            node_specific_ccc = predictions_df.groupby(self.id_col).apply(self._return_ccc).rename("ccc").reset_index()
 
 
             self.evaluation_entries[model.name][horizon_dataset] = {
                 'corr'      : node_specific_corr,
                 'mse'       : node_specific_mse,
-                'rmse'      : node_specific_rmse
+                'rmse'      : node_specific_rmse,
+                'ccc'       : node_specific_ccc
                 }
      
         
         return self
 
-    def plot_metric(self, metric: Literal['corr','mse','rmse'], horizon: int = 0) -> Figure:
+    def plot_metric(self, metric: Literal['corr','mse','rmse','ccc'], horizon: int = 0) -> 'Evaluator':
         """ 
         Returns a violinplot of the metric chosen
         An evaluation entry should be present!
@@ -110,9 +112,9 @@ class Evaluator:
         fig, ax = plt.subplots(1, 1, figsize = (12,6))
         sns.violinplot(data=df, x='model', y='value', hue = 'model', palette='Blues', ax = ax)
         ax.set_title('Model Evaluation Metrics per Node')
-        ax.set_ylabel(f'{metric}')       
+        ax.set_ylabel(f'{metric}')    
         
-        return fig
+        return self
 
 
     def _return_spearman_corr(self, df: pd.DataFrame):
@@ -136,3 +138,25 @@ class Evaluator:
         errors = target - pred
         rmse = np.sqrt(np.mean(errors ** 2))
         return rmse
+
+    def _return_ccc(self, df: pd.DataFrame):
+        target = df[self.target_col]
+        pred = df[self.pred_col]
+
+        mean_target = target.mean()
+        mean_pred   = pred.mean()
+
+        var_target = target.var(ddof=0)
+        var_pred = pred.var(ddof=0)
+
+
+        cov = ((target - mean_target) * (pred - mean_pred)).mean()
+
+        numerator = 2 * cov
+        denominator = var_target + var_pred + (mean_target - mean_pred) ** 2 # type: ignore
+
+        if denominator == 0:
+            return pd.NA  # Handle degenerate case
+
+        ccc = numerator / denominator
+        return ccc

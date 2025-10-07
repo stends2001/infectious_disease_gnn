@@ -1,3 +1,7 @@
+It seems that there are basically maximal threshold values, above whcih my temporal GCN cannot predict. That means that, for quite specific nodes really, the peaks are never really predicted right, but rather underpredicted!
+
+
+
 n_epochs = 10
 lr       = 0.0001
 

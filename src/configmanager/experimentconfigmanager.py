@@ -135,17 +135,17 @@ class ExperimentConfigManager(ConfigManager):
         if model == 'SpatialGCN'.lower():
 
             for graph, dataset in gnn_datasets.items():
-                ml_instance = SpatialGCNModel(name = f'exp-{experiment_name}-spatialgcn-{graph}', dataloader=dataset)
+                ml_instance = SpatialGCNModel(name = f'experiment-{experiment_name}-spatialgcn-{graph}', dataloader=dataset)
                 models_dict[graph] = ml_instance
         
         elif model == 'TGCN'.lower():
             for graph, dataset in gnn_datasets.items():
-                ml_instance = TGCNModel(name = f'exp-{experiment_name}-spatialgcn-{graph}', dataloader=dataset)
+                ml_instance = TGCNModel(name = f'experiment-{experiment_name}-tgcn-{graph}', dataloader=dataset)
                 models_dict[graph] = ml_instance            
 
         elif model == 'A3TGCN'.lower():
             for graph, dataset in gnn_datasets.items():
-                ml_instance = A3TGCNModel(name = f'exp-{experiment_name}-spatialgcn-{graph}', dataloader=dataset)
+                ml_instance = A3TGCNModel(name = f'experiment-{experiment_name}-a3tgcn-{graph}', dataloader=dataset)
                 models_dict[graph] = ml_instance        
 
         else:
@@ -158,9 +158,12 @@ class ExperimentConfigManager(ConfigManager):
             ml_instance.train(**experiment_config['train_hparams'])
             ml_instance.forecast()
             ml_instance.show_forecasts(dataset='test', target_h = 0)
+            models_dict[graph] = ml_instance
                 
         self.models_dict = models_dict
 
 
     def save_experiment(self, experiment_name: str):
-        self.register_entry(self.experiment_log[experiment_name])
+        for _, ml_instance in self.models_dict.items():
+            ml_instance.save_model()
+            ml_instance.save_weights()
