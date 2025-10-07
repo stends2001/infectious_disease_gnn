@@ -419,6 +419,26 @@ class EpiDataLoader:
         plt.tight_layout()
         return fig, ax
 
+    def difference_target(self):
+        """
+        takes the target and creates a difference of it. 
+        Further, will treat the new column as target for the rest of the process.
+        """
+        print(f"Target will be changed from {self.target_column} to 'delta'")
+
+        current_data = self.data['processed'].copy()
+
+        current_data['delta'] = current_data.groupby('node')['incidence'].diff()
+        current_data          = current_data.drop(labels = self.target_column, axis = 1).dropna()
+
+        self.target_column    = 'delta'
+
+        self.data['processed'] = current_data
+
+        return self
+
+
+
     def log_transform_target(self, shift: float = 1) -> 'EpiDataLoader':
         """
         Applies log(x + shift) transform to specified columns to handle zeros.
@@ -645,23 +665,23 @@ class EpiDataLoader:
     def finalize(self) -> 'EpiDataLoader':
         dfc, _       = self._return_datastage(expected_stage=[5])
 
-        target_columns: List[str] = []
+        target_horizon_columns: List[str] = []
 
         for horizon in range(self.horizon_size):
             target = f'{self.target_column}_h{horizon}'
 
             dfc[target] = dfc.groupby(self.id_column)[self.target_column].shift(-horizon)
             
-            target_columns.append(f'{self.target_column}_h{horizon}')
+            target_horizon_columns.append(f'{self.target_column}_h{horizon}')
         
         # drop old target
         dfc = dfc.drop(labels = self.target_column, axis = 1)     
         # save new target(s)
-        self.target_column = target_columns
+        self.target_horizons = target_horizon_columns
 
           
 
-        column_order = [self.temporal_column, self.id_column] + self.feature_columns + target_columns + self.split_columns
+        column_order = [self.temporal_column, self.id_column] + self.feature_columns + target_horizon_columns + self.split_columns
 
         self.data['final'] = _reorder_df(dfc, column_order)        
         return self

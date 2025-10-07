@@ -79,7 +79,7 @@ class SpatialGCNModel(DeepModel):
         self.model = SpatialGNN(
             node_features = len(self.gnn_dataloader.feature_columns),
             hidden_size   = hidden_size,
-            out_size      = self.gnn_dataloader.prediction_horizon
+            out_size      = self.gnn_dataloader.horizon_size
         ).to(self.device)
 
         model_hparams_config = {'hidden_size': hidden_size}

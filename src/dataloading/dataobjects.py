@@ -2,6 +2,9 @@ from typing import List
 import torch
 
 class GraphDataLoaderEntry:
+    """
+    Personal version of the pytorch Data class
+    """
     def __init__(self, 
                  x: torch.Tensor, 
                  y: torch.Tensor,
@@ -24,15 +27,18 @@ class GraphDataLoaderEntry:
     def __repr__(self):
         cls = self.__class__.__name__
         info = (
-            f"x={list(self.x.shape)}, "
-            f"y={list(self.y.shape)}, "
-            f"edge_index={list(self.edge_index.shape)}, "
-            f"edge_weight={list(self.edge_weight.shape)}"
+            f"x={tuple(self.x.shape)}, "
+            f"y={tuple(self.y.shape)}, "
+            f"edge_index={tuple(self.edge_index.shape)}, "
+            f"edge_weight={tuple(self.edge_weight.shape)}"
         )
         return f"{cls}({info})"
 
 
 class GraphDataLoader:
+    """
+    Personal version of the pytorch DataLoader class
+    """    
     def __init__(self, data_list: List[GraphDataLoaderEntry]):
         self.data_list = data_list
 
@@ -53,9 +59,9 @@ class GraphDataLoader:
         snapshot = self.data_list[0]
         info = (
             f"{len(self.data_list)} datapoints, "
-            f"sample: x={list(snapshot.x.shape)}, "
-            f"y={list(snapshot.y.shape)}, "
-            f"edge_index={list(snapshot.edge_index.shape)}, "
-            f"edge_weight={list(snapshot.edge_weight.shape)}"
+            f"sample: x={tuple(snapshot.x.shape)}, "
+            f"y={tuple(snapshot.y.shape)}, "
+            f"edge_index={tuple(snapshot.edge_index.shape)}, "
+            f"edge_weight={tuple(snapshot.edge_weight.shape)}"
         )
         return f"{cls}({info})"      

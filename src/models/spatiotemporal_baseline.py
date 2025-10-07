@@ -105,7 +105,7 @@ class TGCNModel(DeepModel):
 
         self.model_color = paired_colors[2]
         self.dataloader = dataloader
-        # self.config_info['model'] = 'tgcnmodel'
+        self.config_info['model'] = 'tgcnmodel'
 
     def set_model_hparams(self, hidden_size: int = 64, num_layers: int = 2,
                          temporal_layers: int = 2, dropout: float = 0.2):
@@ -124,7 +124,7 @@ class TGCNModel(DeepModel):
                                 'temporal_layers':temporal_layers,
                                 'dropout':dropout}
 
-        # self.config_info['model_hparams'] = model_hparams_config
+        self.config_info['model_hparams'] = model_hparams_config
         self._state['model_initialized'] = True
 
 

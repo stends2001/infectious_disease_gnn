@@ -4,7 +4,7 @@ import numpy as np
 import torch
 from typing import Literal, Optional, Union, List, Tuple
 from typing import cast
-from .graphdataloader import GraphDataLoaderEntry, GraphDataLoader
+from .dataobjects import GraphDataLoaderEntry, GraphDataLoader
 
 import os
 import matplotlib.pyplot as plt
@@ -154,7 +154,7 @@ class GNNDataLoader(EpiDataLoader):
 
         X_np = np.stack(feature_arrays, axis=-1)
 
-        for target in self.target_column:
+        for target in self.target_horizons:
 
             # Pivot from long to wide: rows=time, columns=nodes, values=feature
             pivoted = dfc.pivot(index=['timestamp'], columns=self.id_column, values=target).reset_index(drop = True)
@@ -213,28 +213,6 @@ class GNNDataLoader(EpiDataLoader):
         #                              'graphdirectory' : graphdirectory}
         return self
    
-    # def finalize(self) -> 'GNNDataLoader':
-    #     dfc, _       = self._return_datastage(expected_stage=[5])
-
-    #     target_columns = []
-
-    #     for horizon in range(self.horizon_size):
-    #         dfc[f'{self.target_column}_h{horizon}'] = dfc[self.target_column].shift(-horizon)
-    #         target_columns.append(f'{self.target_column}_h{horizon}')
-
-    #     dfc = dfc.drop(labels = self.target_column, axis = 1)       
-
-    #     column_order = [self.temporal_column, self.id_column] + self.feature_columns + target_columns + self.split_columns
-
-    #     self.data['final']         = _reorder_df(dfc, column_order)        
-    #     # self.data['final-horizon'] = add_horizon_shifts(self.data['final'], group_column=self.id_column, target_column=self.target_column, horizons = self.prediction_horizon)
-
-    #     target_columns = []
-    #     for hh in range(self.prediction_horizon):
-    #         target_columns.append(f'{self.target_column}_h{hh}')
-    #     self.target_columns = target_columns
-    #     return self
-
     def preview_dataloader(self, 
                         node_idx: int, 
                         timepoint: int = 22, 
@@ -341,7 +319,7 @@ class GNNDataLoader(EpiDataLoader):
                 new_instance.transform_params = self.transform_params                
                 
             # Copy column definitions
-            for attr in ['feature_columns', 'target_columns', 'split_columns']:
+            for attr in ['feature_columns', 'split_columns','target_horizons']:
                 if hasattr(self, attr):
                     setattr(new_instance, attr, copy.deepcopy(getattr(self, attr)))
             

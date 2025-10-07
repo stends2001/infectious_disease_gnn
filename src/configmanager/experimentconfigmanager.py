@@ -30,15 +30,16 @@ class ExperimentConfigManager(ConfigManager):
         # self.default_config_order   = ['name', 'id', 'child', 'model', 
                                     #    'global_hparams', 'model_hparams', 'task'] 
     def define(self,
-               experiment_name:                str,
+               experiment_name:    str,
                disease_name:       str,
                min_date:           str                              = '2001-01-01',
                max_date:           str                              = '2020-06-01',
                nuts_level:         Literal['nuts1','nuts2','nuts3'] = 'nuts2',
                include_population: bool                             = False,
-               periods:            int                              = 12,
-               prediction_horizon: int                              = 1,
-               lags              : range                            = range(2,3),
+               sequence_length:    int                              = 12,
+               horizon_size:       int                              = 1,
+               horizon_leadtime:   int                              = 3,
+               lags              : int                            = 1,
                log_transform_target:      bool                             = True,
                split_trainval:     str                              = '2018-06-01', 
                split_valtest:             str                       = '2019-06-01',
@@ -46,9 +47,10 @@ class ExperimentConfigManager(ConfigManager):
                normalization_method: Literal['minmax','zscore'] = 'zscore'  ,
                graphs: Union[List[str], str]  = 'identity_graph',
                model: Union[List[str], str]  = 'spatialgcn',
-               hyperparameters: dict = {}
+               global_hparams: dict = {},
+               model_hparams: dict = {},
+               train_hparams: dict ={},
                ) -> 'ExperimentConfigManager':
-  
         """
         define an experiment
         """
@@ -59,8 +61,9 @@ class ExperimentConfigManager(ConfigManager):
             'min_date'              : min_date,
             'max_date'              : max_date,
             'include_population'    : include_population,
-            'periods'               : periods,
-            'prediction_horizon'    : prediction_horizon,
+            'sequence_length'       : sequence_length,
+            'horizon_size'          : horizon_size,
+            'horizon_leadtime'      : horizon_leadtime,
             'lags'                  : lags,
             'log_transform_target'  : log_transform_target,
             'add_time_features'     : add_time_features,
@@ -69,7 +72,9 @@ class ExperimentConfigManager(ConfigManager):
             'normalization_method'  : normalization_method,
             'graphs'                : graphs,
             'model'                 : model,
-            'hyperparameters'       : hyperparameters
+            'global_hparams'        : global_hparams,
+            'model_hparams'         : model_hparams,
+            'train_hparams'         : train_hparams
         }
             
         if experiment_name in self.experiment_log.keys():
@@ -89,14 +94,16 @@ class ExperimentConfigManager(ConfigManager):
             experiment_config = self.experiment_log[experiment_name]
 
         # section 1: get epi-dataloader
-        epidata = GNNDataLoader(disease_name = experiment_config['disease_name'],
-                                data_env_dir = get_data_env() ,
-                                min_date     = experiment_config['min_date'],
-                                max_date     = experiment_config['max_date'],
-                                nuts_level   = experiment_config['nuts_level'],
-                                include_population= experiment_config['include_population'],
-                                periods= experiment_config['periods'],
-                                prediction_horizon= experiment_config['prediction_horizon'])
+        epidata = GNNDataLoader(disease_name        = experiment_config['disease_name'],
+                                data_env_dir        = get_data_env() ,
+                                min_date            = experiment_config['min_date'],
+                                max_date            = experiment_config['max_date'],
+                                nuts_level          = experiment_config['nuts_level'],
+                                include_population  = experiment_config['include_population'],
+                                sequence_length     = experiment_config['sequence_length'],
+                                horizon_size        = experiment_config['horizon_size'],
+                                horizon_leadtime    = experiment_config['horizon_leadtime'])
+        
         if experiment_config['add_time_features']:
             epidata.add_time_features()
         if experiment_config['log_transform_target']:        
@@ -104,6 +111,7 @@ class ExperimentConfigManager(ConfigManager):
 
         epidata.set_splits(split_trainval= experiment_config['split_trainval'],
                            split_valtest = experiment_config['split_valtest'])
+        
         epidata.normalize(normalization_method= experiment_config['normalization_method'])
         epidata.add_lagged_features(lags = experiment_config['lags'])
         epidata.finalize()
@@ -144,10 +152,10 @@ class ExperimentConfigManager(ConfigManager):
             print('model not found')    
 
         for graph, ml_instance in models_dict.items():
-            ml_instance.set_model_hparams()
-            ml_instance.set_global_hparams(**experiment_config['hyperparameters'])
+            ml_instance.set_model_hparams(**experiment_config['model_hparams'])
+            ml_instance.set_global_hparams(**experiment_config['global_hparams'])
             ml_instance.run_snapshot(debug=True)
-            ml_instance.train(verbose=2)
+            ml_instance.train(**experiment_config['train_hparams'])
             ml_instance.forecast()
             ml_instance.show_forecasts(dataset='test', target_h = 0)
                 
@@ -156,6 +164,3 @@ class ExperimentConfigManager(ConfigManager):
 
     def save_experiment(self, experiment_name: str):
         self.register_entry(self.experiment_log[experiment_name])
-        
-     
-

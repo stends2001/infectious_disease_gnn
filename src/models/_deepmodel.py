@@ -16,7 +16,7 @@ from ..metrics.losses import spike_weighted_mse, mse, spike_timing_weighted_mse,
 import seaborn as sns
 from .weights_manager import ModelWeightsManager
 
-from ..dataloading.graphdataloader import GraphDataLoader
+from ..dataloading.dataobjects import GraphDataLoader
 
 import torch.optim as optim
 from torch.optim.optimizer import Optimizer
@@ -26,6 +26,10 @@ from torch.optim.lr_scheduler import _LRScheduler
 from abc import ABC, abstractmethod
 from matplotlib.figure import Figure 
 from matplotlib.axes import Axes
+
+from tqdm import tqdm
+
+
 
 def _check_dataloader_validity(dataloader: 'GNNDataLoader') -> Tuple[GraphDataLoader, GraphDataLoader, GraphDataLoader]:
 
@@ -241,7 +245,8 @@ class DeepModel(BaseModel, ABC):
             # Default scheduler kwargs for common schedulers
             default_scheduler_kwargs = {
                 'step':        {'step_size': 15, 'gamma': 0.8},
-                'exponential': {'gamma': 0.95}
+                'exponential': {'gamma': 0.95},
+                'plateau':     {'mode': 'min', 'factor': 0.5, 'patience': 10, 'verbose': True}
             }
             scheduler_kwargs = default_scheduler_kwargs.get(scheduler, {}) if scheduler else {}
 
@@ -327,8 +332,14 @@ class DeepModel(BaseModel, ABC):
         L_train    = len(list(self.train_loader))
         L_val      = len(list(self.val_loader))
         
+        if verbose == 0:
+            epoch_iter = tqdm(range(self.n_epochs), desc="Training epochs")
+        else:
+            epoch_iter = range(self.n_epochs)
+
         # each epoch is divided into a training phase and a validation phase
-        for epoch in range(self.n_epochs):
+
+        for epoch in epoch_iter:
 
         # Training phase
             total_loss = 0
@@ -403,7 +414,12 @@ class DeepModel(BaseModel, ABC):
                     break
             
             # Step scheduler every epoch (or you could tie it to validation improvement)
-            self.scheduler.step()
+
+            if isinstance(self.scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+                self.scheduler.step(val_mse)  # Pass validation loss            
+            else:
+                self.scheduler.step()  # Other schedulers don't need it
+                
             self.train_losses   = list_train_loss
             self.val_losses     = list_val_loss
             self.epoch_patience = list_patience
@@ -660,16 +676,17 @@ class DeepModel(BaseModel, ABC):
         index      = pd.MultiIndex.from_arrays([timepoints, nodes], names=['timestamp_idx', 'node'])
 
         # Create column names for horizon steps
-        columns                 = [f"incidence_h{h}" for h in range(horizon)]
+        columns                 = self.gnn_dataloader.target_horizons
         df_target               = pd.DataFrame(reshaped, index=index, columns=columns).reset_index(drop = False)
         merged                  = pd.merge(df_pred, df_target, on = ['timestamp_idx','node'])
         merged['timestamp_idx'] = merged['timestamp_idx'] + (self.gnn_dataloader.sequence_length - 1)
         timestamp_map           = eval_df[['timestamp']].drop_duplicates().reset_index(drop = True).reset_index(drop=False).rename(columns={'index': 'timestamp_idx'})
         merged['timestamp']     = merged['timestamp_idx'].map(dict(zip(timestamp_map['timestamp_idx'], timestamp_map['timestamp'])))
         # return merged, eval_df
-        formatted_eval = pd.merge(merged[['timestamp', 'node'] + [f'pred_h0']], eval_df, on =['timestamp','node'], how = 'right')
         
-        columns_context = [self.dataloader.temporal_column, self.dataloader.id_column] + self.dataloader.feature_columns + self.dataloader.split_columns + ['incidence_h0']
+        formatted_eval = pd.merge(merged[['timestamp', 'node'] + [f'pred_h{hh}' for hh in range(horizon)]], eval_df, on =['timestamp','node'], how = 'right')
+
+        columns_context = [self.dataloader.temporal_column, self.dataloader.id_column] + self.dataloader.feature_columns + self.dataloader.split_columns + [self.gnn_dataloader.target_horizons[0]]
 
         horizon_prediction_dict = {}
 
@@ -677,11 +694,12 @@ class DeepModel(BaseModel, ABC):
 
             horizon_predictions         = formatted_eval[columns_context+ [f'pred_h{hh}']]
             horizon_predictions         = horizon_predictions.rename(columns = {f'pred_h{hh}'  : 'pred',
-                                                                                 'incidence_h0': 'incidence'})
+                                                                                 f'{self.gnn_dataloader.target_horizons[0]}': f'{self.gnn_dataloader.target_column}'})
             horizon_predictions['pred'] = horizon_predictions['pred'].shift(-hh)
 
-            horizon_prediction_dict[f'horizon_{hh}'] = horizon_predictions
+            horizon_prediction_dict['transformed']= {f'horizon_{hh}': horizon_predictions}
 
+            horizon_prediction_dict['nontransformed']= {f'horizon_{hh}': self._denorm_predictions(horizon_predictions)}
 
         self.evaluation_datasets[dataset] = horizon_prediction_dict
         return self

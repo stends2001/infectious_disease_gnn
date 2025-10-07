@@ -1,7 +1,7 @@
 from typing import Optional, List, Dict
 from pathlib import Path
 import os
-
+import numpy as np
 import yaml
 
 def to_underscore_string(s: str) -> str:
@@ -45,3 +45,6 @@ def get_data_env() -> str:
     wissdaten_dir   = os.path.join(tmpdir, 'wissdaten')
     data_env        = os.path.join(wissdaten_dir, 'ZKI-PH4/deschrijvers_wissdaten/data')
     return data_env
+
+def sum_preserve_nan(x):
+    return x.sum() if x.notna().any() else np.nan

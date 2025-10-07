@@ -22,7 +22,7 @@ from ..configmanager.modelconfigmanager import ModelConfigManager
 
 from matplotlib.figure import Figure
 from matplotlib.axes import Axes
-
+from ..utils.helpers import sum_preserve_nan
 
 class BaseModel:
 
@@ -73,8 +73,15 @@ class BaseModel:
     def _denorm_predictions(self, df: pd.DataFrame) -> pd.DataFrame:
 
         zscore_rev = reverse_zscore_scaling(df, params = self.dataloader.transform_params['normalization']['params'])
-        log_rev    = reverse_log(zscore_rev, params = self.dataloader.transform_params['log']) 
-        return log_rev
+
+        if 'log' in self.dataloader.transform_params.keys():
+            log_rev    = reverse_log(zscore_rev, params = self.dataloader.transform_params['log']) 
+            return log_rev
+
+        else:
+            return zscore_rev
+
+        
 
     def show_forecasts(self,
                        dataset: Literal['train','val','test'],
@@ -105,13 +112,9 @@ class BaseModel:
         (fig, axes) -> first figure is the national aggregation of 
         incidence, the remaining figures represent one per node.
         """
-    
-        target_column = 'incidence'
+        target_column = self.dataloader.target_column
         pred_column   = 'pred'
-        evaluation_df = self.evaluation_datasets[dataset][f'horizon_{target_h}']
-
-        if not transformed:
-            evaluation_df = self._denorm_predictions(evaluation_df)
+        evaluation_df = self.evaluation_datasets[dataset]['transformed'][f'horizon_{target_h}'] if transformed else self.evaluation_datasets[dataset]['nontransformed'][f'horizon_{target_h}']
 
         if isinstance(node_idx, int):
             node_idx = [node_idx]
@@ -129,7 +132,7 @@ class BaseModel:
             evaluation_df = evaluation_df[evaluation_df[self.dataloader.temporal_column]< date1] 
 
 
-        evaluation_df_aggr= evaluation_df.copy().groupby(self.dataloader.temporal_column).agg({target_column: 'sum', pred_column: 'sum'})
+        evaluation_df_aggr= evaluation_df.copy().groupby(self.dataloader.temporal_column).agg({target_column: sum_preserve_nan, pred_column: sum_preserve_nan})
         ax = axes[0]
         sns.lineplot(data=evaluation_df_aggr, x=self.dataloader.temporal_column, y=target_column, color=testcolor, marker = "o",           ax=ax)
         sns.lineplot(data=evaluation_df_aggr, x=self.dataloader.temporal_column, y=pred_column, color=self.model_color, markeredgecolor='black', marker = "x",  ax=ax)

@@ -23,6 +23,7 @@ def spike_timing_weighted_mse(y_pred, y_true):
     return torch.mean(weights * (y_pred - y_true)**2)
 
 
+
 def temporal_smoothness_loss(y_pred, y_true, y_lag, beta=0.1):
 
     """

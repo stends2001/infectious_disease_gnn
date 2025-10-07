@@ -14,14 +14,14 @@ from torch_geometric_temporal.nn.recurrent import A3TGCN2
 from ..utils.constants import paired_colors
 
 class A3TGCN2Module(torch.nn.Module):
-    def __init__(self, node_features, hidden_size, periods, horizon, self_loops):
+    def __init__(self, node_features, hidden_size, sequence_length, horizon_size, self_loops):
         super(A3TGCN2Module, self).__init__()
 
         # Attention Temporal Graph Convolutional Cell
-        self.tgnn = A3TGCN2(in_channels=node_features,  out_channels=hidden_size, periods=periods, batch_size = 1, add_self_loops=self_loops) # node_features=2, periods=12
+        self.tgnn = A3TGCN2(in_channels=node_features,  out_channels=hidden_size, periods=sequence_length, batch_size = 1, add_self_loops=self_loops) # node_features=2, periods=12
         
         # Equals single-shot prediction
-        self.linear = torch.nn.Linear(hidden_size, horizon)
+        self.linear = torch.nn.Linear(hidden_size, horizon_size)
 
     def forward(self, x, edge_index, edge_weight, debug=False):
         """
@@ -80,8 +80,8 @@ class A3TGCNModel(DeepModel):
         self.model = A3TGCN2Module(
             node_features= len(self.gnn_dataloader.feature_columns),
             hidden_size  = hidden_size,
-            periods      = self.gnn_dataloader.periods,
-            horizon      = self.prediction_horizon,
+            sequence_length   = self.gnn_dataloader.sequence_length,
+            horizon_size      = self.horizon_size,
             self_loops   = self_loops
         ).to(self.device)
 
