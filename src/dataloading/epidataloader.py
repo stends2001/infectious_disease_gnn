@@ -224,20 +224,29 @@ class EpiDataLoader:
 
         dfc, _ = self._return_datastage(expected_stage=[2,3])
 
-        # Number of weeks per year (approximate)
-        periods_per_year = 52
+        # Extract year and ISO week number
+        iso_calendar = dfc[self.temporal_column].dt.isocalendar()
+        years = iso_calendar['year']
+        weeks = iso_calendar['week']        
 
-        # Extract the week number of the year from the temporal column (assuming datetime dtype)
-        # Use pandas dt accessor for datetime
-        t_of_year = dfc[self.temporal_column].dt.isocalendar().week
+        # Function to check if a year has 53 weeks
+        def has_53_weeks(year):
+            dec_28 = pd.Timestamp(year=year, month=12, day=28)
+            return dec_28.isocalendar()[1] == 53
+        
+        # Cache years and their week counts (52 or 53)
+        unique_years = years.unique()
+        year_week_count = {year: 53 if has_53_weeks(year) else 52 for year in unique_years}
+        # Map each year in df to its week count
+        weeks_in_year = years.map(year_week_count)        
 
         # Column names
         sin_col = f'{self.temporal_column}_sin'
         cos_col = f'{self.temporal_column}_cos'
 
         # Compute sine and cosine transformation to encode cyclical nature of weeks in a year
-        dfc[sin_col] = np.sin(2 * np.pi * t_of_year / periods_per_year)
-        dfc[cos_col] = np.cos(2 * np.pi * t_of_year / periods_per_year)
+        dfc[sin_col] = np.sin(2 * np.pi * weeks / weeks_in_year)
+        dfc[cos_col] = np.cos(2 * np.pi * weeks / weeks_in_year)
 
         self.data['processed'] = dfc
 
