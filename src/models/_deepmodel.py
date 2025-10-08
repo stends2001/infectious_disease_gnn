@@ -387,12 +387,15 @@ class DeepModel(BaseModel, ABC):
             # average loss
             val_mse = val_loss /L_val
             list_val_loss.append(val_mse)
-            
+            current_lr = self.optimizer.param_groups[0]['lr']
+            self.learning_rates.append(current_lr)            
             # Switch back to training mode for next epoch
             self.model.train()
             
             # Check if validation loss improved
             val_improved = val_mse < (best_val_loss - self.min_delta)
+
+
             
             # Validation improved -> save best model and reset patience
             if val_improved:
@@ -402,6 +405,8 @@ class DeepModel(BaseModel, ABC):
                 if epoch in verbose_loops:
                     print(f"Epoch {epoch} train loss: {train_mse:.4f}, val loss: {val_mse:.4f} ✓ (new best)")
                 list_patience.append(False)
+
+
 
             # Validation didn't improve -> increment patience
             else:
@@ -425,10 +430,7 @@ class DeepModel(BaseModel, ABC):
             else:
                 self.scheduler.step()  # Other schedulers don't need it
                 
-            # NEW: Track learning rate AFTER scheduler step
-            current_lr = self.optimizer.param_groups[0]['lr']
-            self.learning_rates.append(current_lr)
-            
+           
             # Store losses (this should already exist)
             self.train_losses   = list_train_loss
             self.val_losses     = list_val_loss
@@ -450,6 +452,7 @@ class DeepModel(BaseModel, ABC):
         patience_epochs       = epochs[np.array(self.epoch_patience)]
         patience_train_losses = np.array(self.train_losses)[np.array(self.epoch_patience)]
         patience_val_losses   = np.array(self.val_losses)[np.array(self.epoch_patience)]
+        patience_learningrates= np.array(self.learning_rates)[np.array(self.epoch_patience)]
 
         fig, axes = plt.subplots(1, 3, figsize=(24, 4))
         axes = axes.flatten()
@@ -460,7 +463,7 @@ class DeepModel(BaseModel, ABC):
         
         axes[0].scatter(patience_epochs, patience_train_losses, color='red', marker = 'x', label='Patience Epochs')
         axes[1].scatter(patience_epochs, patience_val_losses,   color='red', marker = 'x', label='Patience Epochs')   
-        axes[2].scatter(patience_epochs, patience_val_losses,   color='red', marker = 'x', label='Patience Epochs')           
+        axes[2].scatter(patience_epochs, patience_learningrates,   color='red', marker = 'x', label='Patience Epochs')           
 
         for ax in axes:
             ax.grid()

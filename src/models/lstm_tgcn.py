@@ -50,8 +50,6 @@ class TemporalGCN(nn.Module):
             nn.Linear(hidden_size // 2, prediction_horizon)
         )
         
-        self.output_scale = nn.Parameter(torch.tensor(3.0))
-
         self.dropout = nn.Dropout(dropout)
         
     def forward(self, x: torch.Tensor, edge_index: torch.Tensor, 
@@ -88,8 +86,6 @@ class TemporalGCN(nn.Module):
         # Always use the last hidden state for predictions
         last_hidden = lstm_out[:, -1, :]  # [num_nodes, hidden_size]
         output = self.output_proj(last_hidden)  # [num_nodes, prediction_horizon]
-
-        output = output * self.output_scale
 
         return output  # [num_nodes, prediction_horizon]
 

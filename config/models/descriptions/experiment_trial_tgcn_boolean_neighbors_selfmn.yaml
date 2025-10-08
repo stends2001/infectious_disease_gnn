@@ -1,5 +1,5 @@
 name: experiment-trial-tgcn-boolean_neighbors_selfmn
-id: '0003'
+id: '0007'
 task: {}
 child: deepmodel
 model: tgcnmodel
@@ -9,12 +9,15 @@ model_hparams:
   temporal_layers: 2
   dropout: 0.2
 global_hparams:
-  lr: 7.5e-05
-  n_epochs: 100
-  patience: 15
-  min_delta: 0.001
+  lr: 5.0e-05
+  n_epochs: 250
+  patience: 20
+  min_delta: 0.0001
   optimizer: adam
   optimizer_kwargs: null
   scheduler: plateau
-  scheduler_kwargs: null
+  scheduler_kwargs:
+    mode: min
+    factor: 0.5
+    patience: 5
   loss: mse
