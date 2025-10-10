@@ -30,10 +30,11 @@ class GNNDataLoader(EpiDataLoader):
                  include_population: bool = False,
                  horizon_size: int     = 1,
                  horizon_leadtime:int  = 1,
-                 sequence_length: int  = 1):
+                 sequence_length: int  = 1,
+                 split_berlin: bool    = True):
         self.task_config = {}
 
-        super().__init__(disease_name, data_env_dir, min_date, max_date, nuts_level, include_population, horizon_size, horizon_leadtime, sequence_length)
+        super().__init__(disease_name, data_env_dir, min_date, max_date, nuts_level, include_population, horizon_size, horizon_leadtime, sequence_length, split_berlin)
          
         self.edge_index:  Optional[torch.Tensor] = None
         self.edge_weight: Optional[torch.Tensor] = None
@@ -308,6 +309,8 @@ class GNNDataLoader(EpiDataLoader):
             if hasattr(self, 'data') and self.data:
                 new_instance.data = copy.deepcopy(self.data)
             
+            if hasattr(self, 'split_berlin'):
+                new_instance.split_berlin = self.split_berlin
             # Copy split information
             if hasattr(self, 'time_splits'):
                 new_instance.time_splits = self.time_splits.copy()

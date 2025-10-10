@@ -17,7 +17,7 @@ import seaborn as sns
 from .weights_manager import ModelWeightsManager
 
 from ..dataloading.dataobjects import GraphDataLoader
-
+import copy
 import torch.optim as optim
 from torch.optim.optimizer import Optimizer
 # from torch.optim import Optimizer
@@ -439,6 +439,213 @@ class DeepModel(BaseModel, ABC):
         self._state['trained'] = True
         if show_loss:
             self.plot_losses()
+
+    # def train(self,
+    #           verbose:             Literal[0,1,2] = 1,
+    #           dataloader_snapshot: bool = True,
+    #           show_loss:           bool = True,
+    #           reset_on_lr_change:  bool = True
+    #           ):
+
+    #     """
+    #     trains model following early stoping checkpoint approach:
+    #     - train -> backward propagation
+    #     - if validation loss improves by min_delta, the model is saved
+    #     - if validation does not improve, we run start the patience iterator: no improvement by min_delta for patience-epochs,
+    #       then stop training
+    #     - either after patience is reached, or after n_epochs, the model with the best validation loss is saved.
+
+    #     Parameters:
+    #     -----------
+    #     verbose : Literal[0,1,2] = 1
+    #         how frequently performance update is printed. 
+    #         - 0: no updates
+    #         - 1: update per 10 epochs
+    #         - 2: update per 1 epoch
+    #     dataloader_snapshot: bool = True
+    #         whether or not to show the first training dataloader snapshot
+    #     show_loss: bool = True
+    #         whether or not to show the curves of train/val loss per epoch
+
+    #     See also:
+    #     ---------
+    #     plot_losses
+    #         mehtod to visualise train/val loss per epoch
+    #     """
+    #     # checkpoints
+    #     if self.model is None:
+    #         raise ValueError('Please initiate a model')
+        
+    #     if self.optimizer is None:
+    #         raise ValueError('no valid optimizer found')
+
+    #     if self.scheduler is None:
+    #         raise ValueError('no valid scheduler found')
+        
+    #     self._check_state(['model_initialized', 'global_hparams_set'])
+
+    #     # print dataloder snapshot
+    #     if dataloader_snapshot:
+    #         print(f'Dataloader Snapshot: {self.train_loader[0]}')
+
+    #     # verbose loops creation
+    #     if verbose == 1:
+    #         verbose_loops = list(np.arange(1, self.n_epochs + 1, step=10))
+    #         epoch_iter = range(self.n_epochs)   
+    #     elif verbose == 2:
+    #         verbose_loops = list(np.arange(1, self.n_epochs + 1))
+    #         epoch_iter = range(self.n_epochs)   
+    #     else:
+    #         verbose_loops = []
+    #         epoch_iter = tqdm(range(self.n_epochs), desc="Training epochs")
+
+    #     # Initialization for training                    
+    #     self.model.train()
+    #     best_val_loss   = float('inf')
+    #     patience_counter= 0                             # an iterator over patience loops
+    #     best_model_state= None
+    #     best_model_epoch= -1
+    #     list_train_loss =[]                             # save train loss per epoch    => save post-validation
+    #     list_val_loss   =[]                             # save val loss per epoch      => save post-validation
+    #     list_patience   =[]                             # save mask of patience epoch  => save post-validation
+    #     list_lr_rates   =[]                             # save lrs                     => save pre-validation (lr actually used DURING training)
+        
+    #     L_train         = len(list(self.train_loader))  # number of training data - timestamps
+    #     L_val           = len(list(self.val_loader))    # number of validation data - timestamps
+        
+
+    #     #######################
+    #     ### EPOCH ITERATION ###
+    #     #######################        
+    #     # each epoch is divided into a training phase, a validation phase and a learning phase
+
+    #     for epoch in epoch_iter:
+    #         ######################
+    #         ### Training phase ###
+    #         ######################
+    #         total_train_loss = 0
+    #         total_val_loss   = 0
+    #         current_lr       = self.optimizer.param_groups[0]['lr'] # current LR
+    #         # per snapshot
+    #         for snapshot in self.train_loader:
+                
+    #             snapshot        = snapshot.to(self.device)                                          # move snapshot to device
+    #             self.optimizer.zero_grad()                                                          # reset optimzer
+    #             y_hat           = self.model(snapshot.x, snapshot.edge_index, snapshot.edge_weight) # get predictions
+    #             loss            = self.loss(y_hat, snapshot.y)                                      # calculate datapoint - loss
+    #             loss.backward()                                                                     # backward pass: compute gradients
+    #             self.optimizer.step()                                                               # update model parameters based on computed gradients
+    #             total_train_loss+= loss.item()                                                      # sum loss over all datapoints this epoch
+                    
+    #         ######################
+    #         ## Validation phase ##
+    #         ######################
+    #         self.model.eval()
+            
+    #         # disable gradient-calculation -> no parameters to be updated
+    #         with torch.no_grad():
+    #             for snapshot in self.val_loader:
+    #                 snapshot = snapshot.to(self.device)
+                    
+    #                 y_hat = self.model(snapshot.x, snapshot.edge_index, snapshot.edge_weight)       # get predictions
+    #                 loss  = self.loss(y_hat, snapshot.y)                                            # calculate datapoint - loss
+    #                 total_val_loss += loss.item()                                                   # sum loss over all datapoints this epoch
+                    
+    #         ######################
+    #         ### Learning phase ###
+    #         ######################
+    #         self.model.train()
+    #         # update monitoring-variables losses
+    #         mean_train_loss = total_train_loss / L_train                                            # average training loss
+    #         mean_val_loss   = total_val_loss   / L_val                                              # average val loss
+
+    #         list_train_loss.append(mean_train_loss)
+    #         list_val_loss.append(mean_val_loss)
+    #         list_lr_rates.append(current_lr)                        
+            
+            
+    #         val_improved = mean_val_loss < (best_val_loss - self.min_delta)                         # Check if validation loss improved
+    #         list_patience.append(not val_improved)
+
+    #         verbose_statement = f"Epoch {epoch} train loss: {mean_train_loss:.4f}, val loss: {mean_val_loss:.4f}"
+
+    #         # Update model: validation loss improved 
+    #         # -> save best model and reset patience
+    #         if val_improved:
+    #             best_val_loss    = mean_val_loss
+    #             patience_counter = 0
+    #             # best_model_state = self.model.state_dict().copy()
+    #             best_model_state = copy.deepcopy(self.model.state_dict())
+    #             best_model_epoch = epoch
+    #             verbose_statement+= " ✓"
+                
+
+    #         # Don't update model: validation loss not improved 
+    #         # -> increment patience
+    #         else:
+    #             patience_counter += 1
+    #             verbose_statement+= f" (patience: {patience_counter}/{self.patience})"
+
+    #         # Early stopping if patience exceeded
+    #         if patience_counter >= self.patience:
+    #             print(f"Early stopping: Validation loss hasn't improved for {self.patience} epochs")
+
+    #             if best_model_state is not None:
+    #                 self.model.load_state_dict(best_model_state)                 # Restore best model
+    #                 print(f"Restored model from epoch {best_model_epoch}, best validation loss: {best_val_loss:.4f}")
+    #             break
+
+    #         elif epoch in verbose_loops:
+    #             print(verbose_statement)                
+
+    #         # for LROnPlateau scheduler we step with the val-loss
+    #         if isinstance(self.scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+    #             self.scheduler.step(mean_val_loss)
+    #         # else no argument needed     
+    #         else:
+    #             self.scheduler.step()
+
+
+    #         # Check for change in LR:
+    #         new_lr      = self.optimizer.param_groups[0]['lr']
+    #         lr_changed  = (new_lr != current_lr)
+
+    #         if lr_changed and reset_on_lr_change:
+    #             if best_model_state is not None:
+    #                 print(f"\nUpdating LR: reloading best model from epoch {best_model_epoch}")
+
+    #                 # Reload best model
+    #                 self.model.load_state_dict(best_model_state)
+    #                 # Reset patience counter
+    #                 # patience_counter = 0
+                    
+    #                 # Reset optimizer to forget degraded momentum/adaptive rates
+    #                 # This prevents "toxic" gradients from patience countdown affecting new phase
+    #                 optimizer_name   = self.config_info['global_hparams']['optimizer']
+    #                 optimizer_kwargs = self.config_info['global_hparams']['optimizer_kwargs'] or {}
+    #                 self.optimizer   = self._get_optimizer(optimizer_name, new_lr, optimizer_kwargs)
+                    
+    #                 # Update scheduler with new optimizer
+    #                 if self.scheduler is not None:
+    #                     scheduler_name   = self.config_info['global_hparams']['scheduler']
+    #                     scheduler_kwargs = self.config_info['global_hparams']['scheduler_kwargs'] or {}
+    #                     self.scheduler   = self._get_scheduler(scheduler_name, self.optimizer, scheduler_kwargs)
+    
+    #                     if isinstance(self.scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau): # make sure optimizer reloads lr based on best global val loss
+    #                         self.scheduler.step(best_val_loss)
+
+                
+    #     self.train_losses   = list_train_loss
+    #     self.val_losses     = list_val_loss
+    #     self.epoch_patience = list_patience
+    #     self.learning_rates = list_lr_rates
+
+    #     self._state['trained'] = True
+
+    #     if show_loss:
+    #         self.plot_losses()
+
+
 
     def plot_losses(self) -> Tuple[Figure, Axes]:
         """

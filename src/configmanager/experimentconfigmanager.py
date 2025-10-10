@@ -32,6 +32,7 @@ class ExperimentConfigManager(ConfigManager):
     def define(self,
                experiment_name:    str,
                disease_name:       str,
+               split_berlin:       bool = True,
                min_date:           str                              = '2001-01-01',
                max_date:           str                              = '2020-06-01',
                nuts_level:         Literal['nuts1','nuts2','nuts3'] = 'nuts2',
@@ -69,6 +70,7 @@ class ExperimentConfigManager(ConfigManager):
             'add_time_features'     : add_time_features,
             'split_trainval'        : split_trainval, 
             'split_valtest'         : split_valtest,
+            'split_berlin'          : split_berlin,
             'normalization_method'  : normalization_method,
             'graphs'                : graphs,
             'model'                 : model,
@@ -102,7 +104,8 @@ class ExperimentConfigManager(ConfigManager):
                                 include_population  = experiment_config['include_population'],
                                 sequence_length     = experiment_config['sequence_length'],
                                 horizon_size        = experiment_config['horizon_size'],
-                                horizon_leadtime    = experiment_config['horizon_leadtime'])
+                                horizon_leadtime    = experiment_config['horizon_leadtime'],
+                                split_berlin        = experiment_config['split_berlin'])
         
         if experiment_config['add_time_features']:
             epidata.add_time_features()

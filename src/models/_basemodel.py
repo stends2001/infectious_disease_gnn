@@ -82,7 +82,6 @@ class BaseModel:
             return zscore_rev
 
         
-
     def show_forecasts(self,
                        dataset: Literal['train','val','test'],
                        node_idx: Union[List[int], int] = 1,
@@ -163,11 +162,11 @@ class BaseModel:
                             tt: int,
                             scale: Literal['constant','equal','individual'],
                             target_h: Optional[int] = 0,
-                       transformed: bool = False) -> Tuple[Figure, Axes]:
+                            transformed: bool = False) -> Tuple[Figure, Axes]:
 
         target_column: str = self.dataloader.target_column # type: ignore
         pred_column   = 'pred'
-        evaluation_df = self.evaluation_datasets[dataset][f'horizon_{target_h}']
+        evaluation_df = self.evaluation_datasets[dataset]['transformed'][f'horizon_{target_h}'] if transformed else self.evaluation_datasets[dataset]['nontransformed'][f'horizon_{target_h}']
 
         if not transformed:
             evaluation_df = self._denorm_predictions(evaluation_df)

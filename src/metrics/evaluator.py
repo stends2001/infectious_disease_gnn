@@ -1,6 +1,6 @@
 from typing import Union, List, Literal
 from scipy.stats import spearmanr
-from .models._basemodel import BaseModel
+from ..models._basemodel import BaseModel
 import seaborn as sns
 from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
