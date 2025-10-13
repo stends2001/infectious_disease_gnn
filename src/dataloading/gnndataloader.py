@@ -291,13 +291,14 @@ class GNNDataLoader(EpiDataLoader):
         new_instance = GNNDataLoader(
             disease_name       = self.disease,
             data_env_dir       = self.data_env_dir,
-            min_date           = self.min_date if isinstance(self.min_date, str) else self.min_date.strftime('%Y-%m-%d'),
+            min_date           = self.og_min_date if isinstance(self.og_min_date, str) else self.og_min_date.strftime('%Y-%m-%d'),
             max_date           = self.max_date if isinstance(self.max_date, str) else self.max_date.strftime('%Y-%m-%d'),
             nuts_level         = cast(Literal['nuts1', 'nuts2', 'nuts3'], self.nuts_level),
             include_population = self.include_population,
             horizon_size       = self.horizon_size,
             horizon_leadtime   = self.horizon_leadtime,
-            sequence_length    = self.sequence_length
+            sequence_length    = self.sequence_length,
+            split_berlin       = self.split_berlin
         )
         
         
@@ -362,6 +363,35 @@ class GNNDataLoader(EpiDataLoader):
                 setattr(new_instance, attr, getattr(self, attr))
         
         return new_instance
+
+    def randomize_edge_weights(self) -> 'GNNDataLoader':
+        """
+        Sanity check by giving each existing edge a random weights within the same min/max range as origional
+
+        First retrieve a graph, then use this method.
+
+        Optionally, use the `randomize_edges` in addition.
+        """
+
+        w_min = self.edge_weight.min().item()
+        w_max = self.edge_weight.max().item()
+
+        randomized_weights = torch.rand_like(self.edge_weight) * (w_max - w_min) + w_min 
+        self.edge_weight   = randomized_weights
+        return self  
+
+    def randomize_edges(self) -> 'GNNDataLoader':
+
+        num_nodes = int(self.edge_index.max().item()) + 1
+        num_edges = self.edge_index.shape[1]
+
+        edges_from = torch.randint(low = 0, high = num_nodes, size = (num_edges,))
+        edges_to   = torch.randint(low = 0, high = num_nodes, size = (num_edges,))
+
+        self.edge_index = torch.stack([edges_from, edges_to], dim = 0)
+        return self
+        
+
 
 def add_horizon_shifts(df: pd.DataFrame, group_column: str, target_column: str, horizons: int):
     """

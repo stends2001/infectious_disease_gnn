@@ -855,7 +855,7 @@ class DeepModel(BaseModel, ABC):
         else:
             raise ValueError(f'dataset must be either "train", "val" or "test"')         
 
-        for snapshot in dataloader:
+        for snapshot in tqdm(dataloader, desc=f"Forecasting {dataset}"):
             snapshot = snapshot.to(self.device)
             # Get predictions
             y_hat = self.model(snapshot.x, snapshot.edge_index, snapshot.edge_weight)
@@ -930,3 +930,32 @@ class DeepModel(BaseModel, ABC):
 
         self.evaluation_datasets[dataset] = horizon_prediction_dict
         return self
+
+
+    def __str__(self):
+        max_len = max(len(state) for state in self._state.keys())
+        max_len = max(max_len, max(len(hparam) for hparam in self.config_info['model_hparams'].keys()))
+        max_len = max(max_len, max(len(hparam) for hparam in self.config_info['global_hparams'].keys()))
+        max_len = max(max_len, len('model name'), len('model class'))
+        
+        status_lines = [f'    {state:<{max_len}} : ✓' for state in self._state.keys()]
+        model_hparam_lines = [f'    {hparam:<{max_len}} : {value}' for hparam, value in self.config_info['model_hparams'].items()]
+        global_hparam_lines = [f'    {hparam:<{max_len}} : {value}' for hparam, value in self.config_info['global_hparams'].items()]
+        
+        lines = [
+            '<DeepModel(',
+            f"    {'model name':<{max_len}} : {self.name}",
+            f"    {'model class':<{max_len}} : {self.__class__.__name__}",
+            '',
+            '    ----------- STATUS --------------',
+            *status_lines,
+            '    ----------- FORECASTS -----------',
+            f"    {'forecasted':<{max_len}} : {list(self.evaluation_datasets.keys())}",
+            '    ----------- MODEL HPARAMS -------',
+            *model_hparam_lines,
+            '    ----------- GLOBAL HPARAMS ------',
+            *global_hparam_lines,
+            ')>'
+        ]
+        
+        return '\n'.join(lines)

@@ -14,6 +14,8 @@ import pandas as pd
 import warnings
 from ..utils.constants import traincolor, valcolor, testcolor
 
+berlin_district_ids = ['11001', '11002', '11003', '11004', '11005', '11006',
+                        '11007', '11008', '11009', '11010', '11011', '11012']
 class EpiDataLoader:
 
     """ 
@@ -85,7 +87,7 @@ class EpiDataLoader:
         
         self.data               = {}
         self.include_population = include_population
-        self.min_date           = pd.to_datetime(min_date)
+        self.og_min_date           = pd.to_datetime(min_date)
         self.max_date           = pd.to_datetime(max_date)
         self.temporal_column    = 'timestamp'
         self.target_column      = 'incidence'
@@ -205,12 +207,26 @@ class EpiDataLoader:
 
         nan_count = len(nan_rows)
         if nan_count > 0:
+            
             dropped_ids = nan_rows[f'{self.nuts_level}'].unique()
-            warnings.warn(
-                f"{nan_count} rows with missing tokenized IDs will be dropped from 'shapedata'. "
-                f"Dropped original IDs: {dropped_ids}",
-                UserWarning
-            )
+
+            # Use `all()` as a method, not `all` attribute
+            if all(id_ in berlin_district_ids for id_ in dropped_ids):
+
+                print('berlin districts removed')
+
+            elif dropped_ids[0] == '11000':
+
+                print('berlin merged removed')
+
+            else:
+
+                warnings.warn(
+                    f"{nan_count} rows with missing tokenized IDs will be dropped from 'shapedata'. "
+                    f"Dropped original IDs: {dropped_ids}",
+                    UserWarning
+                )
+
         shapedata = shapedata.dropna(subset=[self.id_column]).copy()
 
         shapedata[self.id_column]            =  shapedata[self.id_column].astype(int)

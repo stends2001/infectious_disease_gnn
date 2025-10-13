@@ -80,7 +80,6 @@ class BaseModel:
 
         else:
             return zscore_rev
-
         
     def show_forecasts(self,
                        dataset: Literal['train','val','test'],
@@ -168,9 +167,6 @@ class BaseModel:
         pred_column   = 'pred'
         evaluation_df = self.evaluation_datasets[dataset]['transformed'][f'horizon_{target_h}'] if transformed else self.evaluation_datasets[dataset]['nontransformed'][f'horizon_{target_h}']
 
-        if not transformed:
-            evaluation_df = self._denorm_predictions(evaluation_df)
-
         dates      = evaluation_df[self.dataloader.temporal_column].unique()
         date       = dates[tt]
         print(date)
@@ -229,3 +225,5 @@ class BaseModel:
         
         model_id = self.config_manager.register_entry(self.config_info)
         self.config_info['id'] = model_id
+
+   
