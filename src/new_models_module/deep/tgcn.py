@@ -8,7 +8,6 @@ import numpy as np
 from typing import Optional, Tuple
 from ...dataloading.gnndataloader import GNNDataLoader
 from .deepmodel import DeepModel
-from ...utils.constants import paired_colors
 from .strategies.standard_strategy import StandardStrategy
 
 class TGCNModule(nn.Module):
@@ -108,9 +107,7 @@ class TGCNModel(DeepModel):
         if not self.name:
             self.name = 'TGCN'
 
-        self.model_color = paired_colors[2]
         self.dataloader = dataloader
-        self.config_info['model'] = 'tgcnmodel'
 
         self._set_strategy(StandardStrategy())
 

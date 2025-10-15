@@ -10,12 +10,13 @@ import torch
 from ...dataloading.epidataloader import EpiDataLoader
 from ...dataloading.gnndataloader import GNNDataLoader
 from ...dataloading.normalization import reverse_zscore_scaling, reverse_log
-from ...utils.constants import traincolor, valcolor, testcolor
+from ...utils import testcolor
 import geopandas as gpd
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import matplotlib.colors as colors
 
+from . import MODELSREGISTRY, MODELSCOLORPALETTE
 
 from ...configmanager.modelconfigmanager import ModelConfigManager
 
@@ -59,7 +60,12 @@ class BaseModel:
         self.evaluation_datasets= {} 
         self.model_color        = None
         self.config_info        = {}
+
+        self.model_class    = self.__class__.__name__
+        self.model_color    = self.get_model_color()
+
         self.config_info['name'] = name
+        self.config_info['model_class'] = self.model_class
 
        # Managers
         self.config_manager = ModelConfigManager()
@@ -224,5 +230,9 @@ class BaseModel:
         
         model_id = self.config_manager.register_entry(self.config_info)
         self.config_info['id'] = model_id
+       
+    def get_model_color(self):
 
-   
+        id = MODELSREGISTRY.get(self.model_class, 0)    # 0 as fallback 
+        
+        return MODELSCOLORPALETTE[id]

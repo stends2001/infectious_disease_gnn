@@ -8,7 +8,6 @@ import numpy as np
 from typing import Optional, Tuple
 from ...dataloading.gnndataloader import GNNDataLoader
 from .deepmodel import DeepModel
-from ...utils.constants import paired_colors
 from .strategies.recurrent_strategy import RecurrentStrategy
 
 class GATv2Module(nn.Module):
@@ -110,12 +109,12 @@ class GATv2Model(DeepModel):
                  dataloader: GNNDataLoader, 
                  name: Optional[str] = None):
         super().__init__(dataloader, name=name)
+        
         if not self.name:
             self.name = 'GATv2'
 
-        self.model_color = paired_colors[3]
         self.dataloader = dataloader
-        self.config_info['model'] = 'gatv2model'
+        
 
         self._set_strategy(RecurrentStrategy())
 

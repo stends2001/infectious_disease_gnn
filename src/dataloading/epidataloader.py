@@ -12,7 +12,7 @@ import seaborn as sns
 import numpy as np
 import pandas as pd
 import warnings
-from ..utils.constants import traincolor, valcolor, testcolor
+from ..utils import traincolor, valcolor, testcolor
 
 berlin_district_ids = ['11001', '11002', '11003', '11004', '11005', '11006',
                         '11007', '11008', '11009', '11010', '11011', '11012']

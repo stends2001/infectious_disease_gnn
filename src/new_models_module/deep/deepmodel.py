@@ -1,7 +1,8 @@
 # Fix the imports at the top of your files
 from typing import Optional, Dict, List, Literal, Any, Union, cast
 
-from ..base.basemodel import BaseModel, GNNDataLoader, traincolor, valcolor, testcolor
+from ..base.basemodel import BaseModel, GNNDataLoader
+from ...utils import traincolor, valcolor, testcolor
 import matplotlib.pyplot as plt
 import torch
 import torch.nn.functional as F
@@ -65,6 +66,7 @@ class DeepModel(BaseModel, ABC):
         self.optimizer: Optional[optim.optimizer.Optimizer] = None
         self.scheduler: Optional[_LRScheduler] = None
         self.weights_manager = ModelWeightsManager()
+
         
         self.config_info['task'] = self.gnn_dataloader.task_config
         self.config_info['child'] = 'deepmodel'
@@ -597,7 +599,7 @@ class DeepModel(BaseModel, ABC):
         lines = [
             '<DeepModel(',
             f"    {'model name':<{max_len}} : {self.name}",
-            f"    {'model class':<{max_len}} : {self.__class__.__name__}",
+            f"    {'model class':<{max_len}} : {self.model_class}",
             '',
             '    ----------- STATUS --------------',
             *status_lines,
