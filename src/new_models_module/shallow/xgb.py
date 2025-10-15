@@ -1,13 +1,20 @@
 from tqdm import tqdm
 import numpy as np
 import pandas as pd
-from typing import Union, Optional, Dict, List, Literal
+from typing import Union, Optional, Dict, List, Literal, Tuple
 import xgboost as xgb 
 from ..base.basemodel import BaseModel
+from matplotlib.axes import Axes
 
 from ...dataloading.gnndataloader import GNNDataLoader
 
+import seaborn as sns
 
+import matplotlib.pyplot as plt
+
+
+from src.utils import traincolor, valcolor
+from matplotlib.figure import Figure 
 class SpatioTemporalXGBModel(BaseModel):
 
     """
@@ -261,6 +268,10 @@ class SpatioTemporalXGBModel(BaseModel):
         self.evaluation_datasets[dataset] = horizon_prediction_dict    
         self._state['forecasted'] = True
 
+        mse =  np.mean((evaluation_df['incidence'] - evaluation_df['pred']) ** 2)
+
+        print(f'{dataset} mse: {mse:.4f}')
+
     def set_model_hparams(self,
                         max_depth: int = 6,
                         subsample: float = 0.8,
@@ -293,7 +304,7 @@ class SpatioTemporalXGBModel(BaseModel):
         self._state['model_initialized'] = True
 
         # Initialize one model per horizon (with training params added later)
-        self.models = {}
+        self.models: Dict[str, xgb.XGBRegressor] = {}
         for hh in range(self.horizon_size):
             self.models[f'horizon_{hh}'] = xgb.XGBRegressor(**self.model_hparams)
 
@@ -303,11 +314,14 @@ class SpatioTemporalXGBModel(BaseModel):
                         lr: float = 0.001,
                         n_epochs: int = 5,
                         patience: int = 15,
-                        min_delta: float = 1e-4):
+                        min_delta: float = 1e-4,
+                        loss: Literal['rmse'] = 'rmse'):
         """
         Set global training hyperparameters (used across models).
         """
         
+        if loss != 'rmse':
+            raise ValueError('eval metrics other than rmse are not allowed')
 
         self.global_hparams = {
             'lr': lr,
@@ -320,13 +334,14 @@ class SpatioTemporalXGBModel(BaseModel):
         self.n_epochs = n_epochs
         self.patience = patience
         self.min_delta = min_delta
+        self.loss    = loss
 
         self.config_info['global_hparams'] = self.global_hparams
         self._state['global_hparams_set'] = True
 
         # import xgboost as xgb
 
-    def train(self, horizon=0, verbose=2):
+    def train(self, horizon=0, verbose=2, show_loss: bool = True):
         """
         Train XGBoost model for a given prediction horizon using global training hyperparameters.
         """
@@ -336,6 +351,7 @@ class SpatioTemporalXGBModel(BaseModel):
 
         # Inject global training hparams into the model
         model.set_params(
+            eval_metric=self.loss,
             learning_rate=self.lr,
             n_estimators=self.n_epochs,
             early_stopping_rounds=self.patience
@@ -344,8 +360,9 @@ class SpatioTemporalXGBModel(BaseModel):
         model.fit(
             self.X_train,
             self.y_train,
-            eval_set=[(self.X_val, self.y_val)],
-            verbose=verbose > 1
+            eval_set=[(self.X_train, self.y_train), (self.X_val, self.y_val)],
+            verbose=verbose > 1,
+            
         )
 
         # Store losses
@@ -357,7 +374,51 @@ class SpatioTemporalXGBModel(BaseModel):
 
         if verbose > 0:
             print(f"✓ Horizon {horizon} - Train MSE: {train_mse:.4f}, Val MSE: {val_mse:.4f}")
+
+        if show_loss:
+            self.plot_losses()
     
+    def plot_losses(self) -> Tuple[Figure, Axes]:
+
+        model = self.models['horizon_0']
+
+        train_losses = [x**2 for x in model.evals_result()['validation_0']['rmse']]
+        val_losses   = [x**2 for x in model.evals_result()['validation_1']['rmse']]
+
+        best_iter = model.get_booster().best_iteration
+        n_epochs  = len(train_losses)
+
+        epoch_patience = [False] * n_epochs
+        # Mark patience epochs: those after best_iter, up to best_iter + patience
+        for i in range(best_iter + 1, min(best_iter + self.patience + 1, n_epochs)):
+            epoch_patience[i] = True
+            
+        import numpy as np
+
+        epochs = np.arange(len(train_losses))
+        patience_epochs = epochs[np.array(epoch_patience)]
+        patience_train_losses = np.array(train_losses)[np.array(epoch_patience)]
+        patience_val_losses = np.array(val_losses)[np.array(epoch_patience)]
+
+        fig, axes = plt.subplots(1, 2, figsize=(16, 4))
+        axes = axes.flatten()
+
+        sns.lineplot(train_losses, color=traincolor, label='train loss', ax=axes[0])
+        sns.lineplot(val_losses, color=valcolor, label='val loss', ax=axes[1])
+
+        axes[0].scatter(patience_epochs, patience_train_losses, color='red', marker='x', label='Patience Epochs')
+        axes[1].scatter(patience_epochs, patience_val_losses, color='red', marker='x', label='Patience Epochs')           
+
+        for ax in axes:
+            ax.grid()
+            ax.set_ylabel('loss')
+            ax.set_xlabel('epoch')
+            ax.legend()
+
+        axes[0].set_title('Training loss')      
+        axes[1].set_title('Validation loss')   
+        return (fig, axes)         
+
     def __repr__(self) -> str:
         """String representation for SpatioTemporalXGBModel"""
         
