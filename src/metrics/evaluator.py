@@ -22,9 +22,7 @@ class Evaluator:
     
     """
 
-
-
-    def __init__(self, models: List[BaseModel]):
+    def __init__(self, models: List[BaseModel], horizon_leadtime: int):
 
         self.evaluated_models = models
 
@@ -38,11 +36,14 @@ class Evaluator:
         'corr': self._return_spearman_corr,
         'mse': self._return_mse,
         'rmse': self._return_rmse,
-        'ccc': self._return_ccc}
+        'ccc': self._return_ccc,
+        'lag_corr': self._return_lag_correlation  # <- NEW
+        }
+
+        self.horizon_leadtime = horizon_leadtime
 
         for ml in models:
             self.evaluation_entries[ml.name] = {}
-
 
     def add_evaluation(self, 
                        horizon: int = 0,
@@ -83,7 +84,7 @@ class Evaluator:
         
         return self
 
-    def plot_metric(self, metric: Literal['corr','mse','rmse','ccc'], horizon: int = 0, plot_type: Literal['violin', 'box'] = 'violin') -> 'Evaluator':
+    def plot_metric(self, metric: Literal['corr','mse','rmse','ccc','lag_corr'], horizon: int = 0, plot_type: Literal['violin', 'box'] = 'violin') -> 'Evaluator':
         """ 
         Returns a violinplot of the metric chosen
         An evaluation entry should be present!
@@ -112,7 +113,7 @@ class Evaluator:
 
         df = pd.DataFrame(rows)
 
-        fig, ax = plt.subplots(1, 1, figsize=(12, 6))
+        fig, ax = plt.subplots(1, 1, figsize=(12, 5))
        
         if plot_type == 'violin':
             sns.violinplot(
@@ -194,3 +195,46 @@ class Evaluator:
 
         ccc = numerator / denominator
         return ccc
+
+    def _return_lag_correlation(self, df: pd.DataFrame):
+        """
+        Compute correlation between predictions and lagged ground truth.
+        High correlation suggests the model is just memorizing recent values
+        rather than truly forecasting.
+        
+        Parameters:
+        -----------
+        df : pd.DataFrame
+            DataFrame with target and pred columns
+        lag : int
+            Which lag to check (typically 1 or matching your horizon_leadtime)
+            
+        Returns:
+        --------
+        float : Correlation coefficient
+        """
+        pred = df[self.pred_col]
+        target = df[self.target_col]
+        
+        lag = self.horizon_leadtime
+
+        # Shift target by lag
+        lagged_target = target.shift(lag)
+        
+        # Remove NaN values from shifting
+        valid_mask = ~lagged_target.isna() & ~pred.isna()
+        
+        if valid_mask.sum() < 2:
+            return pd.NA
+            
+        valid_pred = pred[valid_mask]
+        valid_lagged = lagged_target[valid_mask]
+        
+        if valid_pred.nunique() < 2 or valid_lagged.nunique() < 2:
+            return pd.NA
+        
+        corr, _ = spearmanr(valid_pred, valid_lagged, nan_policy='omit')
+        return corr
+    
+    def __repr__(self) -> str:
+        return f"Evaluator of {[ml.name for ml in self.evaluated_models]}"

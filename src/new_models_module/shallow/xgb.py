@@ -6,6 +6,7 @@ import xgboost as xgb
 from ..base.basemodel import BaseModel
 from matplotlib.axes import Axes
 
+from ...utils.textformatting import align, section
 from ...dataloading.gnndataloader import GNNDataLoader
 
 import seaborn as sns
@@ -419,90 +420,39 @@ class SpatioTemporalXGBModel(BaseModel):
         axes[1].set_title('Validation loss')   
         return (fig, axes)         
 
-    def __repr__(self) -> str:
-        """String representation for SpatioTemporalXGBModel"""
+    def __str__(self):
+        # Calculate width
+        all_keys = (
+            ['model name', 'model class'] +
+            list(self._state.keys()) +
+            list(self.config_info.get('model_hparams', {}).keys()) +
+            list(self.config_info.get('global_hparams', {}).keys())
+        )
+        width = max(len(k) for k in all_keys) if all_keys else 20
         
-        # Calculate max length for alignment
-        max_len = max(len(state) for state in self._state.keys())
-        if self.config_info.get('model_hparams'):
-            max_len = max(max_len, max(len(k) for k in self.config_info['model_hparams'].keys()))
-        if self.config_info.get('global_hparams'):
-            max_len = max(max_len, max(len(k) for k in self.config_info['global_hparams'].keys()))
-        max_len = max(max_len, len('model name'), len('model class'), len('sequence length'), 
-                    len('horizon size'), len('num neighbors'))
+        # Build output
+        lines = ['<SpatioTemporalXGBModel(']
+        lines.append(align('model name', self.name, width))
+        lines.append(align('model class', self.model_class, width))
+        lines.append('')
         
-        # Status lines
-        status_lines = [
-            f'    {state:<{max_len}} : {"✓" if value else "✗"}'
-            for state, value in self._state.items()
-        ]
+        # Status section
+        status_items = {k: "✓" if v else "✗" for k, v in self._state.items()}
+        lines.extend(section('status', status_items, width))
+        lines.append('')
         
-        # Model hyperparameter lines
-        model_hparam_lines = []
-        if self.config_info.get('model_hparams'):
-            model_hparam_lines = [
-                f'    {hparam:<{max_len}} : {value}' 
-                for hparam, value in self.config_info['model_hparams'].items()
-            ]
+        # Forecasts section
+        lines.extend(section('forecasts', {'forecasted': list(self.evaluation_datasets.keys())}, width))
+        lines.append('')
         
-        # Global hyperparameter lines
-        global_hparam_lines = []
-        if self.config_info.get('global_hparams'):
-            global_hparam_lines = [
-                f'    {hparam:<{max_len}} : {value}' 
-                for hparam, value in self.config_info['global_hparams'].items()
-            ]
+        # Model hparams
+        model_hparams = dict(self.config_info.get('model_hparams', {}))
+        lines.extend(section('model hparams', model_hparams, width))
+        lines.append('')
         
-        # Get neighbor statistics
-        num_neighbors = 'N/A'
-        if self.neighbor_dict:
-            neighbor_counts = [len(neighbors) for neighbors in self.neighbor_dict.values()]
-            if neighbor_counts:
-                avg_neighbors = sum(neighbor_counts) / len(neighbor_counts)
-                num_neighbors = f"{avg_neighbors:.1f} (avg)"
-        
-        # Build the full representation
-        lines = [
-            '<SpatioTemporalXGBModel(',
-            f"    {'model name':<{max_len}} : {self.name}",
-            f"    {'model class':<{max_len}} : {self.model_class}",
-            f"    {'sequence length':<{max_len}} : {self.sequence_length}",
-            f"    {'horizon size':<{max_len}} : {self.horizon_size}",
-            f"    {'num neighbors':<{max_len}} : {num_neighbors}",
-            '',
-            '    ----------- STATUS --------------',
-            *status_lines,
-            '',
-            '    ----------- FORECASTS -----------',
-            f"    {'forecasted':<{max_len}} : {list(self.evaluation_datasets.keys())}",
-        ]
-        
-        # Add model hparams if they exist
-        if model_hparam_lines:
-            lines.extend([
-                '',
-                '    ----------- MODEL HPARAMS -------',
-                *model_hparam_lines,
-            ])
-        
-        # Add global hparams if they exist
-        if global_hparam_lines:
-            lines.extend([
-                '',
-                '    ----------- GLOBAL HPARAMS ------',
-                *global_hparam_lines,
-            ])
-        
-        # Add data statistics
-        lines.extend([
-            '',
-            '    ----------- DATA STATS ----------',
-            f"    {'train samples':<{max_len}} : {len(self.X_train) if hasattr(self, 'X_train') else 'N/A'}",
-            f"    {'val samples':<{max_len}} : {len(self.X_val) if hasattr(self, 'X_val') else 'N/A'}",
-            f"    {'test samples':<{max_len}} : {len(self.X_test) if hasattr(self, 'X_test') else 'N/A'}",
-            f"    {'num features':<{max_len}} : {self.X_train.shape[1] if hasattr(self, 'X_train') else 'N/A'}",
-        ])
+        # Global hparams
+        lines.extend(section('global hparams', self.config_info.get('global_hparams', {}), width))
         
         lines.append(')>')
         
-        return '\n'.join(lines)    
+        return '\n'.join(lines)

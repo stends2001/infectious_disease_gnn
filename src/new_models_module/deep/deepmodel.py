@@ -1,6 +1,6 @@
 # Fix the imports at the top of your files
 from typing import Optional, Dict, List, Literal, Any, Union, cast
-
+from ...utils.textformatting import section, align
 from ..base.basemodel import BaseModel, GNNDataLoader
 from ...utils import traincolor, valcolor, testcolor
 import matplotlib.pyplot as plt
@@ -584,36 +584,39 @@ class DeepModel(BaseModel, ABC):
         print(f"✓ Model loaded")
 
     def __str__(self):
-        max_len = max(len(state) for state in self._state.keys())
-        max_len = max(max_len, max(len(hparam) for hparam in self.config_info['model_hparams'].keys()))
-        max_len = max(max_len, max(len(hparam) for hparam in self.config_info['global_hparams'].keys()))
-        max_len = max(max_len, len('model name'), len('model class'))
+        # Calculate width
+        all_keys = (
+            ['model name', 'model class'] +
+            list(self._state.keys()) +
+            list(self.config_info.get('model_hparams', {}).keys()) +
+            list(self.config_info.get('global_hparams', {}).keys())
+        )
+        width = max(len(k) for k in all_keys) if all_keys else 20
         
-        status_lines = [
-            f'    {state:<{max_len}} : {"✓" if value else "✗"}'
-            for state, value in self._state.items()
-        ]
-        model_hparam_lines = [f'    {hparam:<{max_len}} : {value}' for hparam, value in self.config_info['model_hparams'].items()]
-        global_hparam_lines = [f'    {hparam:<{max_len}} : {value}' for hparam, value in self.config_info['global_hparams'].items()]
+        # Build output
+        lines = ['<DeepModel(']
+        lines.append(align('model name', self.name, width))
+        lines.append(align('model class', self.model_class, width))
+        lines.append('')
         
-        lines = [
-            '<DeepModel(',
-            f"    {'model name':<{max_len}} : {self.name}",
-            f"    {'model class':<{max_len}} : {self.model_class}",
-            '',
-            '    ----------- STATUS --------------',
-            *status_lines,
-            '',
-            '    ----------- FORECASTS -----------',
-            f"    {'forecasted':<{max_len}} : {list(self.evaluation_datasets.keys())}",
-            '',
-            '    ----------- MODEL HPARAMS -------',
-            *model_hparam_lines,
-            f"    {'strategy':<{max_len}} : {self.strategy}",
-            '',
-            '    ----------- GLOBAL HPARAMS ------',
-            *global_hparam_lines,
-            ')>'
-        ]
+        # Status section
+        status_items = {k: "✓" if v else "✗" for k, v in self._state.items()}
+        lines.extend(section('status', status_items, width))
+        lines.append('')
+        
+        # Forecasts section
+        lines.extend(section('forecasts', {'forecasted': list(self.evaluation_datasets.keys())}, width))
+        lines.append('')
+        
+        # Model hparams
+        model_hparams = dict(self.config_info.get('model_hparams', {}))
+        model_hparams['strategy'] = self.strategy
+        lines.extend(section('model hparams', model_hparams, width))
+        lines.append('')
+        
+        # Global hparams
+        lines.extend(section('global hparams', self.config_info.get('global_hparams', {}), width))
+        
+        lines.append(')>')
         
         return '\n'.join(lines)

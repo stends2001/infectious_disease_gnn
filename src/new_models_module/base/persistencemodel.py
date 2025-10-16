@@ -1,5 +1,5 @@
 from typing import Literal, Union, Optional
-
+from ...utils.textformatting import section, align
 from .basemodel import BaseModel, EpiDataLoader
 
 class PersistenceModel(BaseModel):
@@ -43,25 +43,45 @@ class PersistenceModel(BaseModel):
             if 'lag' in feature_col:
                 prediction_col = feature_col        
         return prediction_col
+
+    # OLD STR   
+    # def __str__(self) -> str:
+    #     """String representation for PersistenceModel"""
+    #     max_len = max(
+    #         len('model name'),
+    #         len('model class'),
+    #         len('prediction column'),
+    #         len('forecasted')
+    #     )
         
-    def __repr__(self) -> str:
-        """String representation for PersistenceModel"""
-        max_len = max(
-            len('model name'),
-            len('model class'),
-            len('prediction column'),
-            len('forecasted')
-        )
+    #     lines = [
+    #         '<PersistenceModel(',
+    #         f"    {'model name':<{max_len}} : {self.name}",
+    #         f"    {'model class':<{max_len}} : {self.model_class}",
+    #         f"    {'prediction column':<{max_len}} : {self.prediction_col}",
+    #         '',
+    #         '    ----------- STATUS --------------',
+    #         f"    {'forecasted':<{max_len}} : {list(self.evaluation_datasets.keys())}",
+    #         ')>'
+    #     ]
         
-        lines = [
-            '<PersistenceModel(',
-            f"    {'model name':<{max_len}} : {self.name}",
-            f"    {'model class':<{max_len}} : {self.model_class}",
-            f"    {'prediction column':<{max_len}} : {self.prediction_col}",
-            '',
-            '    ----------- STATUS --------------',
-            f"    {'forecasted':<{max_len}} : {list(self.evaluation_datasets.keys())}",
-            ')>'
-        ]
+    #     return '\n'.join(lines)
+        
+    def __str__(self):
+        # Calculate width
+        all_keys = ['model name', 'model class', 'prediction column', 'forecasted']
+        width = max(len(k) for k in all_keys)
+        
+        # Build output
+        lines = ['<PersistenceModel(']
+        lines.append(align('model name', self.name, width))
+        lines.append(align('model class', self.model_class, width))
+        lines.append(align('prediction column', self.prediction_col, width))
+        lines.append('')
+        
+        # Status section
+        lines.extend(section('status', {'forecasted': list(self.evaluation_datasets.keys())}, width))
+        
+        lines.append(')>')
         
         return '\n'.join(lines)

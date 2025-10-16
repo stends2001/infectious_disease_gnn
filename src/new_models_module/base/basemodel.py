@@ -236,3 +236,6 @@ class BaseModel:
         id = MODELSREGISTRY.get(self.model_class, 0)    # 0 as fallback 
         
         return MODELSCOLORPALETTE[id]
+    
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}(name={self.name!r})"    
