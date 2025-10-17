@@ -1,4 +1,4 @@
-from src.dataloading.gnndataloader import GNNDataLoader
+from src.dataloading.deepdataloader import GNNDataLoader
 import torch
 from typing import Dict
 import os 

@@ -3,6 +3,21 @@ from numpy.typing import NDArray
 from statistics import mean
 
 class GraphAddSelfLoops:
+    """ 
+    adds self-loops to edge_indices and edge_weights
+    Called through GraphConstructor
+
+    Parameters:
+    ----------
+    edge_indices: List[Tuple[int,int]]
+    edge_weights: List[float]
+    num_nodes: int
+    node_ids: NDArray
+
+    See also:
+    --------
+    GraphConstructor
+    """    
     def __init__(self,
                  edge_indices: List[Tuple[int,int]],
                  edge_weights: List[float],
@@ -22,7 +37,9 @@ class GraphAddSelfLoops:
         }    
 
     def add_loops(self, method: str) -> Tuple[List[Tuple[int,int]], List[float]]:
-
+        """
+        collects the required loop-adding-function and feeds in the kwargs
+        """
         if method not in self.SELFLOOP_FUNCS:
             raise ValueError(f"Unknown selfloop addition method: {method}")
 

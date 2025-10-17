@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from ..models._basemodel import BaseModel
 
 from ..utils.helpers import list_files, write_yaml_file, to_underscore_string,reorder_dict, get_data_env
-from ..dataloading.gnndataloader import GNNDataLoader
+from ..dataloading.deepdataloader import DeepDataLoader
 from ..models.a3tgcn import A3TGCNModel
 from ..models.spatialgcn_baseline import SpatialGCNModel
 from ..models.spatiotemporal_baseline import TGCNModel
@@ -96,7 +96,7 @@ class ExperimentConfigManager(ConfigManager):
             experiment_config = self.experiment_log[experiment_name]
 
         # section 1: get epi-dataloader
-        epidata = GNNDataLoader(disease_name        = experiment_config['disease_name'],
+        epidata = DeepDataLoader(disease_name        = experiment_config['disease_name'],
                                 data_env_dir        = get_data_env() ,
                                 min_date            = experiment_config['min_date'],
                                 max_date            = experiment_config['max_date'],

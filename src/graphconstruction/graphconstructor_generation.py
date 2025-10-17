@@ -13,6 +13,26 @@ from ..utils import get_data_env
 from .pendlerdatenprocessor import PendlerDatenProcessor
 
 class GraphGeneration:
+
+    """ 
+    creates graphs (edge indices and edge weights) based on geopandas dataframes
+    Called through GraphConstructor
+
+    Parameters:
+    ----------
+    gdf: gpd.GeoDataFrame
+        shapefile including all nodes
+    tokens: dict[int, int]
+        dictionary comprising the kz and a token-integer
+    popdata: pd.DataFrame
+        population data per token
+    id_col: column by which name the nodes are found
+
+    See also:
+    --------
+    GraphConstructor
+    """
+
     def __init__(self,
                  gdf:       gpd.GeoDataFrame,
                  tokens:    dict,
@@ -36,19 +56,21 @@ class GraphGeneration:
         if 'geometry' not in self.gdf.columns:
             raise ValueError(f'GeoDataFrame must have a "geometry" column')    
 
-        self.GENERATION_FUNCS = {
-                                    'boolean_neighbors'     : self._boolean_neighbors,
-                                    'identity'              : self._identity,
-                                    'mesh'                  : self._mesh,
-                                    'distance_threshold'    : self._distance_threshold,
-                                    'k_nearest'             : self._k_nearest,
-                                    'population_weighted'   : self._population_weighted,
-                                    'gravity_model'         : self._gravity_model,
-                                    'commuter'              : self._commuter,
-
+        self.GENERATION_FUNCS ={
+                                'boolean_neighbors'     : self._boolean_neighbors,
+                                'identity'              : self._identity,
+                                'mesh'                  : self._mesh,
+                                'distance_threshold'    : self._distance_threshold,
+                                'k_nearest'             : self._k_nearest,
+                                'population_weighted'   : self._population_weighted,
+                                'gravity_model'         : self._gravity_model,
+                                'commuter'              : self._commuter,
         }        
 
     def generate_graph(self, method: str, **kwargs) -> Tuple[List[Tuple[int,int]], Optional[List[float]]]:
+        """
+        collects the required generation-function and feeds in the kwargs
+        """
 
         if method not in self.GENERATION_FUNCS:
             available = ', '.join(self.GENERATION_FUNCS.keys())
@@ -58,30 +80,44 @@ class GraphGeneration:
             )
         
         edge_indices, edge_weights =  self.GENERATION_FUNCS[method](**kwargs) 
-
-
         return (edge_indices, edge_weights)
 
-    def _commuter(self, commuter_type: Literal['static'], commuting_threshold: int = 1_000) -> Tuple[List[Tuple[int,int]], List[float]]:
-        if commuter_type == 'static':
+    def _commuter(self, commuter_type: Literal['static','dynamic'], commuting_threshold: int = 1_000) -> Tuple[List[Tuple[int,int]], List[float]]:
+        """ 
+        creates a commuter - graph:
 
+        Parameters:
+        ----------
+        commuter_type: Literal['static','dynamic']
+            whether to have dynamic graphs (one per year) or a static one. 
+            TODO: currently no dynamic commuter graphs implemented
+        commuting_threshold: int = 1_000
+            the threshold for number of commuters for nodes to be connected
+        """
+        if commuter_type == 'static':
             commuter_data_object = PendlerDatenProcessor(raw_folder_path = os.path.join(get_data_env(),'raw/germany/mobility/commuter_data/auspendler/'), processed_folder_path= os.path.join(get_data_env(),'processed/germany/mobility/commuter_data/')).import_raw_data('2024')
             commuter_data        = commuter_data_object.data['2024']
             commuter_data.loc[:, 'nuts3_work'] = commuter_data.loc[:, 'nuts3_work'].map(self.tokens)
             commuter_data.loc[:, 'nuts3_residence'] = commuter_data.loc[:, 'nuts3_residence'].map(self.tokens)
 
-        commuter_data = commuter_data[commuter_data['commuters'] > commuting_threshold]
-        node_weights = []
-        node_edges = []
+        else:
+            raise ValueError('dynamic commuter graphs not yet implemented')
+
+        commuter_data   = commuter_data[commuter_data['commuters'] > commuting_threshold]
+        node_weights    = []
+        node_edges      = []
+
         for i in range(len(commuter_data)):
-
-
             node_edges.append((int(commuter_data.iloc[i]['nuts3_work']), int(commuter_data.iloc[i]['nuts3_residence'])))
             node_weights.append((int(commuter_data.iloc[i]['commuters'])))
 
         return (node_edges, node_weights)
                 
     def _boolean_neighbors(self) -> Tuple[List[Tuple[int,int]], None]:
+        """ 
+        creates a boolean neighbors - graph:
+        each node is connected to directly surrounding nodes with uniform edge_weights
+        """
         dfc         = self.gdf[[self.id_col,'geometry']].copy()
         dfc         = dfc.sort_values(self.id_col).reset_index(drop=True)
         neighbors   = gpd.sjoin(dfc, dfc, how='inner', predicate='touches').reset_index(drop=False)
@@ -92,18 +128,30 @@ class GraphGeneration:
         return edges, None
 
     def _identity(self) -> Tuple[List[Tuple[int,int]], None]:
+        """
+        creates an identity - graph:
+        each node is connected only to itself with uniform edge_weights
+        """
         dfc         = self.gdf[[self.id_col]].sort_values(self.id_col).reset_index(drop=True)
         node_ids    = dfc[self.id_col].dropna().astype(int).values
         edges       = [(int(nid), int(nid)) for nid in node_ids]
         return edges, None
 
     def _mesh(self) -> Tuple[List[Tuple[int,int]], None]:
+        """
+        creates a mesh - graph:
+        each node is connected to every other node with uniform edge_weights
+        """        
         dfc         = self.gdf[[self.id_col]].sort_values(self.id_col).reset_index(drop=True)
         node_ids    = dfc[self.id_col].dropna().astype(int).values
         edges       = [(int(s), int(t)) for s in node_ids for t in node_ids]
         return edges, None
             
     def _distance_threshold(self, max_distance: float) -> Tuple[List[Tuple[int,int]], None]:
+        """
+        creates a distance_threshold - graph:
+        each node is connected to all other nodes within max_distance with uniform edge_weights
+        """        
         dfc         = self.gdf[[self.id_col, 'geometry']].sort_values(self.id_col).reset_index(drop=True)
         centroids   = dfc.geometry.centroid
         coords      = np.array([[p.x, p.y] for p in centroids])
@@ -116,6 +164,10 @@ class GraphGeneration:
         return edges, None
 
     def _k_nearest(self, k: int) -> Tuple[List[Tuple[int,int]], None]:
+        """
+        creates a k-nearest-neighbors - graph:
+        each node is connected to its k-nearest-neighbors with uniform edge_weights
+        """        
         dfc         = self.gdf[[self.id_col, 'geometry']].sort_values(self.id_col).reset_index(drop=True)
         centroids   = dfc.geometry.centroid
         coords      = np.array([[p.x, p.y] for p in centroids])
@@ -128,6 +180,10 @@ class GraphGeneration:
         return edges, None
 
     def _population_weighted(self, max_distance: float) -> Tuple[List[Tuple[int,int]], List[float]]:
+        """
+        creates a population_weighted - graph:
+        each node is connected only to all nodes within max_distance, with weights proportional to population_sizes of these nodes.
+        """        
         dfc                     = self.gdf[[self.id_col, 'geometry']].sort_values(self.id_col).reset_index(drop=True)
         dfc                     = dfc.merge(self.popdata[[self.id_col, 'population_size']], on=self.id_col, how='left')
         dfc['population_size']  = dfc['population_size'].fillna(dfc['population_size'].mean())
@@ -148,18 +204,83 @@ class GraphGeneration:
                     weights.append(weight)       
         return edges, weights
 
-    def _gravity_model(self, max_distance: float, alpha: float=2.0, 
-                       density_control: str ='top_k', k : int=10, 
-                       weight_threshold: Optional[int]=None, 
-                       distance_decay_factor: float=1.0) -> Tuple[List[Tuple[int,int]], List[float]]:
+    def _gravity_model(self, 
+                    max_distance: float, 
+                    alpha: float = 2.0, 
+                    density_control: Literal['top_k', 'threshold', 'adaptive', 'distance_bands'] = 'top_k', 
+                    k: int = 10, 
+                    weight_threshold: Optional[float] = None, 
+                    distance_decay_factor: float = 1.0) -> Tuple[List[Tuple[int,int]], List[float]]:
         """
-        Generate gravity model graph with density control options.
+        Creates a gravity model graph where edge weights are proportional to node populations
+        and inversely proportional to distance, similar to gravitational force between masses.
+        
+        The gravity model weight formula:
+            weight = (pop_i * pop_j) / ((distance * distance_decay_factor)^alpha + epsilon)
         
         Parameters:
-        - density_control: 'top_k', 'threshold', 'adaptive', or 'distance_bands'
-        - k: number of top connections per node (for top_k method)
-        - weight_threshold: minimum weight to keep edge (for threshold method)
-        - distance_decay_factor: additional distance penalty factor
+        ----------
+        max_distance : float
+            Maximum distance threshold in meters (or coordinate units). Nodes farther apart 
+            than this distance will not be connected. Acts as a hard cutoff for potential edges.
+            
+        alpha : float, default=2.0
+            Distance decay exponent. Higher values make distance matter more (steeper decay).
+            - alpha=1.0: linear decay
+            - alpha=2.0: quadratic decay (similar to physical gravity)
+            - alpha>2.0: super-quadratic decay (very local connections)
+            
+        density_control : {'top_k', 'threshold', 'adaptive', 'distance_bands'}, default='top_k'
+            Method for controlling graph density and preventing over-connection:
+            
+            - 'top_k': Keep only the k strongest connections per node (recommended for balanced graphs)
+            - 'threshold': Keep connections above a fixed weight threshold
+            - 'adaptive': Keep connections above 10% of each node's maximum weight (node-specific)
+            - 'distance_bands': Stratified selection prioritizing closer connections
+            (6 close + 3 medium + 1 far = 10 total max per node)
+            
+        k : int, default=10
+            Number of top connections to keep per node when density_control='top_k'.
+            Larger k creates denser graphs with more computational cost.
+            
+        weight_threshold : float or None, default=None
+            Absolute weight threshold for density_control='threshold'. If None, 
+            automatically set to the 75th percentile of computed weights.
+            
+        distance_decay_factor : float, default=1.0
+            Multiplicative factor applied to distance before computing decay. 
+            Values > 1.0 make distances "feel" larger (stronger locality).
+            Values < 1.0 make distances "feel" smaller (weaker locality).
+            Example: distance_decay_factor=2.0 makes 100km behave like 200km.
+        
+        Returns:
+        -------
+        edges : List[Tuple[int, int]]
+            List of directed edges as (source_node_id, target_node_id) tuples
+            
+        weights : List[float]
+            Corresponding edge weights based on gravity model calculation
+            
+        Notes:
+        -----
+        - Self-loops (i==j) are automatically excluded
+        - Missing population data is imputed with mean population
+        - Small epsilon (1e-6) added to denominator to prevent division by zero
+        - All edges within max_distance are computed first, then filtered by density_control
+        
+        Examples:
+        --------
+        >>> # Standard gravity model with top 10 connections per node
+        >>> edges, weights = self._gravity_model(max_distance=100000, alpha=2.0, 
+        ...                                       density_control='top_k', k=10)
+        
+        >>> # Very local model with adaptive thresholding
+        >>> edges, weights = self._gravity_model(max_distance=50000, alpha=3.0,
+        ...                                       density_control='adaptive')
+        
+        >>> # Distance-stratified connections emphasizing closer neighbors  
+        >>> edges, weights = self._gravity_model(max_distance=150000, 
+        ...                                       density_control='distance_bands')
         """
         dfc                     = self.gdf[[self.id_col, 'geometry']].sort_values(self.id_col).reset_index(drop=True)
         dfc                     = dfc.merge(self.popdata[[self.id_col, 'population_size']], on=self.id_col, how='left')

@@ -2,6 +2,8 @@
 
 from typing import Dict, Any, Union, List, Tuple
 
+checkmark = '✓'
+
 
 def align(key: str, value: Any, width: int, indent: int = 4) -> str:
     """

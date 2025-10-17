@@ -1,4 +1,4 @@
-from src.dataloading.gnndataloader import GNNDataLoader
+from src.dataloading.deepdataloader import GNNDataLoader
 from typing import Dict 
 import torch
 from src.models.modelcore import DeepLearningModelCore
