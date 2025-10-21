@@ -185,7 +185,7 @@ class ExperimentRunner(ConfigManager):
         return epidata
 
     def _evaluate(self):
-        evaluation = Evaluator(list(self.models_dict.values()), horizon_leadtime=self.experiment_log['experiment1'].timeseries.horizon_leadtime)
+        evaluation = Evaluator(list(self.models_dict.values()), horizon_leadtime=self.experiment_log[list(self.experiment_log.keys())[0]].timeseries.horizon_leadtime)
         evaluation.add_evaluation()
         evaluation.plot_metric('corr',plot_type='box')
         evaluation.plot_metric('ccc',plot_type='box')    

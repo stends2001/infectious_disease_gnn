@@ -257,8 +257,20 @@ class BaseModel:
         return MODELSCOLORPALETTE[id]
 
     def _return_training_print(self) -> str:
-        statement =  "\n".join(["", "=" * 40, f"==     Training {self.name}     ==", "=" * 40])
+        total_width = 40
+        title = f"Training {self.name}"
+        # Calculate padding on each side
+        side_padding = (total_width - 4 - len(title)) // 2  # 4 for "==  =="
+        # If odd length, add one more space to the right
+        extra_space = (total_width - 4 - len(title)) % 2
+        statement = "\n".join([
+            "",
+            "=" * total_width,
+            "==" + " " * side_padding + title + " " * (side_padding + extra_space) + "==",
+            "=" * total_width
+        ])
         return statement
+
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(name={self.name!r})"    

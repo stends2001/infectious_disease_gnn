@@ -58,16 +58,17 @@ class ExponentialDecayLoss(BaseLoss):
     def forward(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
         self._validate_inputs(y_pred, y_true)
         
-        horizon = y_pred.size(1)
+        horizon = y_pred.size(-1)  # Last dimension is horizon
         weights = torch.tensor(
             [self.gamma ** t for t in range(horizon)],
             dtype=y_pred.dtype,
             device=y_pred.device
-        )
+        )  # Shape: (3,)
         
-        # Reshape weights for broadcasting: [horizon] -> [1, horizon, 1, ...]
-        while len(weights.shape) < len(y_pred.shape):
-            weights = weights.unsqueeze(-1)
+        # Reshape to match y_pred dimensions, adding singleton dims at the FRONT
+        for _ in range(len(y_pred.shape) - 1):
+            weights = weights.unsqueeze(0)
+        # Now weights.shape = (1, 3) for 2D input
         
         se = (y_pred - y_true) ** 2
         weighted_se = se * weights

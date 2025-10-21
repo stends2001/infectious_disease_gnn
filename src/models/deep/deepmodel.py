@@ -21,7 +21,6 @@ from ...dataloading.dataobjects import GraphDataLoader
 import copy
 import torch.optim as optim
 from torch.optim.optimizer import Optimizer
-# from torch.optim import Optimizer
 
 from torch.optim.lr_scheduler import _LRScheduler
 from abc import ABC, abstractmethod
@@ -31,7 +30,7 @@ from matplotlib.axes import Axes
 from tqdm import tqdm
 
 from ..utils.loss.losshandler import LossHandler
-
+from ...utils.textformatting import warning_emoji, checkmark
 from .strategies.base import Strategy
 from .strategies.standard_strategy import StandardStrategy
 from .strategies.recurrent_strategy import RecurrentStrategy
@@ -47,7 +46,6 @@ def _check_dataloader_validity(dataloader: 'DeepDataLoader') -> Tuple[GraphDataL
 
     return train, val, test
 
-
 class DeepModel(BaseModel, ABC):
     """
     Parent class for all deep models.
@@ -58,18 +56,22 @@ class DeepModel(BaseModel, ABC):
     def __init__(self, dataloader: 'DeepDataLoader', name: Optional[str] = None):
         super().__init__(dataloader, name)
         
-        self.horizon_size = dataloader.horizon_size
-        self.gnn_dataloader: 'GNNDataLoader' = dataloader
-        self.train_loader, self.val_loader, self.test_loader = _check_dataloader_validity(dataloader)
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.model: Optional[torch.nn.Module] = None 
-        self.optimizer: Optional[optim.optimizer.Optimizer] = None
-        self.scheduler: Optional[_LRScheduler] = None
-        self.weights_manager = ModelWeightsManager()
-
+        self.horizon_size                                   = dataloader.horizon_size
+        self.gnn_dataloader: 'DeepDataLoader'               = dataloader
+        self.train_loader, self.val_loader, self.test_loader= _check_dataloader_validity(dataloader)
+        self.device                                         = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         
-        self.config_info['task'] = self.gnn_dataloader.task_config
-        self.config_info['child'] = 'deepmodel'
+        if self.device:
+            print(f'{warning_emoji} you are connected to cpu, not to gpu')
+
+        self.model: Optional[torch.nn.Module]               = None                  # to be initiated by childclass
+        self.optimizer: Optional[optim.optimizer.Optimizer] = None                  # to be initiated by _get_optimizer
+        self.scheduler: Optional[_LRScheduler]              = None                  # to be initiated by _get_scheduler
+        self.weights_manager                                = ModelWeightsManager()
+        self.strategy: Strategy                             = StandardStrategy()    # classic strategy (no hidden state or cell state)
+
+        self.config_info['task']    = self.gnn_dataloader.task_config
+        self.config_info['child']   = 'deepmodel'
         
         self._state = {
             'model_initialized' : False,
@@ -78,14 +80,12 @@ class DeepModel(BaseModel, ABC):
             'forecasted'        : False,
         }
         
-        # Strategy - set by subclasses in __init__
-        self.strategy: Strategy = StandardStrategy()
-        
-        self.train_losses   = []
-        self.val_losses     = []
-        self.epoch_patience = []
-        self.learning_rates = []
-        self.evaluation_datasets = {}
+        # iniate emtpy monitoring metrics
+        self.train_losses       = []
+        self.val_losses         = []
+        self.epoch_patience     = []
+        self.learning_rates     = []
+        self.evaluation_datasets= {}
 
     def _check_state(self, required_states: List[str]) -> None:
         """Validate that required setup steps have been completed."""
@@ -96,14 +96,17 @@ class DeepModel(BaseModel, ABC):
                 f"Call the corresponding methods first."
             )
 
+    # model hparams method to be written per model
     @abstractmethod
     def set_model_hparams(self) -> Any:
         pass
 
     def _get_optimizer(self, optimizer_name: str, lr: float, optimizer_kwargs: Dict[str, Any]) -> Optimizer:
         """Factory method to create and return optimizer"""
+        self._check_state(['model_initialized'])
+
         if self.model is None:
-            raise ValueError('Please initiate a model')
+            raise ValueError('Please initiate a model')        
 
         # pylance struggles with torch typing?
         optimizer_map = {
@@ -123,8 +126,9 @@ class DeepModel(BaseModel, ABC):
 
     def _get_scheduler(self, scheduler_name: str, optimizer: Optimizer, scheduler_kwargs: Dict[str, Any]) -> _LRScheduler:
         """Factory method to create and return scheduler"""
-        if self.model is None:
-            raise ValueError('Please initiate a model')
+        
+        self._check_state(['model_initialized'])
+        
         scheduler_map = {
             'step':        torch.optim.lr_scheduler.StepLR,
             'exponential': torch.optim.lr_scheduler.ExponentialLR,
@@ -162,26 +166,27 @@ class DeepModel(BaseModel, ABC):
         self._check_state(['model_initialized'])
 
         global_params_config = {
-            'lr': lr,
-            'n_epochs': n_epochs,
-            'patience': patience,
-            'min_delta': min_delta,                       
-            'optimizer': optimizer,
-            'optimizer_kwargs': optimizer_kwargs,
-            'scheduler': scheduler,
-            'scheduler_kwargs': scheduler_kwargs,
-            'loss': loss,
-            'loss_kwargs' : loss_kwargs
+            'lr'                : lr,
+            'n_epochs'          : n_epochs,
+            'patience'          : patience,
+            'min_delta'         : min_delta,                       
+            'optimizer'         : optimizer,
+            'optimizer_kwargs'  : optimizer_kwargs,
+            'scheduler'         : scheduler,
+            'scheduler_kwargs'  : scheduler_kwargs,
+            'loss'              : loss,
+            'loss_kwargs'       : loss_kwargs
         }
         
         self.global_hparams_set = True
-        self.n_epochs  = n_epochs
-        self.patience  = patience
-        self.min_delta = min_delta
-        self.loss = LossHandler(loss, loss_kwargs=loss_kwargs)  
+        self.n_epochs           = n_epochs
+        self.patience           = patience
+        self.min_delta          = min_delta
+        self.loss               = LossHandler(loss, loss_kwargs=loss_kwargs)  
 
         if optimizer_kwargs is None:
             optimizer_kwargs = {}
+        self.optimizer = self._get_optimizer(optimizer, lr, optimizer_kwargs)
         
         if scheduler_kwargs is None:
             default_scheduler_kwargs = {
@@ -191,24 +196,37 @@ class DeepModel(BaseModel, ABC):
             }
             scheduler_kwargs = default_scheduler_kwargs.get(scheduler, {}) if scheduler else {}
 
-        self.optimizer = self._get_optimizer(optimizer, lr, optimizer_kwargs)
-        
         if scheduler:
             self.scheduler = self._get_scheduler(scheduler, self.optimizer, scheduler_kwargs)
         else:
             self.scheduler = None
 
-        self.config_info['global_hparams'] = global_params_config
-        self._state['global_hparams_set'] = True
+        self.config_info['global_hparams']  = global_params_config
+        self._state['global_hparams_set']   = True
         return self
 
     def train(self,
-              verbose: Literal[0,1,2] = 1,
+              verbose:  Literal[0,1,2]  = 1,
               dataloader_snapshot: bool = True,
-              show_loss: bool = True):
+              show_loss: bool           = True):
         """
         Unified training loop that works for both standard and recurrent models.
-        The strategy handles all the differences.
+        
+        
+        Parameters:
+        ----------
+        verbose: Literal[0,1,2] = 1:
+            how often to return evaluation - updates during training.
+            if 0 then only a tqdm is shown. for 1, an update is shown every 10 epochs.
+            when 2, every epoch.
+        dataloader_snapshot: bool = True
+            whether or not to print the __str__ of the DeepDataLoader 
+        show_loss: bool = True
+            whether or not to plot train and val loss, as well as learning rate per epoch.
+
+        See also:
+        --------
+        Strategies => src.models.deep.strategies            
         """
         if self.model is None:
             raise ValueError('Please initiate a model')
@@ -221,34 +239,41 @@ class DeepModel(BaseModel, ABC):
         
         self._check_state(['model_initialized', 'global_hparams_set'])
 
+        # print dataloader snapshot
         if dataloader_snapshot:
             print(f'Dataloader Snapshot: {self.train_loader[0]}')
 
+        # determine verbose - loops (which loops to return evaluation metric)
         if verbose == 1:
-            verbose_loops = list(np.arange(1, self.n_epochs + 1, step=10))
+            verbose_loops   = list(np.arange(1, self.n_epochs + 1, step=10))
+            epoch_iter      = range(self.n_epochs)
+
         elif verbose == 2:
-            verbose_loops = list(np.arange(1, self.n_epochs + 1))
+            verbose_loops   = list(np.arange(1, self.n_epochs + 1))
+            epoch_iter      = range(self.n_epochs)
+
         else:
-            verbose_loops = []
+            verbose_loops   = []
+            epoch_iter      = tqdm(range(self.n_epochs), desc="Training epochs") # if no verbose, just a tqdm
 
         self.model.train()
-        best_val_loss = float('inf')
-        patience_counter = 0
-        best_model_state = None
+        best_val_loss       = float('inf')
+        patience_counter    = 0
+        best_model_state    = None
 
-        list_val_loss = []
-        list_train_loss = []
-        list_patience = []
+        list_val_loss       = []
+        list_train_loss     = []
+        list_patience       = []
 
-        L_train = len(list(self.train_loader))
-        L_val = len(list(self.val_loader))
-        
-        if verbose == 0:
-            epoch_iter = tqdm(range(self.n_epochs), desc="Training epochs")
-        else:
-            epoch_iter = range(self.n_epochs)
-
+        L_train             = len(list(self.train_loader))
+        L_val               = len(list(self.val_loader))
+    
         print(self._return_training_print())
+
+        # Each epoch is divided into:
+        #   training phase
+        #   validation phase
+        #   update phase
 
         for epoch in epoch_iter:
             # Reset state at epoch start
@@ -259,13 +284,18 @@ class DeepModel(BaseModel, ABC):
             
             for snapshot in self.train_loader:
                 snapshot = snapshot.to(self.device)
-                loss_val = self.strategy.training_step(
-                    self.model, snapshot, self.optimizer, self.loss
+
+                loss_train = self.strategy.training_step(     # some models require hidden state and cell state. Taken care of in the strategy.
+                    model       = self.model, 
+                    snapshot    = snapshot, 
+                    optimizer   = self.optimizer, 
+                    loss_fn     = self.loss
                 )
-                total_loss += loss_val
+                
+                total_loss += loss_train
             
-            train_mse = total_loss / L_train
-            list_train_loss.append(train_mse)
+            train_loss = total_loss / L_train
+            list_train_loss.append(train_loss)
 
             # ======================== VALIDATION PHASE ========================
             self.model.eval()
@@ -277,79 +307,105 @@ class DeepModel(BaseModel, ABC):
             with torch.no_grad():
                 for snapshot in self.val_loader:
                     snapshot = snapshot.to(self.device)
+
                     loss_val = self.strategy.validation_step(
-                        self.model, snapshot, self.loss
+                        model       = self.model, 
+                        snapshot    = snapshot, 
+                        loss_fn     = self.loss
                     )
+
                     val_loss += loss_val
             
-            val_mse = val_loss / L_val
-            list_val_loss.append(val_mse)
+            val_loss = val_loss / L_val
+            list_val_loss.append(val_loss)
             
-            current_lr = self.optimizer.param_groups[0]['lr']
+            # ======================== UPDATE PHASE ========================
+            current_lr = self.optimizer.param_groups[0]['lr'] # the lr used in this epoch
             self.learning_rates.append(current_lr)
             
             self.model.train()
+            verbose_statement_basis = f"Epoch {epoch} train loss: {train_loss:.4f}, val loss: {val_loss:.4f}"
             
             # Check if validation loss improved
-            val_improved = val_mse < (best_val_loss - self.min_delta)
+            val_improved = val_loss < (best_val_loss - self.min_delta)
 
+            # if so => save best model
             if val_improved:
-                best_val_loss = val_mse
-                patience_counter = 0
-                best_model_state = self.model.state_dict().copy()
-                if epoch in verbose_loops:
-                    print(f"Epoch {epoch} train loss: {train_mse:.4f}, val loss: {val_mse:.4f} ✓ (new best)")
+                best_val_loss   = val_loss
+                patience_counter= 0
+                best_model_state= self.model.state_dict().copy()
+                
+                verbose_statement = verbose_statement_basis + f" {checkmark} (new best)"
+                    
                 list_patience.append(False)
 
             else:
                 patience_counter += 1
-                if epoch in verbose_loops:
-                    print(f"Epoch {epoch} train loss: {train_mse:.4f}, val loss: {val_mse:.4f} (patience: {patience_counter}/{self.patience})")
+                verbose_statement = verbose_statement_basis + f" (patience: {patience_counter}/{self.patience})"
                 list_patience.append(True)
-                
-                if patience_counter >= self.patience:
-                    print(f"Early stopping: Validation loss hasn't improved for {self.patience} epochs")
-                    if best_model_state is not None:
-                        self.model.load_state_dict(best_model_state)
-                        print(f"Restored model from best validation loss: {best_val_loss:.4f}")
-                    break
-            
-            # Step scheduler
+
+            if patience_counter >= self.patience:
+                print(f"Early stopping: Validation loss hasn't improved for {self.patience} epochs")
+
+                if best_model_state is not None:
+                    self.model.load_state_dict(best_model_state)
+                    print(f"Restored model from best validation loss: {best_val_loss:.4f}")
+
+                break              
+
+            if epoch in verbose_loops:
+                print(verbose_statement)
+
+            # Step scheduler => scheduler.step requires val loss
             if isinstance(self.scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
-                self.scheduler.step(val_mse)
+                self.scheduler.step(val_loss)
+            # for other schedulers, no arguments required
             else:
                 self.scheduler.step()
+
+            new_lr = self.optimizer.param_groups[0]['lr']
+
+            if current_lr != new_lr:
+                print(f'lr has been updated from {current_lr:.5f} to {new_lr:.5f}')                
             
-            self.train_losses = list_train_loss
-            self.val_losses = list_val_loss
+            self.train_losses   = list_train_loss
+            self.val_losses     = list_val_loss
             self.epoch_patience = list_patience
 
         self._state['trained'] = True
+        
         if show_loss:
             self.plot_losses()
 
     def forecast(self, dataset: Literal['train','val','test'] = 'test'):
         """
-        Unified forecasting loop that works for both standard and recurrent models.
-        The strategy handles hidden state management.
+        Unified forecasting loop that works for deep learning models.
+
+        See also:
+        --------
+        Strategies => src.models.deep.strategies
+        basemodel._denorm_predictions()
         """
         self._check_state(['model_initialized', 'global_hparams_set', 'trained'])
+
         if self.model is None:
             raise ValueError('Please initiate a model')
 
         self.model.eval()
         
         predictions = []
-        labels = []
-
-        eval_df = self.gnn_dataloader.data['final'][self.gnn_dataloader.data['final'][dataset]]
+        labels      = []
+        eval_df     = self.gnn_dataloader.data['final'][self.gnn_dataloader.data['final'][dataset]] # train/val/test column
 
         if dataset == 'train':
             dataloader = self.train_loader
+
         elif dataset == 'val':
             dataloader = self.val_loader
+
         elif dataset == 'test':
             dataloader = self.test_loader
+
         else:
             raise ValueError(f'dataset must be either "train", "val" or "test"')
 
@@ -360,10 +416,16 @@ class DeepModel(BaseModel, ABC):
         with torch.no_grad():
             for snapshot in tqdm(dataloader, desc=f"Forecasting {dataset}"):
                 snapshot = snapshot.to(self.device)
+
                 y_hat, loss_val = self.strategy.forecast_step(
-                    self.model, snapshot, self.loss
+                    model   = self.model, 
+                    snapshot= snapshot, 
+                    loss_fn = self.loss
                 )
                 loss += loss_val
+
+                # snapshot.y as well as y_hat are a torch.Tensor of shape (num_nodes, horizon_size)
+                # labels and predictions are thus a List of these torch.Tensors, one for each timestep.
                 labels.append(snapshot.y)
                 predictions.append(y_hat)
 
@@ -372,55 +434,62 @@ class DeepModel(BaseModel, ABC):
         setattr(self, f'{dataset}_loss', loss)
 
         # ======================== FORMAT PREDICTIONS ========================
-        tensor_list_cpu = [t.detach().cpu() for t in predictions]
-        stacked = torch.stack(tensor_list_cpu)   
-        num_timepoints, n_nodes, horizon = stacked.shape
-        reshaped = stacked.view(num_timepoints * n_nodes, horizon).numpy()  
+        tensor_list_cpu                 = [t.detach().cpu() for t in predictions]   # detach from device
+        stacked                         = torch.stack(tensor_list_cpu)              # concatenates the list of torch.Tensors into one torch.Tensor 
+        num_timepoints, n_nodes, horizon= stacked.shape                             # shape is (timestep, num_nodes, horizon_size)
 
-        timepoints = np.repeat(np.arange(num_timepoints), n_nodes)
-        nodes = np.tile(np.arange(n_nodes), num_timepoints)
-        index = pd.MultiIndex.from_arrays([timepoints, nodes], names=['timestamp_idx', 'node'])
+        reshaped                        = stacked.view(num_timepoints * n_nodes, horizon).numpy()  
 
-        columns = [f"pred_h{h}" for h in range(horizon)]
-        df_pred = pd.DataFrame(reshaped, index=index, columns=columns).reset_index(drop=False)
+        timepoints_idx                  = np.repeat(np.arange(num_timepoints), n_nodes)
+        nodes                           = np.tile(np.arange(n_nodes), num_timepoints)
+        # an object with the same shape as `reshaped` but with the idx to timestamps and node_ids
+        index                           = pd.MultiIndex.from_arrays([timepoints_idx, nodes], names=['timestamp_idx', 'node'])
+
+        prediction_columns              = [f"pred_h{h}" for h in range(horizon)]
+        prediction_df                   = pd.DataFrame(reshaped, 
+                                                       index=index, 
+                                                       columns=prediction_columns).reset_index(drop=False)
 
         # ======================== FORMAT TARGETS ========================
-        tensor_list_cpu = [t.detach().cpu() for t in labels]
-        stacked = torch.stack(tensor_list_cpu)   
-        num_timepoints, n_nodes, horizon = stacked.shape
-        reshaped = stacked.view(num_timepoints * n_nodes, horizon).numpy()  
+        tensor_list_cpu                 = [t.detach().cpu() for t in labels]
+        stacked                         = torch.stack(tensor_list_cpu)   
+        num_timepoints, n_nodes, horizon= stacked.shape
 
-        timepoints = np.repeat(np.arange(num_timepoints), n_nodes)
-        nodes = np.tile(np.arange(n_nodes), num_timepoints)
-        index = pd.MultiIndex.from_arrays([timepoints, nodes], names=['timestamp_idx', 'node'])
+        reshaped                        = stacked.view(num_timepoints * n_nodes, horizon).numpy()  
 
-        columns = self.gnn_dataloader.target_horizons
-        df_target = pd.DataFrame(reshaped, index=index, columns=columns).reset_index(drop=False)
+        # timepoints_idx                  = np.repeat(np.arange(num_timepoints), n_nodes)
+        # nodes                           = np.tile(np.arange(n_nodes), num_timepoints)
+        # index                           = pd.MultiIndex.from_arrays([timepoints_idx, nodes], names=['timestamp_idx', 'node'])
+
+        target_columns                  = self.gnn_dataloader.target_horizons
+        target_df                       = pd.DataFrame(reshaped, 
+                                                       index=index,
+                                                       columns=target_columns).reset_index(drop=False)
         
-        merged = pd.merge(df_pred, df_target, on=['timestamp_idx','node'])
+        merged                  = pd.merge(prediction_df, target_df, on=['timestamp_idx','node'])
         merged['timestamp_idx'] = merged['timestamp_idx'] + (self.gnn_dataloader.sequence_length - 1)
-        timestamp_map = eval_df[['timestamp']].drop_duplicates().reset_index(drop=True).reset_index(drop=False).rename(columns={'index': 'timestamp_idx'})
-        merged['timestamp'] = merged['timestamp_idx'].map(dict(zip(timestamp_map['timestamp_idx'], timestamp_map['timestamp'])))
+        timestamp_map           = eval_df[['timestamp']].drop_duplicates().reset_index(drop=True).reset_index(drop=False).rename(columns={'index': 'timestamp_idx'})
+        merged['timestamp']     = merged['timestamp_idx'].map(dict(zip(timestamp_map['timestamp_idx'], timestamp_map['timestamp'])))
         
         formatted_eval = pd.merge(merged[['timestamp', 'node'] + [f'pred_h{hh}' for hh in range(horizon)]], eval_df, on=['timestamp','node'], how='right')
 
-        columns_context = [self.gnn_dataloader.temporal_column, self.gnn_dataloader.id_column] + self.gnn_dataloader.feature_columns + self.gnn_dataloader.split_columns + [self.gnn_dataloader.target_horizons[0]]
+        columns_context = [self.gnn_dataloader.temporal_column, self.gnn_dataloader.id_column] + self.gnn_dataloader.feature_columns + self.gnn_dataloader.split_columns + self.gnn_dataloader.target_horizons
 
-        horizon_prediction_dict = {}
+        horizon_prediction_dict = {'transformed':{}, 'nontransformed':{}}
 
         for hh in range(horizon):
             horizon_predictions = formatted_eval[columns_context + [f'pred_h{hh}']]
             horizon_predictions = horizon_predictions.rename(columns={
                 f'pred_h{hh}': 'pred',
-                f'{self.gnn_dataloader.target_horizons[0]}': f'{self.gnn_dataloader.target_column}'
+                f'{self.gnn_dataloader.target_column}_h{hh}' : f'{self.gnn_dataloader.target_column}'
             })
-            horizon_predictions['pred'] = horizon_predictions['pred'].shift(-hh)
+            horizon_predictions['pred']                                 = horizon_predictions['pred'].shift(-hh)
 
-            horizon_prediction_dict['transformed'] = {f'horizon_{hh}': horizon_predictions}
-            horizon_prediction_dict['nontransformed'] = {f'horizon_{hh}': self._denorm_predictions(horizon_predictions)}
+            horizon_prediction_dict['transformed'][f'horizon_{hh}']     = horizon_predictions
+            horizon_prediction_dict['nontransformed'][f'horizon_{hh}']  = self._denorm_predictions(horizon_predictions)
 
-        self.evaluation_datasets[dataset] = horizon_prediction_dict
-        self._state['forecasted'] = True
+        self.evaluation_datasets[dataset]   = horizon_prediction_dict
+        self._state['forecasted']           = True
         return self
 
     def plot_losses(self) -> Tuple[Figure, Axes]:

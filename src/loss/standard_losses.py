@@ -54,26 +54,42 @@ class ExponentialDecayLoss(BaseLoss):
         if not (0 < gamma <= 1):
             raise ValueError(f"gamma must be in (0, 1], got {gamma}")
         self.gamma = gamma
+
+        print('exp decay initiated')
     
     def forward(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
         self._validate_inputs(y_pred, y_true)
         
-        horizon = y_pred.size(1)
+        print(f"y_pred shape: {y_pred.shape}")
+        print(f"y_true shape: {y_true.shape}")
+        
+        # y_pred and y_true should be (num_nodes, horizon) = (400, 3)
+        horizon = y_pred.size(-1)
+        print(f"horizon: {horizon}")
+        
+        # Create weights: [gamma^0, gamma^1, gamma^2, ...]
         weights = torch.tensor(
             [self.gamma ** t for t in range(horizon)],
             dtype=y_pred.dtype,
             device=y_pred.device
         )
+        print(f"weights initial shape: {weights.shape}")
+        print(f"weights values: {weights}")
         
-        # Reshape weights for broadcasting: [horizon] -> [1, horizon, 1, ...]
-        while len(weights.shape) < len(y_pred.shape):
-            weights = weights.unsqueeze(-1)
+        # Reshape to (1, horizon) for broadcasting over nodes
+        weights = weights.unsqueeze(0)
+        print(f"weights after unsqueeze(0) shape: {weights.shape}")
         
+        # Compute weighted squared error
         se = (y_pred - y_true) ** 2
+        print(f"se shape: {se.shape}")
+        
+        print(f"About to multiply se * weights...")
         weighted_se = se * weights
+        print(f"weighted_se shape: {weighted_se.shape}")
+        
         return weighted_se.mean()
-
-
+    
 class PolynomialDecayLoss(BaseLoss):
     """
     Applies polynomial decay weights to future timesteps.

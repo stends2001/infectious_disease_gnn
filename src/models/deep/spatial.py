@@ -8,6 +8,7 @@ from typing import Optional
 from ...dataloading.deepdataloader import DeepDataLoader
 from .deepmodel import DeepModel
 from .strategies.standard_strategy import StandardStrategy
+from ...utils.textformatting import warning_emoji
 
 class SimpleGCNModule(nn.Module):
     """
@@ -19,14 +20,14 @@ class SimpleGCNModule(nn.Module):
                  hidden_size: int,
                  num_layers: int,
                  dropout: float,
-                 prediction_horizon: int,
+                 horizon_size: int,
         ):
         super().__init__()
 
         self.node_features      = node_features
         self.hidden_size        = hidden_size
         self.num_layers         = num_layers
-        self.prediction_horizon = prediction_horizon
+        self.horizon_size = horizon_size
 
         # === Spatial GCN layers ===
         self.spatial_convs = nn.ModuleList()
@@ -40,7 +41,7 @@ class SimpleGCNModule(nn.Module):
             nn.Linear(hidden_size, hidden_size // 2),
             nn.ReLU(),
             nn.Dropout(dropout),
-            nn.Linear(hidden_size // 2, prediction_horizon)
+            nn.Linear(hidden_size // 2, horizon_size)
         )
 
         self.dropout = nn.Dropout(dropout)
@@ -48,15 +49,27 @@ class SimpleGCNModule(nn.Module):
     def forward(self,
                 x: torch.Tensor,
                 edge_index: torch.Tensor,
-                edge_weight: Optional[torch.Tensor] = None
+                edge_weight: Optional[torch.Tensor] = None,
+                debug: bool = False
                 ) -> torch.Tensor:
         """
         Forward pass.
 
-        x: [num_nodes, node_features]
+        x: [num_nodes, node_features, tt]
         edge_index: [2, num_edges]
         """
+
+        if x.ndim == 3:
+            if x.shape[-1] != 1:
+                print(f'{warning_emoji} This spatial GNN takes in only one sequence of data. No time axis expected')
+
+        if debug:
+            print(f'input size: {x.shape}')
+
         h = x.squeeze(-1)
+
+        if debug:
+            print(f'squeezed input size: {h.shape}')
 
         # Apply GCN layers
         for gcn in self.spatial_convs:
@@ -64,8 +77,14 @@ class SimpleGCNModule(nn.Module):
             h = F.relu(h)
             h = self.dropout(h)
 
+        if debug:
+            print(f'convolved input size: {h.shape}')
+
         # Project to output
         output = self.output_proj(h)
+
+        if debug:
+            print(f'output size: {output.shape}')        
 
         return output
 
@@ -94,7 +113,7 @@ class SpatialGNNModel(DeepModel):
             hidden_size=hidden_size,
             num_layers=num_layers,
             dropout=dropout,
-            prediction_horizon=self.dataloader.horizon_size
+            horizon_size=self.dataloader.horizon_size
         ).to(self.device)
         
         model_hparams_config = {

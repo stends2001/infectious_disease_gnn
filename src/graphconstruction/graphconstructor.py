@@ -308,9 +308,9 @@ class GraphConstructor:
                 if node_degree in degree_counts.index:
                     idx = list(degree_counts.index).index(node_degree)
                     bars[idx].set_color(self_color)
-            
+            ax.yaxis.set_major_locator(plt.MaxNLocator(integer=True))
+            ax.xaxis.set_major_locator(plt.MaxNLocator(integer=True))
             return ax
-
 
         def plot_centroids(ax: Axes, df: pd.DataFrame, colorpalette: List, column: str, size: int = 7) -> Axes:
             centroids   = df.geometry.centroid
@@ -381,9 +381,13 @@ class GraphConstructor:
         def plot_histogram_edge_weights(ax: Axes, edge_weights: torch.Tensor, limits: Optional[Tuple[float,float]] = None) -> Axes:
             weights = edge_weights.detach().cpu().numpy()
             if limits:
-                ax.hist(weights, bins=15, range = limits, color='lightgray', edgecolor='black')
+                ax.hist(weights, bins=15, range=limits, color='lightgray', edgecolor='black')
             else:
-                ax.hist(weights, bins=15, color='lightgray', edgecolor='black')                
+                ax.hist(weights, bins=15, color='lightgray', edgecolor='black')
+            
+            # Force y-axis to use integer ticks only
+            ax.yaxis.set_major_locator(plt.MaxNLocator(integer=True))
+            
             return ax
 
         # emtpy graph => single plot with centroids in the shapefile
