@@ -17,12 +17,13 @@ class GATv2Module(nn.Module):
     """
     def __init__(self,
                  node_features: int,
-                 hidden_size: int = 64,
-                 num_layers: int = 2,
-                 dropout: float = 0.2,
-                 temporal_layers: int = 1,
-                 prediction_horizon: int = 1,
-                 heads: int = 2):
+                 hidden_size: int,
+                 num_layers: int,
+                 dropout: float,
+                 temporal_layers: int,
+                 num_heads: int,
+                 prediction_horizon: int,
+        ):
         super().__init__()
 
         self.node_features = node_features
@@ -33,14 +34,14 @@ class GATv2Module(nn.Module):
 
         # === Spatial GATv2 layers ===
         self.spatial_convs = nn.ModuleList()
-        self.spatial_convs.append(GATv2Conv(node_features, hidden_size, heads=heads, dropout=dropout))
+        self.spatial_convs.append(GATv2Conv(node_features, hidden_size, heads=num_heads, dropout=dropout))
 
         for _ in range(num_layers - 1):
             self.spatial_convs.append(
-                GATv2Conv(hidden_size * heads, hidden_size, heads=heads, dropout=dropout)
+                GATv2Conv(hidden_size * num_heads, hidden_size, heads=num_heads, dropout=dropout)
             )
 
-        self.total_gat_out_dim = hidden_size * heads
+        self.total_gat_out_dim = hidden_size * num_heads
 
         # === Temporal LSTM ===
         self.temporal_rnn = nn.LSTM(
@@ -118,8 +119,12 @@ class GATv2Model(DeepModel):
 
         self._set_strategy(RecurrentStrategy())
 
-    def set_model_hparams(self, hidden_size: int = 64, num_layers: int = 2,
-                         temporal_layers: int = 2, dropout: float = 0.2):
+    def set_model_hparams(self, 
+                          hidden_size: int = 64, 
+                          num_layers: int = 2,
+                          temporal_layers: int = 2, 
+                          dropout: float = 0.2,
+                          num_heads: int = 2):
         self.model_hparams_set = True
         self.model = GATv2Module(
             node_features=len(self.dataloader.feature_columns),
@@ -127,13 +132,15 @@ class GATv2Model(DeepModel):
             num_layers=num_layers,
             temporal_layers=temporal_layers,
             dropout=dropout,
+            num_heads = num_heads,
             prediction_horizon= self.dataloader.horizon_size
         ).to(self.device)
         
         model_hparams_config = {'hidden_size': hidden_size,
                                 'num_layers' : num_layers,
                                 'temporal_layers':temporal_layers,
-                                'dropout':dropout}
+                                'dropout':dropout,
+                                'num_heads':num_heads}
 
         self.config_info['model_hparams'] = model_hparams_config
         self._state['model_initialized'] = True

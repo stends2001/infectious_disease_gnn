@@ -82,7 +82,7 @@ class GraphGeneration:
         edge_indices, edge_weights =  self.GENERATION_FUNCS[method](**kwargs) 
         return (edge_indices, edge_weights)
 
-    def _commuter(self, commuter_type: Literal['static','dynamic'], commuting_threshold: int = 1_000) -> Tuple[List[Tuple[int,int]], List[float]]:
+    def _commuter(self, commuter_type: Literal['static','dynamic'], commuting_threshold: int = 1_000, top_k: Optional[int] = None) -> Tuple[List[Tuple[int,int]], List[float]]:
         """ 
         creates a commuter - graph:
 
@@ -93,6 +93,7 @@ class GraphGeneration:
             TODO: currently no dynamic commuter graphs implemented
         commuting_threshold: int = 1_000
             the threshold for number of commuters for nodes to be connected
+        top_k
         """
         if commuter_type == 'static':
             commuter_data_object = PendlerDatenProcessor(raw_folder_path = os.path.join(get_data_env(),'raw/germany/mobility/commuter_data/auspendler/'), processed_folder_path= os.path.join(get_data_env(),'processed/germany/mobility/commuter_data/')).import_raw_data('2024')
@@ -104,12 +105,21 @@ class GraphGeneration:
             raise ValueError('dynamic commuter graphs not yet implemented')
 
         commuter_data   = commuter_data[commuter_data['commuters'] > commuting_threshold]
-        node_weights    = []
-        node_edges      = []
 
-        for i in range(len(commuter_data)):
-            node_edges.append((int(commuter_data.iloc[i]['nuts3_work']), int(commuter_data.iloc[i]['nuts3_residence'])))
-            node_weights.append((int(commuter_data.iloc[i]['commuters'])))
+        if top_k is not None:
+            # Keep only top_k strongest links per source (nuts3_work)
+            commuter_data = (
+                commuter_data
+                .sort_values(by='commuters', ascending=False)
+                .groupby('nuts3_work', group_keys=False)
+                .head(top_k)
+            )
+
+        node_edges = list(zip(
+            commuter_data['nuts3_work'].astype(int),
+            commuter_data['nuts3_residence'].astype(int)
+        ))
+        node_weights = commuter_data['commuters'].astype(float).tolist()
 
         return (node_edges, node_weights)
                 
@@ -204,152 +214,212 @@ class GraphGeneration:
                     weights.append(weight)       
         return edges, weights
 
-    def _gravity_model(self, 
-                    max_distance: float, 
-                    alpha: float = 2.0, 
-                    density_control: Literal['top_k', 'threshold', 'adaptive', 'distance_bands'] = 'top_k', 
-                    k: int = 10, 
-                    weight_threshold: Optional[float] = None, 
-                    distance_decay_factor: float = 1.0) -> Tuple[List[Tuple[int,int]], List[float]]:
-        """
-        Creates a gravity model graph where edge weights are proportional to node populations
-        and inversely proportional to distance, similar to gravitational force between masses.
-        
-        The gravity model weight formula:
+    def _gravity_model(self,
+        alpha:  float = 2.0,
+        epsilon:float = 1e-6,
+        decay:  float = 1.0,
+        max_distance: float = np.inf,
+        top_k:  Optional[int] = None) -> Tuple[List[Tuple[int,int]], List[float]]:
+        """ 
+        classic gravity model following:
             weight = (pop_i * pop_j) / ((distance * distance_decay_factor)^alpha + epsilon)
-        
-        Parameters:
-        ----------
-        max_distance : float
-            Maximum distance threshold in meters (or coordinate units). Nodes farther apart 
-            than this distance will not be connected. Acts as a hard cutoff for potential edges.
-            
-        alpha : float, default=2.0
-            Distance decay exponent. Higher values make distance matter more (steeper decay).
-            - alpha=1.0: linear decay
-            - alpha=2.0: quadratic decay (similar to physical gravity)
-            - alpha>2.0: super-quadratic decay (very local connections)
-            
-        density_control : {'top_k', 'threshold', 'adaptive', 'distance_bands'}, default='top_k'
-            Method for controlling graph density and preventing over-connection:
-            
-            - 'top_k': Keep only the k strongest connections per node (recommended for balanced graphs)
-            - 'threshold': Keep connections above a fixed weight threshold
-            - 'adaptive': Keep connections above 10% of each node's maximum weight (node-specific)
-            - 'distance_bands': Stratified selection prioritizing closer connections
-            (6 close + 3 medium + 1 far = 10 total max per node)
-            
-        k : int, default=10
-            Number of top connections to keep per node when density_control='top_k'.
-            Larger k creates denser graphs with more computational cost.
-            
-        weight_threshold : float or None, default=None
-            Absolute weight threshold for density_control='threshold'. If None, 
-            automatically set to the 75th percentile of computed weights.
-            
-        distance_decay_factor : float, default=1.0
-            Multiplicative factor applied to distance before computing decay. 
-            Values > 1.0 make distances "feel" larger (stronger locality).
-            Values < 1.0 make distances "feel" smaller (weaker locality).
-            Example: distance_decay_factor=2.0 makes 100km behave like 200km.
-        
-        Returns:
-        -------
-        edges : List[Tuple[int, int]]
-            List of directed edges as (source_node_id, target_node_id) tuples
-            
-        weights : List[float]
-            Corresponding edge weights based on gravity model calculation
-            
-        Notes:
-        -----
-        - Self-loops (i==j) are automatically excluded
-        - Missing population data is imputed with mean population
-        - Small epsilon (1e-6) added to denominator to prevent division by zero
-        - All edges within max_distance are computed first, then filtered by density_control
-        
-        Examples:
-        --------
-        >>> # Standard gravity model with top 10 connections per node
-        >>> edges, weights = self._gravity_model(max_distance=100000, alpha=2.0, 
-        ...                                       density_control='top_k', k=10)
-        
-        >>> # Very local model with adaptive thresholding
-        >>> edges, weights = self._gravity_model(max_distance=50000, alpha=3.0,
-        ...                                       density_control='adaptive')
-        
-        >>> # Distance-stratified connections emphasizing closer neighbors  
-        >>> edges, weights = self._gravity_model(max_distance=150000, 
-        ...                                       density_control='distance_bands')
         """
-        dfc                     = self.gdf[[self.id_col, 'geometry']].sort_values(self.id_col).reset_index(drop=True)
-        dfc                     = dfc.merge(self.popdata[[self.id_col, 'population_size']], on=self.id_col, how='left')
-        dfc['population_size']  = dfc['population_size'].fillna(dfc['population_size'].mean())
-        
-        centroids               = dfc.geometry.centroid
-        coords                  = np.array([[point.x, point.y] for point in centroids])
-        distances               = euclidean_distances(coords)
 
-        # Calculate all potential weights first
-        all_weights = []
-        all_edges = []
+        dfc = self.gdf[[self.id_col, 'geometry']].sort_values(self.id_col)
+
+        dfc_centroids = dfc 
+        dfc_centroids['geometry'] = dfc.geometry.centroid
+
+
+        coords = np.array([[point.x, point.y] for point in dfc_centroids.geometry])
+
+        # Compute Euclidean distances between all pairs
+        distance_matrix = euclidean_distances(coords)
+
+        edges = []
+        weights = []
+
+        num_nodes = len(self.popdata)
+
+        popvalues = self.popdata['population_size'].values
+        node_ids  = self.popdata['node'].values
+
+        for i in range(num_nodes):
+            node_i_id = int(node_ids[i])
+            pop_i = popvalues[i]
+
+            connections = []
+
+            for j in range(num_nodes):
+                if i == j:
+                    continue
+
+                d_ij = distance_matrix[i, j]
+                if d_ij > max_distance:
+                    continue
+
+                pop_j = popvalues[j]
+                node_j_id = int(node_ids[j])
+
+                weight = (pop_i * pop_j) / ((d_ij * decay) ** alpha + epsilon)
+                connections.append((node_i_id, node_j_id, weight))
+
+            # Apply top-k filtering if specified
+            if top_k is not None:
+                connections = sorted(connections, key=lambda x: x[2], reverse=True)[:top_k]
+
+            for source, target, weight in connections:
+                edges.append((source, target))
+                weights.append(weight)
+
+        return edges, weights
+
+    # def _gravity_model(self, 
+    #                 max_distance: float, 
+    #                 alpha: float = 2.0, 
+    #                 density_control: Literal['top_k', 'threshold', 'adaptive', 'distance_bands'] = 'top_k', 
+    #                 k: int = 10, 
+    #                 weight_threshold: Optional[float] = None, 
+    #                 distance_decay_factor: float = 1.0) -> Tuple[List[Tuple[int,int]], List[float]]:
+    #     """
+    #     Creates a gravity model graph where edge weights are proportional to node populations
+    #     and inversely proportional to distance, similar to gravitational force between masses.
         
-        for i in range(len(dfc)):
-            node_weights = []
-            node_edges = []
+    #     The gravity model weight formula:
+    #         weight = (pop_i * pop_j) / ((distance * distance_decay_factor)^alpha + epsilon)
+        
+    #     Parameters:
+    #     ----------
+    #     max_distance : float
+    #         Maximum distance threshold in meters (or coordinate units). Nodes farther apart 
+    #         than this distance will not be connected. Acts as a hard cutoff for potential edges.
             
-            for j in range(len(dfc)):
-                if distances[i, j] <= max_distance and i != j:
-                    pop_i = dfc.iloc[i]['population_size']
-                    pop_j = dfc.iloc[j]['population_size']
-                    dist = distances[i, j]
+    #     alpha : float, default=2.0
+    #         Distance decay exponent. Higher values make distance matter more (steeper decay).
+    #         - alpha=1.0: linear decay
+    #         - alpha=2.0: quadratic decay (similar to physical gravity)
+    #         - alpha>2.0: super-quadratic decay (very local connections)
+            
+    #     density_control : {'top_k', 'threshold', 'adaptive', 'distance_bands'}, default='top_k'
+    #         Method for controlling graph density and preventing over-connection:
+            
+    #         - 'top_k': Keep only the k strongest connections per node (recommended for balanced graphs)
+    #         - 'threshold': Keep connections above a fixed weight threshold
+    #         - 'adaptive': Keep connections above 10% of each node's maximum weight (node-specific)
+    #         - 'distance_bands': Stratified selection prioritizing closer connections
+    #         (6 close + 3 medium + 1 far = 10 total max per node)
+            
+    #     k : int, default=10
+    #         Number of top connections to keep per node when density_control='top_k'.
+    #         Larger k creates denser graphs with more computational cost.
+            
+    #     weight_threshold : float or None, default=None
+    #         Absolute weight threshold for density_control='threshold'. If None, 
+    #         automatically set to the 75th percentile of computed weights.
+            
+    #     distance_decay_factor : float, default=1.0
+    #         Multiplicative factor applied to distance before computing decay. 
+    #         Values > 1.0 make distances "feel" larger (stronger locality).
+    #         Values < 1.0 make distances "feel" smaller (weaker locality).
+    #         Example: distance_decay_factor=2.0 makes 100km behave like 200km.
+        
+    #     Returns:
+    #     -------
+    #     edges : List[Tuple[int, int]]
+    #         List of directed edges as (source_node_id, target_node_id) tuples
+            
+    #     weights : List[float]
+    #         Corresponding edge weights based on gravity model calculation
+            
+    #     Notes:
+    #     -----
+    #     - Self-loops (i==j) are automatically excluded
+    #     - Missing population data is imputed with mean population
+    #     - Small epsilon (1e-6) added to denominator to prevent division by zero
+    #     - All edges within max_distance are computed first, then filtered by density_control
+        
+    #     Examples:
+    #     --------
+    #     >>> # Standard gravity model with top 10 connections per node
+    #     >>> edges, weights = self._gravity_model(max_distance=100000, alpha=2.0, 
+    #     ...                                       density_control='top_k', k=10)
+        
+    #     >>> # Very local model with adaptive thresholding
+    #     >>> edges, weights = self._gravity_model(max_distance=50000, alpha=3.0,
+    #     ...                                       density_control='adaptive')
+        
+    #     >>> # Distance-stratified connections emphasizing closer neighbors  
+    #     >>> edges, weights = self._gravity_model(max_distance=150000, 
+    #     ...                                       density_control='distance_bands')
+    #     """
+    #     dfc                     = self.gdf[[self.id_col, 'geometry']].sort_values(self.id_col).reset_index(drop=True)
+    #     dfc                     = dfc.merge(self.popdata[[self.id_col, 'population_size']], on=self.id_col, how='left')
+    #     dfc['population_size']  = dfc['population_size'].fillna(dfc['population_size'].mean())
+        
+    #     centroids               = dfc.geometry.centroid
+    #     coords                  = np.array([[point.x, point.y] for point in centroids])
+    #     distances               = euclidean_distances(coords)
+
+    #     # Calculate all potential weights first
+    #     all_weights = []
+    #     all_edges = []
+        
+    #     for i in range(len(dfc)):
+    #         node_weights = []
+    #         node_edges = []
+            
+    #         for j in range(len(dfc)):
+    #             if distances[i, j] <= max_distance and i != j:
+    #                 pop_i = dfc.iloc[i]['population_size']
+    #                 pop_j = dfc.iloc[j]['population_size']
+    #                 dist = distances[i, j]
                     
-                    # Enhanced gravity model with additional distance decay
-                    weight = (pop_i * pop_j) / ((dist * distance_decay_factor)**alpha + 1e-6)
+    #                 # Enhanced gravity model with additional distance decay
+    #                 weight = (pop_i * pop_j) / ((dist * distance_decay_factor)**alpha + 1e-6)
                     
-                    node_weights.append((weight, j))
-                    node_edges.append((int(dfc.iloc[i][self.id_col]), int(dfc.iloc[j][self.id_col])))
+    #                 node_weights.append((weight, j))
+    #                 node_edges.append((int(dfc.iloc[i][self.id_col]), int(dfc.iloc[j][self.id_col])))
             
-            # Apply density control
-            if density_control == 'top_k':
-                # Keep only top k connections per node
-                node_weights.sort(reverse=True)
-                selected = node_weights[:k]
+    #         # Apply density control
+    #         if density_control == 'top_k':
+    #             # Keep only top k connections per node
+    #             node_weights.sort(reverse=True)
+    #             selected = node_weights[:k]
                 
-            elif density_control == 'threshold':
-                # Keep connections above weight threshold
-                if weight_threshold is None:
-                    weight_threshold = np.percentile([w[0] for w in node_weights], 75)
-                selected = [(w, j) for w, j in node_weights if w >= weight_threshold]
+    #         elif density_control == 'threshold':
+    #             # Keep connections above weight threshold
+    #             if weight_threshold is None:
+    #                 weight_threshold = np.percentile([w[0] for w in node_weights], 75)
+    #             selected = [(w, j) for w, j in node_weights if w >= weight_threshold]
                 
-            elif density_control == 'adaptive':
-                # Adaptive threshold based on node's maximum weight
-                if node_weights:
-                    max_weight = max(w[0] for w in node_weights)
-                    adaptive_threshold = max_weight * 0.1  # Keep top 10% of weights
-                    selected = [(w, j) for w, j in node_weights if w >= adaptive_threshold]
-                else:
-                    selected = []
+    #         elif density_control == 'adaptive':
+    #             # Adaptive threshold based on node's maximum weight
+    #             if node_weights:
+    #                 max_weight = max(w[0] for w in node_weights)
+    #                 adaptive_threshold = max_weight * 0.1  # Keep top 10% of weights
+    #                 selected = [(w, j) for w, j in node_weights if w >= adaptive_threshold]
+    #             else:
+    #                 selected = []
                     
-            elif density_control == 'distance_bands':
-                # Prioritize closer connections, limit distant ones
-                node_weights_with_dist = [(w, j, distances[i, j]) for w, j in node_weights]
-                node_weights_with_dist.sort(key=lambda x: x[2])  # Sort by distance
+    #         elif density_control == 'distance_bands':
+    #             # Prioritize closer connections, limit distant ones
+    #             node_weights_with_dist = [(w, j, distances[i, j]) for w, j in node_weights]
+    #             node_weights_with_dist.sort(key=lambda x: x[2])  # Sort by distance
                 
-                # Take more from closer distance bands
-                close_band  = [x for x in node_weights_with_dist if x[2] <= max_distance * 0.3]
-                medium_band = [x for x in node_weights_with_dist if max_distance * 0.3 < x[2] <= max_distance * 0.7]
-                far_band    = [x for x in node_weights_with_dist if x[2] > max_distance * 0.7]
+    #             # Take more from closer distance bands
+    #             close_band  = [x for x in node_weights_with_dist if x[2] <= max_distance * 0.3]
+    #             medium_band = [x for x in node_weights_with_dist if max_distance * 0.3 < x[2] <= max_distance * 0.7]
+    #             far_band    = [x for x in node_weights_with_dist if x[2] > max_distance * 0.7]
                 
-                selected_items = close_band[:6] + medium_band[:3] + far_band[:1]  # 6+3+1=10 connections max
-                selected = [(w, j) for w, j, d in selected_items]
+    #             selected_items = close_band[:6] + medium_band[:3] + far_band[:1]  # 6+3+1=10 connections max
+    #             selected = [(w, j) for w, j, d in selected_items]
             
-            else:
-                selected = node_weights  # No density control
+    #         else:
+    #             selected = node_weights  # No density control
             
-            # Add selected edges and weights
-            for idx, (weight, j) in enumerate(selected):
-                all_edges.append(node_edges[node_weights.index((weight, j))])
-                all_weights.append(weight)
+    #         # Add selected edges and weights
+    #         for idx, (weight, j) in enumerate(selected):
+    #             all_edges.append(node_edges[node_weights.index((weight, j))])
+    #             all_weights.append(weight)
             
-        return all_edges, all_weights
+    #     return all_edges, all_weights

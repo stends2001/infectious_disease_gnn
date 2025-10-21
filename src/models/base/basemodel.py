@@ -16,7 +16,8 @@ import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import matplotlib.colors as colors
 
-from . import MODELSREGISTRY, MODELSCOLORPALETTE
+from ..registry import MODELSREGISTRY
+from ..utils import MODELSCOLORPALETTE
 
 from ...configmanager.modelconfigmanager import ModelConfigManager
 
@@ -131,12 +132,33 @@ class BaseModel:
             evaluation_df = evaluation_df[evaluation_df[self.dataloader.temporal_column]>= date0]
             evaluation_df = evaluation_df[evaluation_df[self.dataloader.temporal_column]< date1] 
 
+        if transformed:
+            evaluation_df_aggr= evaluation_df.copy().groupby(self.dataloader.temporal_column).agg({target_column: sum_preserve_nan, pred_column: sum_preserve_nan})
 
-        evaluation_df_aggr= evaluation_df.copy().groupby(self.dataloader.temporal_column).agg({target_column: sum_preserve_nan, pred_column: sum_preserve_nan})
+            title = 'Nationally aggregated transformed incidence values'
+        else:
+            merged_df = pd.merge(self.evaluation_datasets['test']['nontransformed'][f'horizon_{target_h}'][['timestamp','node','incidence','pred']], self.dataloader.data['context']['epidemiological_data'][['timestamp','node','cases','population_size']], on = ['timestamp','node'])
+            merged_df["cases_true"] = merged_df["incidence"] * merged_df["population_size"]
+            merged_df["cases_pred"] = merged_df["pred"] * merged_df["population_size"]
+
+            # Group by timestamp, sum reconstructed cases and population
+            evaluation_df_aggr = merged_df.groupby("timestamp").agg({
+                "cases_true": "sum",
+                "cases_pred": "sum",
+                "population_size": "sum"
+            }).reset_index()
+
+            # Calculate national-level incidence rates
+            evaluation_df_aggr[target_column] = evaluation_df_aggr["cases_true"] / evaluation_df_aggr["population_size"]
+            evaluation_df_aggr[pred_column] = evaluation_df_aggr["cases_pred"] / evaluation_df_aggr["population_size"] 
+
+            title = f'National incidence rate (per {self.dataloader.incidence_scalar})'
+
+
         ax = axes[0]
         sns.lineplot(data=evaluation_df_aggr, x=self.dataloader.temporal_column, y=target_column, color=testcolor, marker = "o",           ax=ax)
         sns.lineplot(data=evaluation_df_aggr, x=self.dataloader.temporal_column, y=pred_column, color=self.model_color, markeredgecolor='black', marker = "x",  ax=ax)
-        ax.set_title(f'National aggregation of incidence')
+        ax.set_title(title)
         ax.set_xlabel("")            
         ax.grid()          
 

@@ -290,22 +290,27 @@ class GraphConstructor:
 
             return ax
 
-        def plot_histogram_connection_degree(ax: Axes, edge_index, node_idx = None, self_color = None) -> Axes: 
+        def plot_histogram_connection_degree(ax: Axes, edge_index, node_idx=None, self_color=None) -> Axes: 
+            nodes = edge_index.tolist()
 
-            all_nodes    = edge_index.flatten().tolist()
-            degree_series = pd.Series(all_nodes).value_counts().sort_index()
+            degree_series = pd.Series(nodes).value_counts().sort_index()
             degree_counts = degree_series.value_counts().sort_index()
 
+            bars = ax.bar(degree_counts.index, degree_counts.values, color='lightgray', edgecolor='black', width=1)
 
+            # Set x-axis limits: one below min, one above max
+            min_degree = degree_counts.index.min()
+            max_degree = degree_counts.index.max()
+            ax.set_xlim(min_degree - 1, max_degree + 1)
 
-            bars = ax.bar(degree_counts.index, degree_counts.values, color='lightgray', edgecolor = 'black', width = 1)
-            
-            if node_idx: 
-                node_degree   = degree_series.get(int(node_idx))
+            if node_idx:
+                node_degree = degree_series.get(int(node_idx))
                 if node_degree in degree_counts.index:
                     idx = list(degree_counts.index).index(node_degree)
                     bars[idx].set_color(self_color)
-            return ax 
+            
+            return ax
+
 
         def plot_centroids(ax: Axes, df: pd.DataFrame, colorpalette: List, column: str, size: int = 7) -> Axes:
             centroids   = df.geometry.centroid
@@ -394,17 +399,18 @@ class GraphConstructor:
             global_edge_index   = graph['edge_index']
 
             fig = plt.figure(figsize=(18, 12))
-            gs  = fig.add_gridspec(2, 2, width_ratios=[3, 1], height_ratios=[1, 1])
+            
 
             # global graph =>
             #   ax_main:        map showing all connected nodes
             #   ax_hist_quali:  histogram showing distribution of number of connections per node
             #   ax_hist_quanti: histogram showing distribution of edge_weights
             if node_idx == 'all':
-                
+                gs  = fig.add_gridspec(3, 2, width_ratios=[3, 1], height_ratios=[1, 1, 1])
                 ax_main         = fig.add_subplot(gs[:, 0])
-                ax_hist_quali   = fig.add_subplot(gs[0, 1])
-                ax_hist_quanti  = fig.add_subplot(gs[1, 1])        
+                ax_hist_quali1  = fig.add_subplot(gs[0, 1])
+                ax_hist_quali2  = fig.add_subplot(gs[1, 1])
+                ax_hist_quanti  = fig.add_subplot(gs[2, 1])        
 
                 edge_index      = self.graph_registry[graphname]['structure']['edge_index']    
                 edge_weights    = self.graph_registry[graphname]['structure']['edge_weight']    
@@ -416,8 +422,11 @@ class GraphConstructor:
                 basic_plot_makeup(ax_main, f"{graphname} [qualitatively, global]", vspine=False)
 
                 # ax_hist_quali: histogram showing distribution of number of connections per node
-                plot_histogram_connection_degree(ax_hist_quali, global_edge_index)
-                basic_plot_makeup(ax_hist_quali, title = f"Global distribution of connections per node {graphname}", vspine=True, xlabel='connections', ylabel = 'frequency')                    
+                plot_histogram_connection_degree(ax_hist_quali1, global_edge_index[0])
+                basic_plot_makeup(ax_hist_quali1, title = f"Global distribution of src connections per node {graphname}", vspine=True, xlabel='connections', ylabel = 'frequency')                    
+
+                plot_histogram_connection_degree(ax_hist_quali2, global_edge_index[1])
+                basic_plot_makeup(ax_hist_quali2, title = f"Global distribution of dst connections per node {graphname}", vspine=True, xlabel='connections', ylabel = 'frequency')   
 
                 # ax_hist_quanti: histogram showing distribution of edge_weights                
                 plot_histogram_edge_weights(ax_hist_quanti, edge_weights)
@@ -432,6 +441,7 @@ class GraphConstructor:
             #   ax_local:       map showing all connected nodes to node_idx (quantitatively, zoomed in)
             #   ax_hist:        histogram showing distribution of edge_weights with node_idx as source
             elif isinstance(node_idx, int):  # node_idx is int
+                gs  = fig.add_gridspec(2, 2, width_ratios=[3, 1], height_ratios=[1, 1])
                 ax_global = fig.add_subplot(gs[:, 0])
                 ax_local  = fig.add_subplot(gs[0, 1])
                 ax_hist   = fig.add_subplot(gs[1, 1])

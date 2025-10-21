@@ -31,10 +31,11 @@ class DeepDataLoader(EpiDataLoader):
                  horizon_size: int     = 1,
                  horizon_leadtime:int  = 1,
                  sequence_length: int  = 1,
-                 split_berlin: bool    = True):
+                 split_berlin: bool    = True,
+                 verbose: bool         = True):
         self.task_config = {}
 
-        super().__init__(disease_name, data_env_dir, min_date, max_date, nuts_level, include_population, horizon_size, horizon_leadtime, sequence_length, split_berlin)
+        super().__init__(disease_name, data_env_dir, min_date, max_date, nuts_level, include_population, horizon_size, horizon_leadtime, sequence_length, split_berlin, verbose)
          
         self.edge_index:  Optional[torch.Tensor] = None
         self.edge_weight: Optional[torch.Tensor] = None
@@ -298,7 +299,8 @@ class DeepDataLoader(EpiDataLoader):
             horizon_size       = self.horizon_size,
             horizon_leadtime   = self.horizon_leadtime,
             sequence_length    = self.sequence_length,
-            split_berlin       = self.split_berlin
+            split_berlin       = self.split_berlin,
+            verbose            = False
         )
         
         

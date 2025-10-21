@@ -93,12 +93,16 @@ class Evaluator:
         horizon_dataset = f'horizon_{horizon}'
 
         rows = []
-        model_colors = {}
+        model_class_colors = {}
 
         for model in self.evaluated_models:
             model_name = model.name
-            color = model.model_color  # <- assumes each model has a `.model_color` attribute (e.g., an RGB tuple)
-            model_colors[model_name] = color
+            model_class = model.model_class
+            color = model.model_color
+            
+            # Map model_class to color (will handle duplicates automatically)
+            if model_class not in model_class_colors:
+                model_class_colors[model_class] = color
 
             metrics_dict = self.evaluation_entries[model_name]
             metric_df = metrics_dict[horizon_dataset][metric]
@@ -106,6 +110,7 @@ class Evaluator:
             for _, row in metric_df.iterrows():
                 rows.append({
                     'model': model_name,
+                    'model_class': model_class,
                     'node': row['node'],
                     'metric': metric,
                     'value': row[metric]
@@ -114,31 +119,45 @@ class Evaluator:
         df = pd.DataFrame(rows)
 
         fig, ax = plt.subplots(1, 1, figsize=(12, 5))
-       
+    
         if plot_type == 'violin':
             sns.violinplot(
                 data=df,
                 x='model',
                 y='value',
-                hue='model',
+                hue='model_class',
                 ax=ax,
-                palette=model_colors,
-                cut=0  # optional: limits violin tails to data range
+                palette=model_class_colors,
+                cut=0,
+                legend=False
             )
         elif plot_type == 'box':
             sns.boxplot(
                 data=df,
                 x='model',
                 y='value',
-                hue='model',
+                hue='model_class',
                 ax=ax,
-                palette=model_colors
+                palette=model_class_colors,
+                legend=False
             )
         else:
             raise ValueError("plot_type must be either 'violin' or 'box'")
 
         ax.set_title('Model Evaluation Metrics per Node')
         ax.set_ylabel(f'{metric}')
+        ax.set_xlabel('Model')
+        ax.grid()
+        
+        # Rotate x-axis labels 90 degrees
+        ax.set_xticklabels(ax.get_xticklabels(), rotation=30, ha='center', fontsize=8)
+        
+        # Create custom legend with model_class colors
+        handles = [plt.Rectangle((0,0),1,1, facecolor=color) for color in model_class_colors.values()] # type: ignore
+        labels = list(model_class_colors.keys())
+        ax.legend(handles, labels, title='Model Class', loc='best')
+        
+        plt.tight_layout()  # Prevents label cutoff
 
         return self
 
@@ -175,6 +194,11 @@ class Evaluator:
         return rmse
 
     def _return_ccc(self, df: pd.DataFrame):
+        """
+        ccc => concordance correlation coefficient;
+        
+        
+        """
         target = df[self.target_col]
         pred = df[self.pred_col]
 

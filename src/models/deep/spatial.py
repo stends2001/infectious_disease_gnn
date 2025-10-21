@@ -1,0 +1,109 @@
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from torch_geometric.nn import GCNConv
+import pandas as pd
+import numpy as np
+from typing import Optional
+from ...dataloading.deepdataloader import DeepDataLoader
+from .deepmodel import DeepModel
+from .strategies.standard_strategy import StandardStrategy
+
+class SimpleGCNModule(nn.Module):
+    """
+    Simple spatial-only GCN model.
+    Processes graph structure without temporal dynamics.
+    """
+    def __init__(self,
+                 node_features: int,
+                 hidden_size: int,
+                 num_layers: int,
+                 dropout: float,
+                 prediction_horizon: int,
+        ):
+        super().__init__()
+
+        self.node_features      = node_features
+        self.hidden_size        = hidden_size
+        self.num_layers         = num_layers
+        self.prediction_horizon = prediction_horizon
+
+        # === Spatial GCN layers ===
+        self.spatial_convs = nn.ModuleList()
+        self.spatial_convs.append(GCNConv(node_features, hidden_size))
+
+        for _ in range(num_layers - 1):
+            self.spatial_convs.append(GCNConv(hidden_size, hidden_size))
+
+        # === Output layer ===
+        self.output_proj = nn.Sequential(
+            nn.Linear(hidden_size, hidden_size // 2),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_size // 2, prediction_horizon)
+        )
+
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self,
+                x: torch.Tensor,
+                edge_index: torch.Tensor,
+                edge_weight: Optional[torch.Tensor] = None
+                ) -> torch.Tensor:
+        """
+        Forward pass.
+
+        x: [num_nodes, node_features]
+        edge_index: [2, num_edges]
+        """
+        h = x.squeeze(-1)
+
+        # Apply GCN layers
+        for gcn in self.spatial_convs:
+            h = gcn(h, edge_index, edge_weight)
+            h = F.relu(h)
+            h = self.dropout(h)
+
+        # Project to output
+        output = self.output_proj(h)
+
+        return output
+
+class SpatialGNNModel(DeepModel):
+    """
+    Simple spatial GCN model without temporal components.
+    """
+    def __init__(self, 
+                 dataloader: DeepDataLoader, 
+                 name: Optional[str] = None):
+        super().__init__(dataloader, name=name)
+        
+        if not self.name:
+            self.name = 'SpatialGNN'
+
+        self.dataloader = dataloader
+        self._set_strategy(StandardStrategy())
+
+    def set_model_hparams(self, 
+                          hidden_size: int = 64, 
+                          num_layers: int = 2,
+                          dropout: float = 0.2):
+        self.model_hparams_set = True
+        self.model = SimpleGCNModule(
+            node_features=len(self.dataloader.feature_columns),
+            hidden_size=hidden_size,
+            num_layers=num_layers,
+            dropout=dropout,
+            prediction_horizon=self.dataloader.horizon_size
+        ).to(self.device)
+        
+        model_hparams_config = {
+            'hidden_size': hidden_size,
+            'num_layers': num_layers,
+            'dropout': dropout
+        }
+
+        self.config_info['model_hparams'] = model_hparams_config
+        self._state['model_initialized'] = True
+
+        return self

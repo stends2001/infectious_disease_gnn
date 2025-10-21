@@ -82,12 +82,13 @@ class EpiDataLoader:
                  horizon_size: int     = 1,
                  horizon_leadtime:int  = 1,
                  sequence_length: int  = 1,
-                 split_berlin  : bool  = True
+                 split_berlin  : bool  = True,
+                 verbose: bool = True
                  ):
         
         self.data               = {}
         self.include_population = include_population
-        self.og_min_date           = pd.to_datetime(min_date)
+        self.og_min_date        = pd.to_datetime(min_date)
         self.max_date           = pd.to_datetime(max_date)
         self.temporal_column    = 'timestamp'
         self.target_column      = 'incidence'
@@ -101,6 +102,7 @@ class EpiDataLoader:
         self.nuts_level         = nuts_level
         self.transform_params   = {}
 
+        self.verbose            = verbose
         self.incidence_scalar   = 10_000
 
         self.horizon_size     = horizon_size
@@ -114,8 +116,9 @@ class EpiDataLoader:
         extended_min_date       = pd.to_datetime(min_date) - pd.Timedelta(weeks=extension_weeks)        
         self.min_date           = extended_min_date
 
-        print(f"Dataloader temporal windowing: extending data collection from {min_date} "
-              f"to {extended_min_date.date()} (+{extension_weeks} weeks)")
+        if self.verbose:
+            print(f"Dataloader temporal windowing: extending data collection from {min_date} "
+                f"to {extended_min_date.date()} (+{extension_weeks} weeks)")
 
 
         # import data
@@ -212,12 +215,12 @@ class EpiDataLoader:
 
             # Use `all()` as a method, not `all` attribute
             if all(id_ in berlin_district_ids for id_ in dropped_ids):
-
-                print('berlin districts removed')
+                if self.verbose:
+                    print('berlin districts removed')
 
             elif dropped_ids[0] == '11000':
-
-                print('berlin merged removed')
+                if self.verbose:
+                    print('berlin merged removed')
 
             else:
 
@@ -372,6 +375,7 @@ class EpiDataLoader:
         dataset       = self.data[status]
 
         target = self.target_column[0]
+        
         print(f'for the sake of simplification, the first target will be plotted: {target}')
         if status in postsplit_statuses:
             
