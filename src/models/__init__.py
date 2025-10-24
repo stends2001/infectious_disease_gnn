@@ -5,6 +5,8 @@ from .deep.gconvlstm import GConvLSTMModel
 from .deep.spatial import SpatialGNNModel
 from .deep.gatv2_embeddings import GATv2EmbeddingsModel
 
+from .shallow.node_rf import NodeRFModel
+
 MODELSREGISTRY = {
         'unknown'               : 0,                    # all unknowns will be shown in black
         'PersistenceModel'      : PersistenceModel,
@@ -14,5 +16,6 @@ MODELSREGISTRY = {
         'GATv2Model'            : GATv2Model,
         'TGCNModel'             : TGCNModel,
         'GConvLSTMModel'        : GConvLSTMModel,
-        'GATv2EmbeddingsModel'  : GATv2EmbeddingsModel
+        'GATv2EmbeddingsModel'  : GATv2EmbeddingsModel,
+        'NodeRFModel'           : NodeRFModel
     }   

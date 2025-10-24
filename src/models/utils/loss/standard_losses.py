@@ -116,3 +116,51 @@ class SmoothL1Loss(BaseLoss):
         self._validate_inputs(y_pred, y_true)
         return self.smooth_l1(y_pred, y_true)
 
+
+class WeightedMSELoss(nn.Module):
+    """Weighted Mean Squared Error loss with emphasis on underpredictions when target is non-zero."""
+    
+    def __init__(self, high_weight: float = 10.0, low_weight: float = 2.0, **kwargs):
+        """
+        Args:
+            high_weight (float): The weight applied when the target is non-zero but the prediction is zero.
+            low_weight (float): The weight applied when both target and prediction are non-zero.
+            **kwargs: Additional arguments for flexibility.
+        """
+        super().__init__(**kwargs)
+        self.mse = nn.MSELoss(reduction='none')  # Set reduction to 'none' to compute element-wise loss
+        
+        self.high_weight = high_weight  # For cases where target is non-zero and prediction is zero
+        self.low_weight = low_weight  # For cases where both target and prediction are non-zero
+    
+    def forward(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
+        """Compute the weighted MSE loss with more emphasis on underpredictions (target != 0, pred == 0)."""
+        self._validate_inputs(y_pred, y_true)
+        
+        # Compute the element-wise MSE loss
+        loss = self.mse(y_pred, y_true)
+        
+        # Create masks for different conditions
+        non_zero_target_mask = (y_true != 0).float()  # 1 for non-zero target
+        zero_prediction_mask = (y_pred == 0).float()  # 1 for zero predictions
+        non_zero_prediction_mask = (y_pred != 0).float()  # 1 for non-zero predictions
+        
+        # Condition 1: target is non-zero and prediction is zero -> High penalty
+        high_penalty_mask = non_zero_target_mask * zero_prediction_mask
+        
+        # Condition 2: target and prediction both non-zero -> Low penalty
+        low_penalty_mask = non_zero_target_mask * non_zero_prediction_mask
+        
+        # Apply penalties
+        weighted_loss = (loss * (high_penalty_mask * (self.high_weight - 1) + 1))  # High penalty for underprediction
+        
+        # Apply lower penalty for non-zero target and prediction
+        weighted_loss += (loss * (low_penalty_mask * (self.low_weight - 1) + 1))  # Low penalty for correct predictions
+        
+        # Return the mean loss
+        return weighted_loss.mean()
+
+    def _validate_inputs(self, y_pred: torch.Tensor, y_true: torch.Tensor):
+        """Helper method to validate inputs (optional but useful)."""
+        if y_pred.size() != y_true.size():
+            raise ValueError(f"Shape mismatch: y_pred.shape = {y_pred.shape}, y_true.shape = {y_true.shape}")

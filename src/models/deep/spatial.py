@@ -63,22 +63,27 @@ class SimpleGCNModule(nn.Module):
             if x.shape[-1] != 1:
                 print(f'{warning_emoji} This spatial GNN takes in only one sequence of data. No time axis expected')
 
-        if debug:
-            print(f'input size: {x.shape}')
+        # if debug:
+        #     print(f'input size: {x.shape}')
 
         h = x.squeeze(-1)
 
+        # if debug:
+        #     print(f'squeezed input size: {h.shape}')
         if debug:
-            print(f'squeezed input size: {h.shape}')
-
+            print(f'Edge index: {edge_index.shape}')
+            print(f'Edge sample: {edge_index[:, :5]}')
+            print(f'Node features before GCN: {h[:3, :3]}')
         # Apply GCN layers
         for gcn in self.spatial_convs:
             h = gcn(h, edge_index, edge_weight)
             h = F.relu(h)
             h = self.dropout(h)
-
         if debug:
-            print(f'convolved input size: {h.shape}')
+            print(f'Node features after GCN: {h[:3, :3]}')
+            print(f'did features change? {torch.norm(h - x.squeeze(-1))}')
+        # if debug:
+        #     print(f'convolved input size: {h.shape}')
 
         # Project to output
         output = self.output_proj(h)

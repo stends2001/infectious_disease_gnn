@@ -16,6 +16,7 @@ import matplotlib.pyplot as plt
 
 from src.utils import traincolor, valcolor
 from matplotlib.figure import Figure 
+
 class SpatioTemporalXGBModel(BaseModel):
 
     """

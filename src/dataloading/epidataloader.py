@@ -286,7 +286,7 @@ class EpiDataLoader:
         return self
     
     def normalize(self, 
-                  normalization_method : Literal['minmax','zscore'] = 'zscore') -> 'EpiDataLoader':
+                  normalization_method : Literal['minmax','zscore','none'] = 'zscore') -> 'EpiDataLoader':
         
         dfc, _ = self._return_datastage(expected_stage=[4])
 
@@ -302,8 +302,12 @@ class EpiDataLoader:
             _, norm_parameters = pipeline_minmax_normalization(train_df, norm_columns)
             dataset_norm       = apply_minmax_scaling(dfc,     norm_columns, norm_parameters)
 
+        elif normalization_method == 'none':
+            norm_parameters     = {}
+            dataset_norm       = dfc
+
         else:
-            raise ValueError(f'{method} Invalid normalization method')            
+            raise ValueError(f'{normalization_method} Invalid normalization method')            
 
         if not isinstance(self.target_column, str):
             raise ValueError(f'{self.target_column} is supposed to be a string, but is a {type(self.target_column)}. Likely finalized before normalized!')
@@ -348,37 +352,140 @@ class EpiDataLoader:
 
         return self
 
-    def preview(self,
-                node_idx: Union[List[int], int] = 1,
-                status:   Literal['context', 'raw', 'processed', 'processed_split', 'normalized', 'final']  = 'raw',
-                y:        Literal['incidence','population_size'] = 'incidence'):
-        """
-        previews split and normalized data for a specific node, by default token 8.
-        """
+    # def preview(self,
+    #             node_idx: Union[List[int], int] = 1,
+    #             status:   Literal['context', 'raw', 'processed', 'processed_split', 'normalized', 'final']  = 'raw',
+    #             y:        Literal['incidence','population_size'] = 'incidence'):
+    #     """
+    #     previews split and normalized data for a specific node, by default token 8.
+    #     """
 
-        if isinstance(node_idx, int):
-            node_idx = [node_idx]
+    #     if isinstance(node_idx, int):
+    #         node_idx = [node_idx]
 
-        if status not in self.data.keys():
-            raise ValueError(f'{status} not yet in data objects. Current objects are {self.data.keys()}')
+    #     if status not in self.data.keys():
+    #         raise ValueError(f'{status} not yet in data objects. Current objects are {self.data.keys()}')
         
-        n_plots = len(node_idx)
+    #     n_plots = len(node_idx)
 
 
-        fig, axes = plt.subplots(n_plots+1 ,1, figsize = (11,3 * n_plots))
-        axes      = axes.flatten()
+    #     fig, axes = plt.subplots(n_plots+1 ,1, figsize = (11,3 * n_plots))
+    #     axes      = axes.flatten()
 
-        presplit_statuses  = ['context','raw','processed']
-        postsplit_statuses = ['processed_split', 'normalized', 'final']
-        normalized_statuses= ['normalized','final']
+    #     presplit_statuses  = ['context','raw','processed']
+    #     postsplit_statuses = ['processed_split', 'normalized', 'final']
+    #     normalized_statuses= ['normalized','final']
 
-        dataset       = self.data[status]
+    #     dataset       = self.data[status]
 
-        target = self.target_column[0]
+    #     target = self.target_column[0]
         
-        print(f'for the sake of simplification, the first target will be plotted: {target}')
-        if status in postsplit_statuses:
+    #     print(f'for the sake of simplification, the first target will be plotted: {target}')
+    #     if status in postsplit_statuses:
             
+    #         dataset_aggr  = dataset.copy().groupby([self.temporal_column]+self.split_columns)[target].sum().reset_index(drop = False)
+
+    #         dataset_train = dataset[dataset['train']]
+    #         dataset_val   = dataset[dataset['val']]
+    #         dataset_test  = dataset[dataset['test']]
+
+    #         # time axes
+    #         time_axis_train     = list(dataset_train[self.temporal_column].unique())
+    #         time_axis_val       = list(dataset_val[self.temporal_column].unique())
+    #         time_axis_test      = list(dataset_test[self.temporal_column].unique())
+
+    #         # nationally
+    #         target_aggr_train     = dataset_aggr[dataset_aggr['train']][target]
+    #         target_aggr_val       = dataset_aggr[dataset_aggr['val']][target]
+    #         target_aggr_test      = dataset_aggr[dataset_aggr['test']][target]
+
+    #         ax        = axes[0]
+    #         ax.plot(time_axis_train, target_aggr_train, color = traincolor,  label = 'train')
+    #         ax.plot(time_axis_val,   target_aggr_val,   color = valcolor,    label = 'val')
+    #         ax.plot(time_axis_test,  target_aggr_test,  color = testcolor,   label = 'test')
+    #         ax.grid()
+    #         ax.legend()
+
+    #         if status in normalized_statuses:
+    #             aggregation_title = f'nationally aggregated (transformed) incidence rates'
+    #         else:
+    #             aggregation_title = f'nationally aggregated incidence rates'
+
+    #         ax.set_title(aggregation_title)    
+
+    #         for counter, id  in enumerate(node_idx):
+
+    #             ax = axes[counter + 1]
+
+    #             XYt_train = dataset_train[dataset_train[self.id_column] == id]
+    #             XYt_val   = dataset_val[dataset_val[self.id_column] == id]
+    #             XYt_test  = dataset_test[dataset_test[self.id_column] == id]
+
+    #             target_train         = XYt_train[target]
+    #             target_val           = XYt_val[target]
+    #             target_test          = XYt_test[target]            
+
+    #             ax.plot(time_axis_train, target_train, color = traincolor)
+    #             ax.plot(time_axis_val,   target_val,   color = valcolor)
+    #             ax.plot(time_axis_test,  target_test,  color = testcolor)
+    #             ax.grid()
+    #             ax.set_title(f'{self.id_column}: {id}')    
+
+    #         fig.suptitle(f'Transformed incidence rates of {self.disease}')
+
+    #     elif status in presplit_statuses:
+    #         palette = sns.color_palette("Blues", n_colors=len(node_idx) + 3)[::-1]
+
+    #         time_axis           = list(dataset[self.temporal_column].unique())
+    #         national_incidences = dataset.groupby(self.temporal_column)[target].sum().reset_index(drop = False)[target]
+
+    #         ax        = axes[0]
+    #         ax.plot(time_axis, national_incidences, color = palette[1])
+    #         ax.grid()
+    #         ax.legend()
+    #         ax.set_title(f'nationally aggregated incidence rates')                
+
+    #         for counter, id  in enumerate(node_idx):
+
+    #             ax = axes[counter + 1]
+
+    #             regional_cases  = dataset[dataset[self.id_column] == id][y] 
+
+    #             ax.plot(time_axis, regional_cases, color = palette[counter+2])
+    #             ax.grid()
+    #             ax.legend()
+    #             ax.set_title(f'{y} in {self.id_column}: {id}')    
+
+    #         fig.suptitle(f'{self.disease}')
+
+    #     else:
+    #         raise ValueError(f'{status} not among the optinos of {presplit_statuses + postsplit_statuses}')
+        
+    #     plt.tight_layout()
+    #     return fig, ax
+
+    def preview(self,
+                    node_idx: Union[List[int], int] = 1,
+                    y:        Literal['incidence','population_size'] = 'incidence'):
+            """
+            previews split and normalized data for a specific node, by default token 8.
+            """
+            status = 'processed_split'
+
+            if isinstance(node_idx, int):
+                node_idx = [node_idx]
+
+            n_plots = len(node_idx)
+
+
+            fig, axes = plt.subplots(n_plots+1 ,1, figsize = (11,3 * n_plots))
+            axes      = axes.flatten()
+
+            dataset       = self.data[status]
+
+            target        = self.target_column
+
+                
             dataset_aggr  = dataset.copy().groupby([self.temporal_column]+self.split_columns)[target].sum().reset_index(drop = False)
 
             dataset_train = dataset[dataset['train']]
@@ -402,10 +509,7 @@ class EpiDataLoader:
             ax.grid()
             ax.legend()
 
-            if status in normalized_statuses:
-                aggregation_title = f'nationally aggregated (transformed) incidence rates'
-            else:
-                aggregation_title = f'nationally aggregated incidence rates'
+            aggregation_title = f'nationally aggregated incidence rates'
 
             ax.set_title(aggregation_title)    
 
@@ -427,38 +531,11 @@ class EpiDataLoader:
                 ax.grid()
                 ax.set_title(f'{self.id_column}: {id}')    
 
-            fig.suptitle(f'Transformed incidence rates of {self.disease}')
+                fig.suptitle(f'Transformed incidence rates of {self.disease}')
 
-        elif status in presplit_statuses:
-            palette = sns.color_palette("Blues", n_colors=len(node_idx) + 3)[::-1]
-
-            time_axis           = list(dataset[self.temporal_column].unique())
-            national_incidences = dataset.groupby(self.temporal_column)[target].sum().reset_index(drop = False)[target]
-
-            ax        = axes[0]
-            ax.plot(time_axis, national_incidences, color = palette[1])
-            ax.grid()
-            ax.legend()
-            ax.set_title(f'nationally aggregated incidence rates')                
-
-            for counter, id  in enumerate(node_idx):
-
-                ax = axes[counter + 1]
-
-                regional_cases  = dataset[dataset[self.id_column] == id][y] 
-
-                ax.plot(time_axis, regional_cases, color = palette[counter+2])
-                ax.grid()
-                ax.legend()
-                ax.set_title(f'{y} in {self.id_column}: {id}')    
-
-            fig.suptitle(f'{self.disease}')
-
-        else:
-            raise ValueError(f'{status} not among the optinos of {presplit_statuses + postsplit_statuses}')
-        
-        plt.tight_layout()
-        return fig, ax
+            
+            plt.tight_layout()
+            return fig, ax
 
     def difference_target(self):
         """

@@ -9,7 +9,7 @@ from typing import Optional, Dict, List, Literal, Any, Union, Tuple
 import torch
 from ...dataloading.epidataloader import EpiDataLoader
 from ...dataloading.deepdataloader import DeepDataLoader
-from ...dataloading.normalization import reverse_zscore_scaling, reverse_log
+from ...dataloading.normalization import reverse_zscore_scaling, reverse_log, reverse_minmax_scaling
 from ...utils import testcolor
 import geopandas as gpd
 import matplotlib.pyplot as plt
@@ -74,22 +74,27 @@ class BaseModel:
         raise NotImplementedError("Each model must implement its own forecast method.")
 
     def _denorm_predictions(self, df: pd.DataFrame) -> pd.DataFrame:
-
-        zscore_rev = reverse_zscore_scaling(df, params = self.dataloader.transform_params['normalization']['params'])
+        if self.dataloader.transform_params['normalization']['method'] == 'zscore':
+            normalization_rev = reverse_zscore_scaling(df, params = self.dataloader.transform_params['normalization']['params'])
+        elif self.dataloader.transform_params['normalization']['method'] == 'minmax':
+            normalization_rev = reverse_minmax_scaling(df, params = self.dataloader.transform_params['normalization']['params'])   
+        else:
+            raise ValueError(f'normalization method unknown {self.dataloader.transform_params["normalization"]["method"]}')        
 
         if 'log' in self.dataloader.transform_params.keys():
-            log_rev    = reverse_log(zscore_rev, params = self.dataloader.transform_params['log']) 
+            log_rev    = reverse_log(normalization_rev, params = self.dataloader.transform_params['log']) 
             return log_rev
 
         else:
-            return zscore_rev
+            return normalization_rev
         
     def show_forecasts(self,
                        dataset: Literal['train','val','test'],
                        node_idx: Union[List[int], int] = 1,
                        timeframe: Optional[List[str]] = None,
                        target_h: int = 0,
-                       transformed: bool = False) -> Tuple[Figure, Axes]:
+                       transformed: bool = False,
+                       show_all_horizons: bool = False) -> Tuple[Figure, Axes]:
         """
         Visualizes forecasts made
 
@@ -107,15 +112,32 @@ class BaseModel:
             used.
         transformed: bool = False
             whether to show the transformed or the nontransformed data
-
+        show_all_horizons: bool = False
+            whether to show all horizons (in separate lines)
         Returns:
         -------
         (fig, axes) -> first figure is the national aggregation of 
         incidence, the remaining figures represent one per node.
         """
+        
         target_column = self.dataloader.target_column
         pred_column   = 'pred'
-        evaluation_df = self.evaluation_datasets[dataset]['transformed'][f'horizon_{target_h}'] if transformed else self.evaluation_datasets[dataset]['nontransformed'][f'horizon_{target_h}']
+
+        if show_all_horizons:
+            available_horizons = []
+            for h in range(self.dataloader.horizon_size):
+                horizon_key = f'horizon_{h}'
+                if dataset in self.evaluation_datasets:
+                    if transformed and 'transformed' in self.evaluation_datasets[dataset]:
+                        if horizon_key in self.evaluation_datasets[dataset]['transformed']:
+                            available_horizons.append(h)
+                    elif not transformed and 'nontransformed' in self.evaluation_datasets[dataset]:
+                        if horizon_key in self.evaluation_datasets[dataset]['nontransformed']:
+                            available_horizons.append(h)
+        else:
+            available_horizons = [target_h]
+
+        colors = generate_tints(self.model_color, len(available_horizons))
 
         if isinstance(node_idx, int):
             node_idx = [node_idx]
@@ -124,57 +146,100 @@ class BaseModel:
 
         fig, axes = plt.subplots(n_plots+1 ,1, figsize = (16, 5 + (5 * n_plots)))
         axes      = axes.flatten()
+        ax        = axes[0]
 
-        if timeframe:
-            date0 = timeframe[0]
-            date1 = timeframe[1]
+        date0, date1 = None, None
 
-            evaluation_df = evaluation_df[evaluation_df[self.dataloader.temporal_column]>= date0]
-            evaluation_df = evaluation_df[evaluation_df[self.dataloader.temporal_column]< date1] 
+        if available_horizons:
+            h             = available_horizons[0]
+            evaluation_df = self.evaluation_datasets[dataset]['transformed'][f'horizon_{h}'] if transformed else self.evaluation_datasets[dataset]['nontransformed'][f'horizon_{h}']
 
-        if transformed:
-            evaluation_df_aggr= evaluation_df.copy().groupby(self.dataloader.temporal_column).agg({target_column: sum_preserve_nan, pred_column: sum_preserve_nan})
+            if timeframe:
+                date0 = timeframe[0]
+                date1 = timeframe[1]
 
-            title = 'Nationally aggregated transformed incidence values'
-        else:
-            merged_df = pd.merge(self.evaluation_datasets['test']['nontransformed'][f'horizon_{target_h}'][['timestamp','node','incidence','pred']], self.dataloader.data['context']['epidemiological_data'][['timestamp','node','cases','population_size']], on = ['timestamp','node'])
-            merged_df["cases_true"] = merged_df["incidence"] * merged_df["population_size"]
-            merged_df["cases_pred"] = merged_df["pred"] * merged_df["population_size"]
+                evaluation_df = evaluation_df[evaluation_df[self.dataloader.temporal_column]>= date0]
+                evaluation_df = evaluation_df[evaluation_df[self.dataloader.temporal_column]< date1] 
 
-            # Group by timestamp, sum reconstructed cases and population
-            evaluation_df_aggr = merged_df.groupby("timestamp").agg({
-                "cases_true": "sum",
-                "cases_pred": "sum",
-                "population_size": "sum"
-            }).reset_index()
+            if transformed:
+                evaluation_df_aggr= evaluation_df.copy().groupby(self.dataloader.temporal_column).agg({target_column: sum_preserve_nan, pred_column: sum_preserve_nan})
 
-            # Calculate national-level incidence rates
-            evaluation_df_aggr[target_column] = evaluation_df_aggr["cases_true"] / evaluation_df_aggr["population_size"]
-            evaluation_df_aggr[pred_column] = evaluation_df_aggr["cases_pred"] / evaluation_df_aggr["population_size"] 
+                title = f'Nationally aggregated transformed {self.dataloader.target_column} values'
+            else:
+                merged_df = pd.merge(self.evaluation_datasets['test']['nontransformed'][f'horizon_{target_h}'][['timestamp','node',self.dataloader.target_column,'pred']], self.dataloader.data['context']['epidemiological_data'][['timestamp','node','cases','population_size']], on = ['timestamp','node'])
+                merged_df["cases_true"] = merged_df["incidence"] * merged_df["population_size"]
+                merged_df["cases_pred"] = merged_df["pred"] * merged_df["population_size"]
 
-            title = f'National incidence rate (per {self.dataloader.incidence_scalar})'
+                # Group by timestamp, sum reconstructed cases and population
+                evaluation_df_aggr = merged_df.groupby("timestamp").agg({
+                    "cases_true": "sum",
+                    "cases_pred": "sum",
+                    "population_size": "sum"
+                }).reset_index()
+
+                # Calculate national-level incidence rates
+                evaluation_df_aggr[target_column] = evaluation_df_aggr["cases_true"] / evaluation_df_aggr["population_size"]
+                evaluation_df_aggr[pred_column] = evaluation_df_aggr["cases_pred"] / evaluation_df_aggr["population_size"] 
+                title = f'National incidence rate (per {self.dataloader.incidence_scalar})'
+
+            sns.lineplot(data=evaluation_df_aggr, x=self.dataloader.temporal_column, y=target_column, color=testcolor, marker = "o", ax=ax)
+            
+            for i,h in enumerate(available_horizons):
+                eval_data = self.evaluation_datasets[dataset]['transformed'][f'horizon_{h}'] if transformed else self.evaluation_datasets[dataset]['nontransformed'][f'horizon_{h}']
+
+                if timeframe and date0 is not None and date1 is not None:
+                    eval_data = eval_data[eval_data[self.dataloader.temporal_column]>=date0]
+                    eval_data = eval_data[eval_data[self.dataloader.temporal_column]<date1]
+
+                if transformed:
+                    eval_aggr = eval_data.copy().groupby(self.dataloader.temporal_column).agg({pred_column:sum_preserve_nan})
+                else:
+                    merged_df   = pd.merge(self.evaluation_datasets[dataset]['nontransformed'][f'horizon_{h}'][['timestamp','node','pred']], self.dataloader.data['context']['epidemiological_data'][['timestamp','node','population_size']], on = ['timestamp','node'])
+                    merged_df['cases_pred'] = merged_df['pred'] * merged_df['population_size']
+                    eval_aggr = merged_df.groupby('timestamp').agg({'cases_pred': 'sum','population_size': 'sum'}).reset_index()
+                    eval_aggr[pred_column] = eval_aggr['cases_pred'] / eval_aggr['population_size']
+
+                sns.lineplot(data = eval_aggr, x = self.dataloader.temporal_column, y = pred_column, color = colors[i], label = f'pred h={h}', ax = ax)
+
+            ax.set_title(title)
+            ax.set_xlabel("")            
+            ax.grid()        
 
 
-        ax = axes[0]
-        sns.lineplot(data=evaluation_df_aggr, x=self.dataloader.temporal_column, y=target_column, color=testcolor, marker = "o",           ax=ax)
-        sns.lineplot(data=evaluation_df_aggr, x=self.dataloader.temporal_column, y=pred_column, color=self.model_color, markeredgecolor='black', marker = "x",  ax=ax)
-        ax.set_title(title)
-        ax.set_xlabel("")            
-        ax.grid()          
 
 
         for counter, id  in enumerate(node_idx):
 
             ax = axes[counter + 1]
 
-            df_node = evaluation_df[evaluation_df[self.dataloader.id_column] == id]
+            if available_horizons:
+                h             = available_horizons[0]
+                evaluation_df = self.evaluation_datasets[dataset]['transformed'][f'horizon_{h}'] if transformed else self.evaluation_datasets[dataset]['nontransformed'][f'horizon_{h}']
+                
+                if timeframe:
+                    date0 = timeframe[0]
+                    date1 = timeframe[1]
 
-            sns.lineplot(data=df_node, x=self.dataloader.temporal_column, y=target_column, color=testcolor, marker = "o",           ax=ax)
-            sns.lineplot(data=df_node, x=self.dataloader.temporal_column, y=pred_column, color=self.model_color, markeredgecolor='black', marker = "x",  ax=ax)
-            ax.set_title(f'predictions {self.dataloader.id_column}: {id}')
-            ax.set_xlabel("")            
-            ax.grid()  
+                    evaluation_df = evaluation_df[evaluation_df[self.dataloader.temporal_column]>= date0]
+                    evaluation_df = evaluation_df[evaluation_df[self.dataloader.temporal_column]< date1] 
 
+                df_node = evaluation_df[evaluation_df[self.dataloader.id_column] == id]
+                sns.lineplot(data = df_node, x = self.dataloader.temporal_column, y = target_column, color = testcolor, marker = 'o', label = 'True', ax = ax, linewidth = 2)
+
+                for i,h in enumerate(available_horizons):
+                    eval_data = self.evaluation_datasets[dataset]['transformed'][f'horizon_{h}'] if transformed else self.evaluation_datasets[dataset]['nontransformed'][f'horizon_{h}']
+
+                    if timeframe and date0 is not None and date1 is not None:
+                        eval_data = eval_data[eval_data[self.dataloader.temporal_column]>=date0]
+                        eval_data = eval_data[eval_data[self.dataloader.temporal_column]<date1]
+
+                    df_node_h = eval_data[eval_data[self.dataloader.id_column] == id]
+
+                    sns.lineplot(data = df_node_h, x = self.dataloader.temporal_column, y = pred_column, color = colors[i], label = f'pred h={h}' , ax = ax)
+
+                    ax.set_title(f'Predictions {self.dataloader.id_column}: {id}')
+                ax.set_xlabel("")            
+                ax.grid()   
         
         plt.suptitle(f'Predictions by {self.name}')
         plt.tight_layout()
@@ -274,3 +339,22 @@ class BaseModel:
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(name={self.name!r})"    
+    
+
+import matplotlib.colors as mcolors
+
+def generate_tints(c, n=3):
+    # Convert hex to RGB if needed
+    if isinstance(c, str):
+        c = mcolors.hex2color(c)
+    
+    # Calculate lighter and darker factors
+    factors = [1 + i * 0.11 for i in range(1, (n // 2) + 1)]  # Lighter tints
+    factors += [1 - i * 0.11 for i in range(1, (n // 2) + 1)]  # Darker tints
+
+    # Adjust if n is odd to include the original color in the middle
+    if n % 2 == 1:
+        factors.insert(n // 2, 1)
+
+    # Apply the factors
+    return [tuple(min(1, max(0, x * factor)) for x in c) for factor in factors]

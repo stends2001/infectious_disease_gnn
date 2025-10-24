@@ -1,7 +1,10 @@
 from typing import Optional, Dict, Any, List 
 import torch
 
-from .standard_losses import MSELoss, MAELoss, HuberLoss, SmoothL1Loss, ExponentialDecayLoss, PolynomialDecayLoss
+from .standard_losses import MSELoss, MAELoss, HuberLoss, SmoothL1Loss, ExponentialDecayLoss, PolynomialDecayLoss, WeightedMSELoss
+
+from .asymmetricmse import AsymmetricMSELoss
+from .quantile import QuantileLoss
 
 LOSS_REGISTRY: Dict[str, type] = {
     'mse': MSELoss,
@@ -10,6 +13,9 @@ LOSS_REGISTRY: Dict[str, type] = {
     'smooth_l1': SmoothL1Loss,
     'exp_decay': ExponentialDecayLoss,
     'poly_decay': PolynomialDecayLoss,
+    'asymmetric_mse': AsymmetricMSELoss,
+    'quantile' : QuantileLoss    ,
+    'weighted_mse' : WeightedMSELoss
 }
 
 

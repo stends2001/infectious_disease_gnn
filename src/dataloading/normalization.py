@@ -47,12 +47,13 @@ def apply_minmax_scaling(val_df: pd.DataFrame, columns: List[str], params: Dict[
     
     return scaled_df
 
-def reverse_minmax_scaling(scaled_df: pd.DataFrame, columns: List[str], params: Dict[str, Dict[str, float]]) -> pd.DataFrame:
+def reverse_minmax_scaling(scaled_df: pd.DataFrame, params: Dict[str, Dict[str, float]]) -> pd.DataFrame:
     """
     Reverses min-max scaling using original min-max parameters.
     
     Returns the unscaled DataFrame.
     """
+    columns = list(params.keys())
     unscaled_df = scaled_df.copy()
     
     for col in columns:

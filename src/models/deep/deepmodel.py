@@ -13,7 +13,6 @@ from torch_geometric_temporal.nn.recurrent import DCRNN, TGCN, A3TGCN
 import pandas as pd
 import numpy as np
 from typing import Optional, Tuple, cast
-from ...metrics.losses import spike_weighted_mse, mse, spike_timing_weighted_mse, temporal_smoothness_loss, spike_detection_loss, spatial_consistency_loss
 import seaborn as sns
 from ..utils.weights_manager import ModelWeightsManager
 
@@ -61,7 +60,7 @@ class DeepModel(BaseModel, ABC):
         self.train_loader, self.val_loader, self.test_loader= _check_dataloader_validity(dataloader)
         self.device                                         = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         
-        if self.device:
+        if self.device == 'cpu':
             print(f'{warning_emoji} you are connected to cpu, not to gpu')
 
         self.model: Optional[torch.nn.Module]               = None                  # to be initiated by childclass

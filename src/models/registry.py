@@ -8,5 +8,6 @@ MODELSREGISTRY = {
         'TGCNModel'             : 7,                    # skip red
         'GATv2Model'            : 8,                    # skip red
         'GConvLSTMModel'        : 9,
-        'GATv2EmbeddingsModel'  : 10
+        'GATv2EmbeddingsModel'  : 10,
+        'NodeRFModel'           : 11
     }    
