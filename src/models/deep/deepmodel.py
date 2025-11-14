@@ -132,6 +132,7 @@ class DeepModel(BaseModel, ABC):
             'step':        torch.optim.lr_scheduler.StepLR,
             'exponential': torch.optim.lr_scheduler.ExponentialLR,
             'cosine':      torch.optim.lr_scheduler.CosineAnnealingLR,
+            'cosine_warm': torch.optim.lr_scheduler.CosineAnnealingWarmRestarts,            
             'plateau':     torch.optim.lr_scheduler.ReduceLROnPlateau,
             'cyclic':      torch.optim.lr_scheduler.CyclicLR,
             'onecycle':    torch.optim.lr_scheduler.OneCycleLR,
@@ -191,6 +192,8 @@ class DeepModel(BaseModel, ABC):
             default_scheduler_kwargs = {
                 'step':        {'step_size': 15, 'gamma': 0.8},
                 'exponential': {'gamma': 0.95},
+                'cosine':      {'T_max': 50},
+                'cosine_warm': {'T_0': 10, 'T_mult': 2},                
                 'plateau':     {'mode': 'min', 'factor': 0.5, 'patience': 10, 'verbose': True}
             }
             scheduler_kwargs = default_scheduler_kwargs.get(scheduler, {}) if scheduler else {}
@@ -241,7 +244,7 @@ class DeepModel(BaseModel, ABC):
         # print dataloader snapshot
         if dataloader_snapshot:
             print(f'Dataloader Snapshot: {self.train_loader[0]}')
-
+        print(self._return_training_print())
         # determine verbose - loops (which loops to return evaluation metric)
         if verbose == 1:
             verbose_loops   = list(np.arange(1, self.n_epochs + 1, step=10))
@@ -267,8 +270,6 @@ class DeepModel(BaseModel, ABC):
         L_train             = len(list(self.train_loader))
         L_val               = len(list(self.val_loader))
     
-        print(self._return_training_print())
-
         # Each epoch is divided into:
         #   training phase
         #   validation phase
@@ -364,8 +365,9 @@ class DeepModel(BaseModel, ABC):
 
             new_lr = self.optimizer.param_groups[0]['lr']
 
-            if current_lr != new_lr:
-                print(f'lr has been updated from {current_lr:.5f} to {new_lr:.5f}')                
+            if current_lr != new_lr and verbose != 0:
+                if not isinstance(self.scheduler, torch.optim.lr_scheduler.CosineAnnealingWarmRestarts) and not isinstance(self.scheduler, torch.optim.lr_scheduler.CosineAnnealingLR):
+                    print(f'lr has been updated from {current_lr:.2e} to {new_lr:.2e}')        
             
             self.train_losses   = list_train_loss
             self.val_losses     = list_val_loss

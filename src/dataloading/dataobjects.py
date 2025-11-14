@@ -3,13 +3,14 @@ import torch
 
 class GraphDataLoaderEntry:
     """
-    Personal version of the pytorch Data class
+    An alternative to the Pytorch Data class
     """
     def __init__(self, 
-                 x: torch.Tensor, 
-                 y: torch.Tensor,
-                 edge_index: torch.Tensor,
-                 edge_weight: torch.Tensor):
+                 x:             torch.Tensor, 
+                 y:             torch.Tensor,
+                 edge_index:    torch.Tensor,
+                 edge_weight:   torch.Tensor):
+        
         self.x          = x
         self.y          = y
         self.edge_index = edge_index 
@@ -33,11 +34,10 @@ class GraphDataLoaderEntry:
             f"edge_weight={tuple(self.edge_weight.shape)}"
         )
         return f"{cls}({info})"
-
-
+    
 class GraphDataLoader:
     """
-    Personal version of the pytorch DataLoader class
+    An alternative to the Pytorch DataLoader class
     """    
     def __init__(self, data_list: List[GraphDataLoaderEntry]):
         self.data_list = data_list
@@ -57,6 +57,7 @@ class GraphDataLoader:
             return f"{cls}(empty)"
         
         snapshot = self.data_list[0]
+
         info = (
             f"{len(self.data_list)} datapoints, "
             f"sample: x={tuple(snapshot.x.shape)}, "

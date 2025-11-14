@@ -1,0 +1,109 @@
+from typing import Literal, Union, Optional
+import pandas as pd
+from ...utils.textformatting import section, align
+from ..base.basemodel import BaseModelUPDATED
+from ..base.predictions_manager import PredictionCollection
+from ...UPDATED_dataloading import ShallowDataLoaderManager
+
+class PersistenceModel(BaseModelUPDATED):
+
+    """
+    Persistence model predicts persistence: i.e. most recently 
+    observed value in the lagged features is predicted.
+
+    Training is therefore not necessary
+
+    Examples:
+    --------
+    >>> persistence = PersistenceModel(shallowdata)
+    >>> persistence.forecast('test')    
+    >>> persistence.show_forecast('test', 26) 
+    """
+
+    def __init__(self, 
+                 dataloadermanager: ShallowDataLoaderManager, 
+                 name:              Optional[str] = None):
+        
+        super().__init__(dataloadermanager, name)
+        
+        if not self.name:
+            self.name = f'Persistence Model'
+        
+        self._state = {
+            'model_initialized' : False,
+            'trained'           : False,
+            'forecasted'        : False,
+        }
+        
+        self.train_losses           = []
+        self.val_losses             = []
+
+        self.prediction_col = self._get_lag_column()
+
+    def train(self):
+        print("This naive model doesn't train")
+
+    def forecast(self, dataset: Literal['train','val','test'] = 'test'):
+        """
+        Forecast for set dataset
+        """
+        
+        for hh in range(self.dataloadermanager.dataorchestrator.config.horizon_size):
+            horizon_name            = f'horizon_{hh}'
+            timeshift               = f"{int(hh + self.dataloadermanager.dataorchestrator.config.horizon_leadtime)}W"
+            dataloader_collection   = self.dataloadermanager.dataloader_collections[horizon_name]
+
+            if dataset == 'train':
+                X, y = dataloader_collection.train.X, dataloader_collection.train.y
+
+            elif dataset == 'val':
+                X, y = dataloader_collection.val.X, dataloader_collection.val.y         
+
+            elif dataset == 'test':
+                X, y = dataloader_collection.test.X, dataloader_collection.test.y      
+            else:
+                raise ValueError('please provide a valid dataset: "train"/"val"/"test"')             
+
+            Xy_main      = dataloader_collection.main.copy()
+            Xy_dataset   = Xy_main[Xy_main[dataset]].reset_index(drop=True)
+            evaluation_df= Xy_dataset
+
+            evaluation_df['pred'] = evaluation_df[self.prediction_col]
+
+
+            # Get the n largest timestamps
+            if hh > 0:
+                largest_timestamps = list(evaluation_df['timestamp'].unique())[-hh:]
+            
+                # Filter out the rows that have these largest timestamps
+                evaluation_df = evaluation_df[~evaluation_df['timestamp'].isin(largest_timestamps)]   
+                         
+            self.predictions.add_horizon_predictions(dataset, evaluation_df, hh)
+            
+        self._state['forecasted'] = True
+        return self  
+
+    def _get_lag_column(self) -> str:
+        """
+        get most recent lag column to repeat as 'prediction'
+        """
+        return f'{self.dataloadermanager.dataorchestrator.column_registration.get_by_type("target")[0]}_lag0'
+        
+    def __str__(self):
+        # Calculate width
+        all_keys = ['model name', 'model class', 'prediction column', 'forecasted']
+        width = max(len(k) for k in all_keys)
+        
+        # Build output
+        lines = ['<PersistenceModel(']
+        lines.append(align('model name', self.name, width))
+        lines.append(align('model class', self.model_class, width))
+        lines.append(align('prediction column', self.prediction_col, width))
+        lines.append('')
+        
+        # Status section
+        lines.extend(section('status', {'forecasted': self.predictions}, width))
+        
+        lines.append(')>')
+        
+        return '\n'.join(lines)

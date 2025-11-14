@@ -1,4 +1,6 @@
-from .base.persistencemodel import PersistenceModel
+from .shallow.persistence import PersistenceModel
+from .shallow.node_rf import NodeRFModel
+
 from .deep.gatv2 import GATv2Model
 from .deep.tgcn import TGCNModel
 from .deep.gconvlstm import GConvLSTMModel

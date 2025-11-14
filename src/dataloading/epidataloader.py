@@ -141,7 +141,18 @@ class EpiDataLoader:
         else:
             epidemiological_data                      = epidemiological_data.drop(labels = ['population_size'], axis = 1)
 
-        self.data['context']                      = {'epidemiological_data': context_data, 'shapedata': shapedata}
+        # harmdata
+        germany_harm_file = pd.read_csv(os.path.join(data_env_dir, 'processed/germany/geospatial/harmonization/german_nuts_harmonization.tsv'), sep='\t', dtype='str')
+        nuts_names = pd.read_csv(os.path.join(data_env_dir, 'processed/germany/geospatial/harmonization/nuts_names.tsv'), sep='\t', dtype='str')
+        harm_file_nuts          = germany_harm_file
+        harm_file_nuts[self.id_column]  = harm_file_nuts[self.nuts_level]
+        harm_file_nuts[self.id_column]  = harm_file_nuts[self.id_column].map(self.tokens['id_idx'])
+        harm_file_nuts          = pd.merge(harm_file_nuts, nuts_names, left_on = self.nuts_level, right_on = f'{self.nuts_level}_key', how = 'left').drop(columns = f'{self.nuts_level}_key')
+        harmdata                = harm_file_nuts[[self.nuts_level,f'{self.nuts_level}_name']+[self.id_column]].drop_duplicates().reset_index(drop = True)        
+        harmdata['node']        = harmdata['node'].astype('Int64')
+
+
+        self.data['context']                      = {'epidemiological_data': context_data, 'shapedata': shapedata, 'harmonization': harmdata}
         self.data['raw']                          = epidemiological_data
 
     def _import_datasets(self):
@@ -151,8 +162,8 @@ class EpiDataLoader:
 
         also adds population data for Berlin - Kreisen
         """
-        disease_data     = pd.read_csv(os.path.join(self.data_env_dir, f'processed/germany/epidemiology/casedata/survstat/{self.disease}.csv'), parse_dates = ['timestamp'], dtype = {'kz_kreis': str}).rename(columns = {'kz_kreis':'nuts3'})
-        population_data  = pd.read_csv(os.path.join(self.data_env_dir, 'processed/germany/sociodemography/population_size_03.csv'), dtype = {'kz_2021': 'str'}).rename(columns = {'kz_2021':'nuts3'})
+        disease_data     = pd.read_csv(os.path.join(self.data_env_dir, f'processed/germany/epidemiology/casedata/survstat/{self.disease}.csv'), parse_dates = ['timestamp'], dtype = {'kz_kreis':str,'nuts3': str})
+        population_data  = pd.read_csv(os.path.join(self.data_env_dir, 'processed/germany/sociodemography/population_size_03.csv'), dtype = {'kz_2021': str,'nuts3':str}).rename(columns = {'kz_2021':'nuts3'})
         shapedata        = gpd.read_file(os.path.join(self.data_env_dir, f'processed/germany/geospatial/shapefiles/shape_{self.nuts_level}.shp')).drop(labels = ['level'],axis = 1)
         
         if self.split_berlin:
@@ -162,7 +173,8 @@ class EpiDataLoader:
                 '11001' : '11000', '11002' : '11000', '11003' : '11000', '11004' : '11000', '11005' : '11000', '11006' : '11000',
                 '11007' : '11000', '11008' : '11000', '11009' : '11000', '11010' : '11000', '11011' : '11000', '11012' : '11000'
                 }
-            
+            if 'kz_kreis' in disease_data.columns:
+                disease_data.rename(columns = {'kz_kreis': 'nuts3'}, inplace = True)
             disease_data['nuts3'] = disease_data['nuts3'].apply(lambda x: berlin_districts_dict.get(x, x))
             disease_data = disease_data.groupby(['week', 'nuts3', 'year', 'timestamp'])['cases'].sum().reset_index()
 
@@ -585,6 +597,7 @@ class EpiDataLoader:
         return self
 
     def __str__(self):
+        loader_type     = self.__class__.__name__
         disease         = getattr(self, 'disease', 'N/A')
         nuts_level      = getattr(self, 'nuts_level', 'N/A')
         min_date        = getattr(self, 'min_date', 'N/A')
@@ -605,14 +618,14 @@ class EpiDataLoader:
         data_stages = list(self.data.keys())
 
         representation = f"""
-        <EpiDataLoader(
+        <{loader_type}(
         ------------- DATA -----------------
         disease         : {disease},
         features        : {features},
         nuts_level      : {nuts_level},
         date_range      : [{min_date} - {max_date}],
-        nodes           : {n_nodes},
-        data_rows       : {n_rows}
+        num_nodes       : {n_nodes},
+        data_rows       : {n_rows} [num_timestamps x num_nodes]
 
         ------------- TASK -----------------
         horizon size    : {horizon_size},
@@ -631,6 +644,7 @@ class EpiDataLoader:
         return representation
 
     def __repr__(self):
+        loader_type     = self.__class__.__name__
         disease         = getattr(self, 'disease', 'N/A')
         nuts_level      = getattr(self, 'nuts_level', 'N/A')
         min_date        = getattr(self, 'min_date', 'N/A')
@@ -644,7 +658,7 @@ class EpiDataLoader:
         if isinstance(max_date, pd.Timestamp):
             max_date = max_date.date()
 
-        representation = f"EpiDataLoader(disease={disease}, nuts_level={nuts_level}, min_date={min_date}, max_date={max_date}, horizon_size={horizon_size}, horizon_leadtime={horizon_leadtime}, sequence_length={sequence_length})"
+        representation = f"<{loader_type}(disease={disease}, nuts_level={nuts_level}, min_date={min_date}, max_date={max_date}, horizon_size={horizon_size}, horizon_leadtime={horizon_leadtime}, sequence_length={sequence_length})>"
 
         return representation
 
@@ -709,7 +723,7 @@ class EpiDataLoader:
         self.split_columns = ['train', 'val', 'test']
         self.data['processed_split'] = dfc
     
-        self.split_summary = f"train / val / test: {train_pct:.1f}% / {val_pct:.1f}% / {test_pct:.1f}%"
+        self.split_summary = f"t/v/t: {train_pct:.1f}% / {val_pct:.1f}% / {test_pct:.1f}%"
         
         return self
            

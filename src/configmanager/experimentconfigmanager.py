@@ -6,10 +6,7 @@ from src.utils import get_data_env
 from src.dataloading import DeepDataLoader
 from src.configmanager._baseconfigmanager import ConfigManager
 from src.models import MODELSREGISTRY
-from src.models.base.persistencemodel import PersistenceModel
-from src.models.deep.gatv2 import GATv2Model
-from src.models.deep.gconvlstm import GConvLSTMModel
-from src.models.deep.tgcn import TGCNModel
+from src.models import PersistenceModel, GATv2Model, GConvLSTMModel, TGCNModel, NodeRFModel, SpatialGNNModel
 
 from src.evaluation import Evaluator
 
@@ -147,12 +144,13 @@ class ExperimentRunner(ConfigManager):
             ml_instance.set_global_hparams(**config.global_hparams)
             ml_instance.train(**config.train_hparams)
             ml_instance.forecast()
-            ml_instance.show_forecasts(dataset='test', target_h=0)
+            # ml_instance.show_forecasts(dataset='test', target_h=0)
         
         models_dict['persistence_baseline'] = persistence_baseline
         self.models_dict = models_dict
 
-        self._evaluate()     
+        self._evaluate() 
+        return self.evaluation    
     def _prepare_data(self, config: ExperimentConfig) -> DeepDataLoader:
         """Handle all data loading and preprocessing"""
         epidata = DeepDataLoader(
@@ -185,11 +183,7 @@ class ExperimentRunner(ConfigManager):
         return epidata
 
     def _evaluate(self):
-        evaluation = Evaluator(list(self.models_dict.values()), horizon_leadtime=self.experiment_log[list(self.experiment_log.keys())[0]].timeseries.horizon_leadtime)
-        evaluation.add_evaluation()
-        evaluation.plot_metric('corr',plot_type='box')
-        evaluation.plot_metric('ccc',plot_type='box')    
-        evaluation.plot_metric('rmse',plot_type='violin')        
+        self.evaluation = Evaluator(list(self.models_dict.values()))      
 
     def _prepare_datasets(self, epidata: DeepDataLoader, config: ExperimentConfig) -> dict:
         """Prepare GNN datasets for all graphs"""
