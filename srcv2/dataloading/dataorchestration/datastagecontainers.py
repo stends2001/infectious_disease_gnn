@@ -60,8 +60,7 @@ class ContextEpiData:
     tokenization_map: Dict[str, Dict[Union[int,str],Union[int,str]]]
     
     def __repr__(self):
-        return (f"ContextData(nuts={self.nuts_level}, "
-                f"num_nodes={self.num_nodes} nodes, ")
+        return (f"<ContextData(nuts_level={self.nuts_level}, num_nodes={self.num_nodes}, epipopdata, shapedata, nuts_names, tokenization_map)>")
 
 @dataclass
 class ProcessedEpiData:
@@ -69,21 +68,21 @@ class ProcessedEpiData:
     popdata:     pd.DataFrame
     
     def __repr__(self):
-        return ('<ProcessedEpiData> with attribute data')   
+        return ('<ProcessedEpiData(epidata, popdata)>')   
 
 @dataclass
 class FeatureEpiData:
     data:               pd.DataFrame
 
     def __repr__(self):
-        return ('<FeatureEpiData> with attribute data')   
+        return ('<FeatureEpiData(data)>')   
 
 @dataclass
 class NormalizedEpiData:
     data:     pd.DataFrame  
 
     def __repr__(self):
-        return ('<NormalizedEpiData> with attribute data')    
+        return ('<NormalizedEpiData(data)>')    
 
 @dataclass
 class FinalizedEpiData:
@@ -92,5 +91,4 @@ class FinalizedEpiData:
     groundtruth: pd.DataFrame
 
     def __repr__(self):
-        return (f"FinalizedEpiData(data={len(self.data)} rows, "
-                "attriburtes: data, column_registry, config")          
+        return (f"FinalizedEpiData(data, config, groudntruth)>")          
