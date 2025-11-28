@@ -6,7 +6,7 @@ def calculate_subplot_layout(n_plots: int, target_width: float=8, target_height:
     Each subplot will be approximately target_width x target_height.
     
     Parameters:
-    -----------
+    ----------
     n_plots : int
         Number of subplots needed
     target_width : float

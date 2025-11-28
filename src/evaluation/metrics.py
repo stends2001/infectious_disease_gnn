@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd 
 from typing import Optional, cast, Tuple, List, Union
 import torch
-from scipy.stats import spearmanr
+from scipy.stats import spearmanr, pearsonr
 from tqdm import tqdm
 from pandas._libs.missing import NAType
 
@@ -46,6 +46,18 @@ class Metrics:
     def rmse(self, df: pd.DataFrame) -> float:
         """Root mean squared error."""
         return np.sqrt(self.mse(df))
+
+    def pearson_corr(self, df: pd.DataFrame) -> Union[float, NAType]:
+            """Pearson correlation, with check for zero variance"""
+            
+            # Check variance of both columns
+            if df[self.target_col].var() == 0 or df[self.pred_col].var() == 0:
+                return pd.NA
+            
+            # Calculate Pearson correlation
+            corr, _ = pearsonr(df[self.target_col], df[self.pred_col])
+            
+            return float(corr)  # type: ignore
 
     def spearman_corr(self, df: pd.DataFrame) -> Union[float, NAType]:
         """Spearman correlation, with check for zero variance"""

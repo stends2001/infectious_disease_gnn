@@ -3,6 +3,7 @@ import torch
 
 from .standard_losses import MSELoss, MAELoss, HuberLoss, SmoothL1Loss, ExponentialDecayLoss, PolynomialDecayLoss, WeightedMSELoss
 from .outbreak_losses import FocalLoss, OutbreakWeightedLoss
+from .poissonloss import PoissonLoss
 
 from .asymmetricmse import AsymmetricMSELoss
 from .quantile import QuantileLoss
@@ -18,7 +19,8 @@ LOSS_REGISTRY: Dict[str, type] = {
     'quantile' : QuantileLoss    ,
     'weighted_mse' : WeightedMSELoss,
     'focal' : FocalLoss,
-    'outbreakweighted': OutbreakWeightedLoss
+    'outbreakweighted': OutbreakWeightedLoss,
+    'poisson': PoissonLoss,
 }
 
 

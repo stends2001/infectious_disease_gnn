@@ -1,3 +1,4 @@
-from .epidataloader import EpiDataLoader
-from .deepdataloader import DeepDataLoader
-from .shallowdataloader import ShallowDataLoader
+from .dataorchestration.dataorchestrator import DataOrchestrator
+from .dataorchestration.epiconfig import EpiConfig
+
+from .dataloaders import ShallowDataLoaderManager, GraphDataLoaderManager
