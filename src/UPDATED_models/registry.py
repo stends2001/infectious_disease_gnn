@@ -9,5 +9,6 @@ MODELSREGISTRY = {
         'GATv2Model'            : 8,                    # skip red
         'GConvLSTMModel'        : 9,
         'GATv2EmbeddingsModel'  : 10,
-        'NodeRFModel'           : 12                    # skip light yellow
+        'NodeRFModel'           : 12,                    # skip light yellow,
+        'NodeLSTMModel'         : 2
     }    

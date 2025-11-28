@@ -59,17 +59,38 @@ class Metrics:
         
         return float(corr)  # type: ignore
         
+    # def ccc(self, df: pd.DataFrame) -> Union[float, NAType]:
+    #     """concordance correlation coefficient."""
+    #     target, pred = df[self.target_col], df[self.pred_col]
+                  
+    #     mean_target, mean_pred  = target.mean(), pred.mean()
+    #     var_target,  var_pred   = target.var(ddof=0), pred.var(ddof=0)
+
+    #     if var_target == 0 or var_pred == 0:
+    #         return pd.NA
+
+    #     cov = ((target - mean_target) * (pred - mean_pred)).mean()
+        
+    #     numerator   = 2 * cov
+    #     denominator = var_target + var_pred + (mean_target - mean_pred) ** 2 # type: ignore
+
+    #     if denominator == 0:
+    #         return pd.NA
+    #     else:
+    #         return cast(float, numerator / denominator)
+            
     def ccc(self, df: pd.DataFrame) -> Union[float, NAType]:
         """concordance correlation coefficient."""
         target, pred = df[self.target_col], df[self.pred_col]
-                  
+                
         mean_target, mean_pred  = target.mean(), pred.mean()
-        var_target,  var_pred   = target.var(ddof=0), pred.var(ddof=0)
+        var_target,  var_pred   = target.var(ddof=1), pred.var(ddof=1)
 
         if var_target == 0 or var_pred == 0:
             return pd.NA
 
-        cov = ((target - mean_target) * (pred - mean_pred)).mean()
+        # Sample covariance (divides by n-1)
+        cov = ((target - mean_target) * (pred - mean_pred)).sum() / (len(target) - 1)
         
         numerator   = 2 * cov
         denominator = var_target + var_pred + (mean_target - mean_pred) ** 2 # type: ignore
@@ -78,6 +99,7 @@ class Metrics:
             return pd.NA
         else:
             return cast(float, numerator / denominator)
+
 
     def node_smape(self, df, epsilon=1e-6):
         # Mask rows where both true and predicted values are zero

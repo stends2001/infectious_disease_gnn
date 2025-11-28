@@ -99,7 +99,7 @@ class Evaluator:
             if predictions_compilation is None:
                 predictions_compilation= model_predictions
             else:
-                predictions_compilation = pd.merge(predictions_compilation, model_predictions, on = ['timestamp','node','target'])
+                predictions_compilation = pd.merge(predictions_compilation, model_predictions[['timestamp','node',f'pred_{name}']], on = ['timestamp','node'])
 
         if predictions_compilation is None:
             raise IndexError(f'predictions_compilation is invalid')        

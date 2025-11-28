@@ -167,3 +167,114 @@ class EvaluationPlotter:
         cbar.set_ticklabels([f'{t:.1f}' for t in ticks])
         
         plt.suptitle(f'{metric}')
+
+    def plot_metric_horizons_separate(self,
+                                    metric: str,
+                                    horizons: list[int],
+                                    dataset: str = 'test',
+                                    plot_type: Literal['violin', 'box'] = 'violin',
+                                    highlight_node: Optional[int] = None):
+        """
+        Plot specified metric with separate subplots for each horizon.
+        Allows easier comparison of model performance within each horizon.
+        
+        Parameters:
+        -----------
+        metric : str
+            Metric name (corr, mse, rmse, ccc, lag_corr, neighbor_corr, spatial_autocorr)
+        horizons : list[int]
+            List of horizons to compare (e.g., [0, 1, 2])
+        dataset : str
+            Which dataset to evaluate on ('test', 'val', 'train')
+        plot_type : str
+            Type of plot ('violin' or 'box')
+        highlight_node : Optional[int]
+            If provided, highlights this specific node across all plots
+        """
+        # Get colors
+        model_name_colors = {ml.clean_name: ml.model_color for ml in self.evaluator.evaluated_models.values()}
+        model_class_colors = {ml.model_class: ml.model_color for ml in self.evaluator.evaluated_models.values()}
+        
+        horizons_str = [f'horizon_{h}' for h in horizons]
+
+        # Calculate layout
+        n_horizons = len(horizons)
+        nrows = n_horizons
+        ncols = 1
+        figsize = (7 * (ncols+1), 5 * nrows)
+        
+        fig, axes = plt.subplots(nrows, ncols, figsize=figsize, sharey=True)
+        if n_horizons == 1:
+            axes = [axes]
+        
+        # Plot each horizon
+        for idx, horizon in enumerate(horizons):
+            ax = axes[idx]
+            
+            # Get data for this horizon
+            metric_df = self.evaluator.metric_compilations.get_metric(horizons_str[idx], dataset, metric)
+            metric_df_long = pd.melt(
+                metric_df,
+                id_vars='node',
+                value_vars=list(model_name_colors.keys()),
+                var_name='model',
+                value_name='value'
+            )
+            
+            # Create plot
+            plot_func = sns.violinplot if plot_type == 'violin' else sns.boxplot
+            plot_func(
+                data=metric_df_long,
+                x='model',
+                y='value',
+                hue='model',
+                ax=ax,
+                palette=model_name_colors,
+                **(dict(cut=0) if plot_type == 'violin' else {}),
+                legend=False
+            )
+            
+            # Styling
+            ax.set_title(f'Horizon {horizon}', fontsize=12, fontweight='bold')
+            ax.set_xlabel('Model', fontsize=10)
+            if idx == 0:
+                ax.set_ylabel(metric.upper(), fontsize=10)
+            else:
+                ax.set_ylabel('')
+            ax.grid(alpha=0.3, axis='y')
+            ax.set_xticklabels(ax.get_xticklabels(), rotation=30, ha='right', fontsize=8)
+            
+            # Highlight specific node if requested
+            if highlight_node is not None:
+                node_values = metric_df_long[metric_df_long['node'] == highlight_node]
+                
+                for model_idx, model in enumerate(model_name_colors.keys()):
+                    node_value = node_values[node_values['model'] == model]['value']
+                    
+                    if not node_value.empty:
+                        ax.scatter(
+                            x=model_idx,
+                            y=node_value.values[0],
+                            color='red',
+                            s=100,
+                            zorder=10,
+                            edgecolors='darkred',
+                            linewidths=2,
+                            marker='D',
+                            label=f'Node {highlight_node}' if model_idx == 0 else ""
+                        )
+                
+                if highlight_node is not None and idx == 0:
+                    ax.legend(loc='best', frameon=True, fontsize=8)
+        
+        # Add main title
+        fig.suptitle(f'Model Evaluation Across Horizons: {metric.upper()}', 
+                    fontsize=14, fontweight='bold', y=1.02)
+        
+        # Add legend for model classes
+        handles = [mpatches.Patch(color=c) for c in model_class_colors.values()]
+        fig.legend(handles, model_class_colors.keys(), 
+                title='Model Class', loc='upper right', 
+                bbox_to_anchor=(0.99, 0.98), frameon=True)
+        
+        plt.tight_layout()

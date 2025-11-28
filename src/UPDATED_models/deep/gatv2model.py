@@ -130,7 +130,7 @@ class GATv2Model(GraphNeuralNetwork):
         self._set_strategy(RecurrentStrategy())
 
     def set_model_hparams(self, 
-                          hidden_size: int = 64, 
+                          hidden_size: int = 128, 
                           num_layers: int = 2,
                           temporal_layers: int = 2, 
                           dropout: float = 0.2,

@@ -238,285 +238,304 @@ class GraphConstructor:
         self.graph_registry[graphname] = graphdict
         
         print(f'{checkmark} graph generated: {graphname}')
-        
+
     def preview_graph(self, 
-                      graphname: str = 'empty',
-                      node_idx: Union[int, str] = 'all') -> Figure:
-        """ 
-        Previews a graph structure.
+                        graphname: str = 'empty',
+                        node_idx: Union[int, str] = 'all',
+                        map_only: bool = False) -> Figure:
+            """ 
+            Previews a graph structure.
 
-        Parameters:
-        ----------
-        graphname: str = 'empty'
-            the graphname under which the graph structure is self into `self.graph_registry`
-            NOTE: the graphname is printed upon generation.
-            NOTE: if graphname == 'empty', the emtpy graphstructure is shown, that is, the underlyng map with centroids.
-        
-        node_idx: Union[int, str] = 'all' 
-            the node of which the neighborhood will be shown. when node_idx == 'all', the global graph is shown.
-        """
+            Parameters:
+            ----------
+            map_only: bool = False
+                if True and node_idx is an integer, returns only the main map without subplots
+            
+            graphname: str = 'empty'
+                the graphname under which the graph structure is self into `self.graph_registry`
+                NOTE: the graphname is printed upon generation.
+                NOTE: if graphname == 'empty', the emtpy graphstructure is shown, that is, the underlyng map with centroids.
+            
+            node_idx: Union[int, str] = 'all' 
+                the node of which the neighborhood will be shown. when node_idx == 'all', the global graph is shown.
+            """
 
-        def plot_shape(ax: Axes, df: gpd.GeoDataFrame, color = 'lightgrey', edgecolor = 'black', linewidth = 0.075) -> Axes:
-            df.plot(color=color, edgecolor=edgecolor, linewidth=linewidth, ax=ax)
-            return ax
-        
-        def basic_plot_makeup(ax: Axes, 
-                              title: Optional[str] = None, 
-                              xlabel: Optional[str] = None, 
-                              ylabel: Optional[str] = None, 
-                              ticks: bool = True,
-                              vspine: bool = True) -> Axes:
-            if not vspine:
-                ax.axis('off')  # turns off everything (ticks, labels, box)
+            def plot_shape(ax: Axes, df: gpd.GeoDataFrame, color = 'lightgrey', edgecolor = 'black', linewidth = 0.075) -> Axes:
+                df.plot(color=color, edgecolor=edgecolor, linewidth=linewidth, ax=ax)
+                return ax
+            
+            def basic_plot_makeup(ax: Axes, 
+                                title: Optional[str] = None, 
+                                xlabel: Optional[str] = None, 
+                                ylabel: Optional[str] = None, 
+                                ticks: bool = True,
+                                vspine: bool = True) -> Axes:
+                if not vspine:
+                    ax.axis('off')  # turns off everything (ticks, labels, box)
+                else:
+                    if not ticks:
+                        ax.tick_params(
+                            axis='both',
+                            which='both',
+                            bottom=False,
+                            top=False,
+                            left=False,
+                            right=False,
+                            labelbottom=False,
+                            labelleft=False
+                        )
+                    if xlabel:
+                        ax.set_xlabel(xlabel)
+                    if ylabel:
+                        ax.set_ylabel(ylabel)            
+
+                if title:
+                    ax.set_title(title)         
+
+                return ax
+
+            def plot_histogram_connection_degree(ax: Axes, edge_index, node_idx=None, self_color=None) -> Axes: 
+                nodes = edge_index.tolist()
+
+                degree_series = pd.Series(nodes).value_counts().sort_index()
+                degree_counts = degree_series.value_counts().sort_index()
+
+                bars = ax.bar(degree_counts.index, degree_counts.values, color='lightgray', edgecolor='black', width=1)
+
+                # Set x-axis limits: one below min, one above max
+                min_degree = degree_counts.index.min()
+                max_degree = degree_counts.index.max()
+                ax.set_xlim(min_degree - 1, max_degree + 1)
+
+                if node_idx:
+                    node_degree = degree_series.get(int(node_idx))
+                    if node_degree in degree_counts.index:
+                        idx = list(degree_counts.index).index(node_degree)
+                        bars[idx].set_color(self_color)
+                ax.yaxis.set_major_locator(plt.MaxNLocator(integer=True))
+                ax.xaxis.set_major_locator(plt.MaxNLocator(integer=True))
+                return ax
+
+            def plot_centroids(ax: Axes, df: pd.DataFrame, colorpalette: List, column: str, size: int = 7) -> Axes:
+                centroids   = df.geometry.centroid
+                n_centroids = len(centroids)
+
+                if column == 'random':
+                    colors = [colorpalette[np.random.randint(0, len(colorpalette))] for _ in range(n_centroids)]
+                
+                for centroid, color in zip(centroids, colors):
+                    ax.plot(centroid.x, centroid.y, 'o', 
+                            color=color, 
+                            markersize=size, 
+                            markeredgecolor='black', 
+                            markeredgewidth=1)
+
+                return ax
+            
+            def plot_connection_lines(ax: Axes, edge_list: torch.Tensor, df: pd.DataFrame) -> Axes:
+                for i, j in zip(edge_list[0].tolist(), edge_list[1].tolist()):
+                    point_i = df.iloc[i]['geometry'].centroid
+                    point_j = df.iloc[j]['geometry'].centroid
+                    
+                    ax.plot([point_i.x, point_j.x], [point_i.y, point_j.y], 
+                            color='black', linewidth=2, alpha = 0.8)
+                return ax
+            
+            def plot_colored_nodes(ax: Axes, df: pd.DataFrame, column: str,vmin, vmax, colorpalette=None) -> Axes:
+                cmap = colorpalette if colorpalette else None
+                df.plot(column=column, cmap=cmap, edgecolor='black', linewidth=1, ax=ax, vmin = vmin, vmax = vmax)
+                return ax
+
+            def zoom_on_plot(ax: Axes, xlim: Optional[Tuple[float, float]] = None, ylim: Optional[Tuple[float, float]] = None) -> Axes:
+
+                if xlim:
+                    ax.set_xlim(xlim)
+
+                if ylim:
+                    ax.set_ylim(ylim)
+
+                return ax
+
+            def plot_selfloop(ax: Axes, df: pd.DataFrame, loop_radius : float = 2*10E3) -> Axes:
+                geom = df.iloc[0].geometry
+    
+
+                centroid: Point = geom.centroid
+                cx, cy = centroid.x, centroid.y
+
+                # Define control points for the curve (from and to centroid, but offset slightly)
+                start = (cx - loop_radius, cy)
+                end = (cx + loop_radius, cy + loop_radius)  # very slightly offset so matplotlib draws it
+
+                # Draw curved arrow from and to the centroid using an arc connection
+                arrow = FancyArrowPatch(
+                    posA=start,
+                    posB=end,
+                    connectionstyle=f"arc3,rad=1.0",  # big curve
+                    arrowstyle='->',
+                    color='black',
+                    linewidth=1.5,
+                    mutation_scale=10,
+                    zorder=5
+                )
+
+                ax.add_patch(arrow)
+                return ax
+
+            def plot_histogram_edge_weights(ax: Axes, edge_weights: torch.Tensor, limits: Optional[Tuple[float,float]] = None) -> Axes:
+                weights = edge_weights.detach().cpu().numpy()
+                if limits:
+                    ax.hist(weights, bins=15, range=limits, color='lightgray', edgecolor='black')
+                else:
+                    ax.hist(weights, bins=15, color='lightgray', edgecolor='black')
+                
+                # Force y-axis to use integer ticks only
+                ax.yaxis.set_major_locator(plt.MaxNLocator(integer=True))
+                
+                return ax
+
+            # emtpy graph => single plot with centroids in the shapefile
+            if graphname == 'empty':
+                fig, ax = plt.subplots(1, 1, figsize=(18, 8))
+                plot_shape(ax, self.shapes)
+                plot_centroids(ax, self.shapes, palette_blues[10:], column = 'random', size = 7)
+                basic_plot_makeup(ax, title = f"Germany - {self.nuts_level}", vspine=False)
+
+            # graphstructure => three plots, depending on whether local or global graph is shown.
             else:
-                if not ticks:
-                    ax.tick_params(
-                        axis='both',
-                        which='both',
-                        bottom=False,
-                        top=False,
-                        left=False,
-                        right=False,
-                        labelbottom=False,
-                        labelleft=False
-                    )
-                if xlabel:
-                    ax.set_xlabel(xlabel)
-                if ylabel:
-                    ax.set_ylabel(ylabel)            
+                graph               = self.graph_registry[graphname]['structure']
+                global_edge_index   = graph['edge_index']
 
-            if title:
-                ax.set_title(title)         
+                # global graph =>
+                #   ax_main:        map showing all connected nodes
+                #   ax_hist_quali:  histogram showing distribution of number of connections per node
+                #   ax_hist_quanti: histogram showing distribution of edge_weights
+                if node_idx == 'all':
+                    fig = plt.figure(figsize=(18, 12))
+                    gs  = fig.add_gridspec(3, 2, width_ratios=[3, 1], height_ratios=[1, 1, 1])
+                    ax_main         = fig.add_subplot(gs[:, 0])
+                    ax_hist_quali1  = fig.add_subplot(gs[0, 1])
+                    ax_hist_quali2  = fig.add_subplot(gs[1, 1])
+                    ax_hist_quanti  = fig.add_subplot(gs[2, 1])        
 
-            return ax
+                    edge_index      = self.graph_registry[graphname]['structure']['edge_index']    
+                    edge_weights    = self.graph_registry[graphname]['structure']['edge_weight']    
 
-        def plot_histogram_connection_degree(ax: Axes, edge_index, node_idx=None, self_color=None) -> Axes: 
-            nodes = edge_index.tolist()
+                    # ax_main: map showing all connected nodes
+                    plot_shape(ax_main, self.shapes)               
+                    plot_connection_lines(ax_main, edge_index, self.shapes)
+                    plot_centroids(ax_main, self.shapes, palette_blues[70:71], column='random', size=5)
+                    basic_plot_makeup(ax_main, f"{graphname} [qualitatively, global]", vspine=False)
 
-            degree_series = pd.Series(nodes).value_counts().sort_index()
-            degree_counts = degree_series.value_counts().sort_index()
+                    # ax_hist_quali: histogram showing distribution of number of connections per node
+                    plot_histogram_connection_degree(ax_hist_quali1, global_edge_index[0])
+                    basic_plot_makeup(ax_hist_quali1, title = f"Global distribution of src connections per node {graphname}", vspine=True, xlabel='connections', ylabel = 'frequency')                    
 
-            bars = ax.bar(degree_counts.index, degree_counts.values, color='lightgray', edgecolor='black', width=1)
+                    plot_histogram_connection_degree(ax_hist_quali2, global_edge_index[1])
+                    basic_plot_makeup(ax_hist_quali2, title = f"Global distribution of dst connections per node {graphname}", vspine=True, xlabel='connections', ylabel = 'frequency')   
 
-            # Set x-axis limits: one below min, one above max
-            min_degree = degree_counts.index.min()
-            max_degree = degree_counts.index.max()
-            ax.set_xlim(min_degree - 1, max_degree + 1)
+                    # ax_hist_quanti: histogram showing distribution of edge_weights                
+                    plot_histogram_edge_weights(ax_hist_quanti, edge_weights)
+                    basic_plot_makeup(ax_hist_quanti, title = f"Global distribution of edge weights {graphname}", vspine=True, xlabel='weight', ylabel = 'frequency')  
 
-            if node_idx:
-                node_degree = degree_series.get(int(node_idx))
-                if node_degree in degree_counts.index:
-                    idx = list(degree_counts.index).index(node_degree)
-                    bars[idx].set_color(self_color)
-            ax.yaxis.set_major_locator(plt.MaxNLocator(integer=True))
-            ax.xaxis.set_major_locator(plt.MaxNLocator(integer=True))
-            return ax
+                    plt.tight_layout()
+                    plt.close(fig)
+                    return fig
 
-        def plot_centroids(ax: Axes, df: pd.DataFrame, colorpalette: List, column: str, size: int = 7) -> Axes:
-            centroids   = df.geometry.centroid
-            n_centroids = len(centroids)
+                # local graph =>
+                #   ax_global:      map showing all connected nodes to node_idx (qualitatively)
+                #   ax_local:       map showing all connected nodes to node_idx (quantitatively, zoomed in)
+                #   ax_hist:        histogram showing distribution of edge_weights with node_idx as source
+                elif isinstance(node_idx, int):  # node_idx is int
+                    
+                    # Get global graph info
+                    graph              = self.graph_registry[graphname]['structure']
+                    global_edge_index  = graph['edge_index']
+                    global_edge_weight = graph['edge_weight']   
+                    max_weight         = global_edge_weight.max().item()             
+                    
+                    # Mask edges connected to node_idx
+                    mask                    = global_edge_index[0] == node_idx
+                    local_edge_index_mask   = global_edge_index[:, mask]
+                    local_edge_weights_mask = global_edge_weight[mask]
 
-            if column == 'random':
-                colors = [colorpalette[np.random.randint(0, len(colorpalette))] for _ in range(n_centroids)]
-            
-            for centroid, color in zip(centroids, colors):
-                ax.plot(centroid.x, centroid.y, 'o', 
-                        color=color, 
-                        markersize=size, 
-                        markeredgecolor='black', 
-                        markeredgewidth=1)
+                    local_nodes             = global_edge_index[1][mask] # nodes that make up the neighborhood   
+                    all_local_nodes         = torch.cat([torch.tensor([node_idx]), local_nodes]).unique()
+                    global_to_local         = {global_idx: local_idx for local_idx, global_idx in enumerate(all_local_nodes.tolist())} # remap them.
+                    
+                    # Remap edge_index to local indices
+                    local_edge_index_selected   = global_edge_index[:, mask].clone()
+                    local_edge_index_selected[0]= torch.tensor([global_to_local[idx.item()] for idx in local_edge_index_selected[0]])
+                    local_edge_index_selected[1]= torch.tensor([global_to_local[idx.item()] for idx in local_edge_index_selected[1]])                
+                    connected_nodes             = torch.unique(local_edge_index_mask)
 
-            return ax
-        
-        def plot_connection_lines(ax: Axes, edge_list: torch.Tensor, df: pd.DataFrame) -> Axes:
-            for i, j in zip(edge_list[0].tolist(), edge_list[1].tolist()):
-                point_i = df.iloc[i]['geometry'].centroid
-                point_j = df.iloc[j]['geometry'].centroid
+                    # Extract local shapes and node shape
+                    local_shapes = self.shapes[self.shapes['node'].isin(connected_nodes.numpy())].reset_index(drop=True)# neighborhood shapes
+                    node_shape   = self.shapes[self.shapes['node'] == node_idx]                                         # shape of node_idx
+                    
+                    # MAP ONLY MODE: Just return the global map
+                    if map_only:
+                        fig, ax_global = plt.subplots(1, 1, figsize=(18, 12))
+                        plot_shape(ax_global, self.shapes)
+                        plot_shape(ax_global, local_shapes, linewidth=1)
+                        plot_connection_lines(ax_global, local_edge_index_selected, local_shapes)
+                        plot_centroids(ax_global, local_shapes, palette_blues[70:71], column='random', size=5)
+                        basic_plot_makeup(ax_global, f"{graphname} [qualitatively, node {node_idx}]", vspine=False)
+                        plt.tight_layout()
+                        plt.close(fig)
+                        return fig
+                    
+                    # FULL MODE: Create subplots as before
+                    fig = plt.figure(figsize=(18, 12))
+                    gs  = fig.add_gridspec(2, 2, width_ratios=[3, 1], height_ratios=[1, 1])
+                    ax_global = fig.add_subplot(gs[:, 0])
+                    ax_local  = fig.add_subplot(gs[0, 1])
+                    ax_hist   = fig.add_subplot(gs[1, 1])
+                    
+                    # ax_global: map showing all connected nodes to node_idx (qualitatively)
+                    plot_shape(ax_global, self.shapes)
+                    plot_shape(ax_local,  self.shapes)
+                    plot_shape(ax_global, local_shapes, linewidth=1)
+                    plot_connection_lines(ax_global, local_edge_index_selected, local_shapes)
+                    plot_centroids(ax_global, local_shapes, palette_blues[70:71], column='random', size=5)
+                    basic_plot_makeup(ax_global, f"{graphname} [qualitatively, node {node_idx}]", vspine=False)
+
+                    # ax_hist: histogram showing distribution of edge_weights with node_idx as source
+                    plot_histogram_edge_weights(ax_hist, local_edge_weights_mask, limits = (0, max_weight))
+                    zoom_on_plot(ax_hist, xlim = (0, max_weight))
+                    basic_plot_makeup(ax_hist, vspine=True, ticks=True, ylabel = 'frequency', xlabel = 'weight', title = 'local edge weights')                
+
+
+                    # ax_local: map showing all connected nodes to node_idx (quantitatively, zoomed in)
+
+                    # determine coordinates for zooming in on local neighborhood:
+                    bounds  = local_shapes.total_bounds
+                    margins = 0.1 * max(bounds[2] - bounds[0], bounds[3] - bounds[1])
+                    xlim    = (bounds[0] - margins, bounds[2] + margins)
+                    ylim    = (bounds[1] - margins, bounds[3] + margins)
+
+
+                    # prepare df with the edge weights to plot the nodes in colors
+                    stacked_array                   = np.vstack([local_edge_index_mask.numpy(), local_edge_weights_mask.numpy()]).astype(float)
+                    edge_information                = pd.DataFrame(stacked_array.T)
+                    edge_information.drop(labels    = 0, axis = 1, inplace=True)
+                    edge_information.rename(columns = {1:'node',2:'weight'}, inplace = True)
+                    edge_information['node']        = edge_information['node'].astype(int)
+
+                    local_shapes_with_weight        = gpd.GeoDataFrame(pd.merge(local_shapes,edge_information, on ='node'))        
+                    
+                    zoom_on_plot(ax_local, xlim = xlim, ylim = ylim)
+                    basic_plot_makeup(ax_local, title=f"Local graph zoomed on node {node_idx}", vspine=True, ticks= False)
+                    plot_centroids(ax_local , node_shape, colorpalette=palette_blues[75:76], column='random')
+                    plot_colored_nodes(ax_local, local_shapes_with_weight, column = 'weight', colorpalette='Reds', vmin = 0, vmax = max_weight)
+    
+                else:
+                    raise ValueError(f'node_idx needs to be either the string "all" or an integer.\n{node_idx} is an invalid input.')
                 
-                ax.plot([point_i.x, point_j.x], [point_i.y, point_j.y], 
-                        color='black', linewidth=2, alpha = 0.8)
-            return ax
-        
-        def plot_colored_nodes(ax: Axes, df: pd.DataFrame, column: str,vmin, vmax, colorpalette=None) -> Axes:
-            cmap = colorpalette if colorpalette else None
-            df.plot(column=column, cmap=cmap, edgecolor='black', linewidth=1, ax=ax, vmin = vmin, vmax = vmax)
-            return ax
+            plt.tight_layout()
+            plt.close(fig)
+            return fig
 
-        def zoom_on_plot(ax: Axes, xlim: Optional[Tuple[float, float]] = None, ylim: Optional[Tuple[float, float]] = None) -> Axes:
-
-            if xlim:
-                ax.set_xlim(xlim)
-
-            if ylim:
-                ax.set_ylim(ylim)
-
-            return ax
-
-        def plot_selfloop(ax: Axes, df: pd.DataFrame, loop_radius : float = 2*10E3) -> Axes:
-            geom = df.iloc[0].geometry
- 
-
-            centroid: Point = geom.centroid
-            cx, cy = centroid.x, centroid.y
-
-            # Define control points for the curve (from and to centroid, but offset slightly)
-            start = (cx - loop_radius, cy)
-            end = (cx + loop_radius, cy + loop_radius)  # very slightly offset so matplotlib draws it
-
-            # Draw curved arrow from and to the centroid using an arc connection
-            arrow = FancyArrowPatch(
-                posA=start,
-                posB=end,
-                connectionstyle=f"arc3,rad=1.0",  # big curve
-                arrowstyle='->',
-                color='black',
-                linewidth=1.5,
-                mutation_scale=10,
-                zorder=5
-            )
-
-            ax.add_patch(arrow)
-            return ax
-
-        def plot_histogram_edge_weights(ax: Axes, edge_weights: torch.Tensor, limits: Optional[Tuple[float,float]] = None) -> Axes:
-            weights = edge_weights.detach().cpu().numpy()
-            if limits:
-                ax.hist(weights, bins=15, range=limits, color='lightgray', edgecolor='black')
-            else:
-                ax.hist(weights, bins=15, color='lightgray', edgecolor='black')
-            
-            # Force y-axis to use integer ticks only
-            ax.yaxis.set_major_locator(plt.MaxNLocator(integer=True))
-            
-            return ax
-
-        # emtpy graph => single plot with centroids in the shapefile
-        if graphname == 'empty':
-            fig, ax = plt.subplots(1, 1, figsize=(18, 8))
-            plot_shape(ax, self.shapes)
-            plot_centroids(ax, self.shapes, palette_blues[10:], column = 'random', size = 7)
-            basic_plot_makeup(ax, title = f"Germany - {self.nuts_level}", vspine=False)
-
-        # graphstructure => three plots, depending on whether local or global graph is shown.
-        else:
-            graph               = self.graph_registry[graphname]['structure']
-            global_edge_index   = graph['edge_index']
-
-            fig = plt.figure(figsize=(18, 12))
-            
-
-            # global graph =>
-            #   ax_main:        map showing all connected nodes
-            #   ax_hist_quali:  histogram showing distribution of number of connections per node
-            #   ax_hist_quanti: histogram showing distribution of edge_weights
-            if node_idx == 'all':
-                gs  = fig.add_gridspec(3, 2, width_ratios=[3, 1], height_ratios=[1, 1, 1])
-                ax_main         = fig.add_subplot(gs[:, 0])
-                ax_hist_quali1  = fig.add_subplot(gs[0, 1])
-                ax_hist_quali2  = fig.add_subplot(gs[1, 1])
-                ax_hist_quanti  = fig.add_subplot(gs[2, 1])        
-
-                edge_index      = self.graph_registry[graphname]['structure']['edge_index']    
-                edge_weights    = self.graph_registry[graphname]['structure']['edge_weight']    
-
-                # ax_main: map showing all connected nodes
-                plot_shape(ax_main, self.shapes)               
-                plot_connection_lines(ax_main, edge_index, self.shapes)
-                plot_centroids(ax_main, self.shapes, palette_blues[70:71], column='random', size=5)
-                basic_plot_makeup(ax_main, f"{graphname} [qualitatively, global]", vspine=False)
-
-                # ax_hist_quali: histogram showing distribution of number of connections per node
-                plot_histogram_connection_degree(ax_hist_quali1, global_edge_index[0])
-                basic_plot_makeup(ax_hist_quali1, title = f"Global distribution of src connections per node {graphname}", vspine=True, xlabel='connections', ylabel = 'frequency')                    
-
-                plot_histogram_connection_degree(ax_hist_quali2, global_edge_index[1])
-                basic_plot_makeup(ax_hist_quali2, title = f"Global distribution of dst connections per node {graphname}", vspine=True, xlabel='connections', ylabel = 'frequency')   
-
-                # ax_hist_quanti: histogram showing distribution of edge_weights                
-                plot_histogram_edge_weights(ax_hist_quanti, edge_weights)
-                basic_plot_makeup(ax_hist_quanti, title = f"Global distribution of edge weights {graphname}", vspine=True, xlabel='weight', ylabel = 'frequency')  
-
-                plt.tight_layout()
-                plt.close(fig)
-                return fig
-
-            # local graph =>
-            #   ax_global:      map showing all connected nodes to node_idx (qualitatively)
-            #   ax_local:       map showing all connected nodes to node_idx (quantitatively, zoomed in)
-            #   ax_hist:        histogram showing distribution of edge_weights with node_idx as source
-            elif isinstance(node_idx, int):  # node_idx is int
-                gs  = fig.add_gridspec(2, 2, width_ratios=[3, 1], height_ratios=[1, 1])
-                ax_global = fig.add_subplot(gs[:, 0])
-                ax_local  = fig.add_subplot(gs[0, 1])
-                ax_hist   = fig.add_subplot(gs[1, 1])
-
-                # Get global graph info
-                graph              = self.graph_registry[graphname]['structure']
-                global_edge_index  = graph['edge_index']
-                global_edge_weight = graph['edge_weight']   
-                max_weight         = global_edge_weight.max().item()             
-                
-                # Mask edges connected to node_idx
-                mask                    = global_edge_index[0] == node_idx
-                local_edge_index_mask   = global_edge_index[:, mask]
-                local_edge_weights_mask = global_edge_weight[mask]
-
-                local_nodes             = global_edge_index[1][mask] # nodes that make up the neighborhood   
-                all_local_nodes         = torch.cat([torch.tensor([node_idx]), local_nodes]).unique()
-                global_to_local         = {global_idx: local_idx for local_idx, global_idx in enumerate(all_local_nodes.tolist())} # remap them.
-                
-                # Remap edge_index to local indices
-                local_edge_index_selected   = global_edge_index[:, mask].clone()
-                local_edge_index_selected[0]= torch.tensor([global_to_local[idx.item()] for idx in local_edge_index_selected[0]])
-                local_edge_index_selected[1]= torch.tensor([global_to_local[idx.item()] for idx in local_edge_index_selected[1]])                
-                connected_nodes             = torch.unique(local_edge_index_mask)
-
-                # Extract local shapes and node shape
-                local_shapes = self.shapes[self.shapes['node'].isin(connected_nodes.numpy())].reset_index(drop=True)# neighborhood shapes
-                node_shape   = self.shapes[self.shapes['node'] == node_idx]                                         # shape of node_idx
-                
-                # ax_global: map showing all connected nodes to node_idx (qualitatively)
-                plot_shape(ax_global, self.shapes)
-                plot_shape(ax_local,  self.shapes)
-                plot_shape(ax_global, local_shapes, linewidth=1)
-                plot_connection_lines(ax_global, local_edge_index_selected, local_shapes)
-                plot_centroids(ax_global, local_shapes, palette_blues[70:71], column='random', size=5)
-                basic_plot_makeup(ax_global, f"{graphname} [qualitatively, node {node_idx}]", vspine=False)
-
-                # ax_hist: histogram showing distribution of edge_weights with node_idx as source
-                plot_histogram_edge_weights(ax_hist, local_edge_weights_mask, limits = (0, max_weight))
-                zoom_on_plot(ax_hist, xlim = (0, max_weight))
-                basic_plot_makeup(ax_hist, vspine=True, ticks=True, ylabel = 'frequency', xlabel = 'weight', title = 'local edge weights')                
-
-
-                # ax_local: map showing all connected nodes to node_idx (quantitatively, zoomed in)
-
-                # determine coordinates for zooming in on local neighborhood:
-                bounds  = local_shapes.total_bounds
-                margins = 0.1 * max(bounds[2] - bounds[0], bounds[3] - bounds[1])
-                xlim    = (bounds[0] - margins, bounds[2] + margins)
-                ylim    = (bounds[1] - margins, bounds[3] + margins)
-
-
-                # prepare df with the edge weights to plot the nodes in colors
-                stacked_array                   = np.vstack([local_edge_index_mask.numpy(), local_edge_weights_mask.numpy()]).astype(float)
-                edge_information                = pd.DataFrame(stacked_array.T)
-                edge_information.drop(labels    = 0, axis = 1, inplace=True)
-                edge_information.rename(columns = {1:'node',2:'weight'}, inplace = True)
-                edge_information['node']        = edge_information['node'].astype(int)
-
-                local_shapes_with_weight        = gpd.GeoDataFrame(pd.merge(local_shapes,edge_information, on ='node'))        
-                
-                zoom_on_plot(ax_local, xlim = xlim, ylim = ylim)
-                basic_plot_makeup(ax_local, title=f"Local graph zoomed on node {node_idx}", vspine=True, ticks= False)
-                plot_centroids(ax_local , node_shape, colorpalette=palette_blues[75:76], column='random')
-                plot_colored_nodes(ax_local, local_shapes_with_weight, column = 'weight', colorpalette='Reds', vmin = 0, vmax = max_weight)
-  
-            else:
-                raise ValueError(f'node_idx needs to be either the string "all" or an integer.\n{node_idx} is an invalid input.')
-            
-        plt.close(fig)
-        return fig
 
     def rename_graph(self, old_graphname: str, new_graphname: str) -> None:
         """ 

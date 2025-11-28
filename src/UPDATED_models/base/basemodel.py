@@ -11,7 +11,7 @@ from ...UPDATED_dataloading import ShallowDataLoaderManager
 from ...UPDATED_dataloading import GraphDataLoaderManager
 from ...UPDATED_dataloading.dataorchestration.normalization import reverse_log, reverse_minmax_scaling, reverse_zscore_scaling
 
-from src.models.registry import MODELSREGISTRY
+from ..registry import MODELSREGISTRY
 from src.models.utils import MODELSCOLORPALETTE
 
 from src.configmanager.modelconfigmanager import ModelConfigManager

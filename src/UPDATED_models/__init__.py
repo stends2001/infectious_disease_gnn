@@ -1,11 +1,12 @@
 from .shallow.persistence import PersistenceModel
 from .shallow.noderf import NodeRFModel
 from .deep.gatv2model import GATv2Model
+from .deep.nodelstm import NodeLSTMModel
 
 # from .deep.gatv2 import GATv2Model
 # from .deep.tgcn import TGCNModel
 # from .deep.gconvlstm import GConvLSTMModel
-# from .deep.spatial import SpatialGNNModel
+from .deep.spatialgnnmodel import SpatialGNNModel
 # from .deep.gatv2_embeddings import GATv2EmbeddingsModel
 
 # from .shallow.node_rf import NodeRFModel
@@ -15,10 +16,11 @@ MODELSREGISTRY = {
         'PersistenceModel'      : PersistenceModel,
         'NaiveLinearModel'      : 2,
         'SpatioTemporalXGBModel': 3,
-        # 'SpatialGNNModel'       : SpatialGNNModel,
+        'SpatialGNNModel'       : SpatialGNNModel,
         'GATv2Model'            : GATv2Model,
         # 'TGCNModel'             : TGCNModel,
         # 'GConvLSTMModel'        : GConvLSTMModel,
         # 'GATv2EmbeddingsModel'  : GATv2EmbeddingsModel,
-        'NodeRFModel'           : NodeRFModel
+        'NodeRFModel'           : NodeRFModel,
+        'NodeLSTMModel'         : NodeLSTMModel
     }   
