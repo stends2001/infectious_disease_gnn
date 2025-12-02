@@ -10,24 +10,12 @@ from ...utils.constants import berlin_district_ids
 from .normalization import apply_minmax_scaling, apply_zscore_scaling, pipeline_minmax_normalization, pipeline_zscore_normalization
 from .column_registry import ColumnRegistration, ColEntryMissingError, ColEntryMissingTransformationError, ColEntryMissingTransformationReferralError
 from .epiconfig import EpiConfig
-from .datastagecontainers import RawEpiData, ContextEpiData, ProcessedEpiData, FeatureEpiData, NormalizedEpiData, FinalizedEpiData, ProcessedEpiData
+from .datastagecontainers import RawEpiData, ContextData, HarmonizedData, ProcessedEpiData, FeatureEpiData, NormalizedEpiData, FinalizedEpiData, ProcessedEpiData
 
 # ============= READER CLASS =============
 
 class EpiDataReader:
     """
-    Reads raw data from files.
-
-    Parameters:
-    ----------
-    config: EpiConfig
-
-    Returns: (`orchestrate`())
-    -------
-    instance of RawEpiData
-        Datacontainer with raw data at disease, population, 
-        shapedata, harmonization, and nuts_names and when applicable,
-        population_berlin
     """
     
     def __init__(self, config: 'EpiConfig'):
@@ -159,29 +147,6 @@ class EpiDataReader:
 
 class NUTSHarmonizer:
     """
-    Harmonizes and aggregates by nuts-level 
-    (nuts1: bundesland, nuts2: regierungsbezirk, nuts3: kreis)
-
-    Parameters:
-    ----------
-    config: EpiConfig    
-
-    rawdata: RawEpiData (`orchestrate`())
-        Datacontainer holds pd.DataFrames for raw, 
-        directly imported data, created from EpiDataReader.
-
-    Returns: (`orchestrate`())
-    -------
-    instance of ContextEpiData
-        Datacontainer holds pd.DataFrames for harmonized,
-        otherwise nonprocessed data.      
-
-    Warnings:
-    --------
-    When unnamed nodes are dropped, this will be printed. 
-    When this concerns Berlin, and either the aggregated 
-    city, or separate districts are dropped, no such
-    warning is printed.
     """
     def __init__(self, config: 'EpiConfig'):
         self.config = config    
@@ -319,11 +284,10 @@ class NUTSHarmonizer:
             print(f'{checkmark} nodes tokenized')       
         return df_dict, tokenization_map       
 
-    def orchestrate(self, rawdata: 'RawEpiData') -> 'ContextEpiData':
+    def orchestrate(self, rawdata: 'RawEpiData') -> Tuple['HarmonizedData', 'ContextData']:
         """
         The function that orchestrates all others
         """
-
         if self.config.split_berlin:
             
             if rawdata.population_berlin is None:
@@ -331,6 +295,7 @@ class NUTSHarmonizer:
             
             population_data = self._add_berlin_districts(rawdata.population, rawdata.population_berlin)
             raw_epidata     = rawdata.disease
+            
         else:
             raw_epidata     = self._mutate_berlin_district_ids(rawdata.disease)
             population_data = rawdata.population
@@ -343,33 +308,22 @@ class NUTSHarmonizer:
 
         tokenized_datasets, tokenization_map = self._tokenize_data(dfs = {'epipopdata': epipopdata, 'shapedata': rawdata.shapedata, 'nutsnames': nutsnames})
 
-        return ContextEpiData(
+        harmdata = HarmonizedData(
+            data          = tokenized_datasets['epipopdata'],
+        )
+        ctxdata = ContextData(
             nuts_level          = self.config.nuts_level,
             num_nodes           = len(tokenization_map['id_idx']),
-            epipopdata          = tokenized_datasets['epipopdata'],
             shapedata           = gpd.GeoDataFrame(tokenized_datasets['shapedata']),
             nuts_names          = tokenized_datasets['nutsnames'],
-            tokenization_map    = tokenization_map
+            tokenization_map    = tokenization_map            
         )
+
+        return harmdata, ctxdata
 
 # ============= PREPROCESSING CLASS =============
 class EpiDataPreprocessor:
-    """
-    Preprocesses data by filtering on dates, selecting columns
-    and adding a column for incidence rates
-
-    Parameters:
-    ----------
-    config: EpiConfig    
-
-    rawdata: ContextEpiData (`orchestrate`())
-        Datacontainer holds pd.DataFrames for harmonized,
-        otherwise nonprocessed data.      
-
-    Returns: (`orchestrate`())
-    -------
-    instance of ProcessedEpiData
-        Datacontainer holds preprocessed epipopdata      
+    """ 
     """
     def __init__(self, config: 'EpiConfig'):
         self.config = config
@@ -393,14 +347,17 @@ class EpiDataPreprocessor:
     def _filter_maxdate(self, df, max_date: pd.Timestamp) -> pd.DataFrame:
         return df.loc[df['timestamp'] < max_date].reset_index(drop = True)       
 
-    def orchestrate(self, ContextEpiData: 'ContextEpiData') -> 'ProcessedEpiData':
+    def orchestrate(self, harmonizeddata: 'HarmonizedData') -> 'ProcessedEpiData':
         """
         The function that orchestrates all others
         """
-        epipopdata      = self._add_incidence_column(ContextEpiData.epipopdata)
+        epipopdata      = self._add_incidence_column(harmonizeddata.data)
+        
         print(f"target: {self.config.target_column}")
+
         if self.config.target_column != 'cases':
             epipopdata      = self._drop_cases_column(epipopdata)        
+
         epipopdata      = self._filter_maxdate(epipopdata, self.config.max_date)
         epipopdata      = self._filter_mindate(epipopdata, self.config.min_date_extended)     
 
@@ -412,31 +369,12 @@ class EpiDataPreprocessor:
 
         epipopdata = self._drop_cols(epipopdata)
 
-        return ProcessedEpiData(epipopdata = epipopdata)
+        return ProcessedEpiData(data = epipopdata)
 
 # ============= FEATURE CLASS ============= 
             
 class EpiFeatureBuilder:
     """
-    Build Features specified in EpiConfig.
-    Possible features include:
-    - weekly sin/cos
-    - incidence lags
-    - population_size
-    
-    Further, incidence rate (target) may be log-transformed
-
-    Parameters:
-    ----------
-    config: EpiConfig    
-
-    processed_data: ProcessedEpiData (`orchestrate`())
-        Datacontainer holds preprocessed epipopdata      
-
-    Returns: (`orchestrate`())
-    -------
-    instance of FeatureEpiData
-        Datacontainer holds preprocessed data with new features  
     """    
     def __init__(self, config: 'EpiConfig', column_registration: ColumnRegistration):
         self.config             = config
@@ -529,7 +467,7 @@ class EpiFeatureBuilder:
 
     def orchestrate(self, processed_data: 'ProcessedEpiData') -> 'FeatureEpiData':
         """orchestrates entire feature addition"""
-        feature_data = processed_data.epipopdata
+        feature_data = processed_data.data
 
         # if population_size is a feature
         if self.config.include_population:
@@ -854,6 +792,7 @@ class DataOrchestrator:
         
         # Store results at each stage
         self._data_raw       = None
+        self._data_harmonized= None
         self._data_context   = None
         self._data_processed = None
         self._data_feature   = None
@@ -872,7 +811,7 @@ class DataOrchestrator:
     def harmonize_raw(self) -> 'DataOrchestrator':
         """Harmonize data on NUTS-level"""        
 
-        self._data_context = self.harmonizer.orchestrate(self.data_raw) 
+        self._data_harmonized, self._data_context = self.harmonizer.orchestrate(self.data_raw) 
         if self.config.verbose:
             print(f'{checkmark}{checkmark} All raw data nuts-harmonized')       
         if self.config.verbose > 1:
@@ -882,7 +821,7 @@ class DataOrchestrator:
     def process_data(self) -> 'DataOrchestrator':
         """Preprocess the harmonized data"""
        
-        self._data_processed = self.preprocessor.orchestrate(self.data_context)
+        self._data_processed = self.preprocessor.orchestrate(self._data_harmonized)
         
         if self.config.verbose:
             print(f'{checkmark}{checkmark} All data preprocessed')   
@@ -949,12 +888,11 @@ class DataOrchestrator:
         ax.set_title(f"processed {self.config.target_column} in node {node_idx}") 
         plt.tight_layout()  
 
-
     def __repr__(self):
         stages = []
         if self._data_raw is not None:
             stages.append("raw")
-        if self._data_context is not None:
+        if self._data_harmonized is not None:
             stages.append("harmonized")            
         if self._data_processed is not None:
             stages.append('processed')
@@ -974,11 +912,19 @@ class DataOrchestrator:
         return self._data_raw    
     
     @property
-    def data_context(self) -> ContextEpiData:
+    def data_context(self) -> ContextData:
         if not self._data_context:
             raise DataOrchestrationContainerNotFound(datastage = 'data_context', previous_method = 'harmonize_raw')
 
-        return self._data_context        
+        return self._data_context      
+
+    @property
+    def data_harmonized(self) -> HarmonizedData:
+        if not self._data_harmonized:
+            raise DataOrchestrationContainerNotFound(datastage = 'data_harmonized', previous_method = 'harmonize_raw')
+
+        return self._data_harmonized        
+          
     
     @property
     def data_processed(self) -> ProcessedEpiData:

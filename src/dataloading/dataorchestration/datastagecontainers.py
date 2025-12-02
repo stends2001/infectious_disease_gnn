@@ -49,25 +49,33 @@ class RawEpiData:
 
         return representation +")>"
 
-@dataclass
-class ContextEpiData:
-    """Container for (geographically) harmonized data."""
+@dataclass 
+class ContextData:
+    """Container for context-data (not used in the pipeline)"""
     nuts_level:     Literal['nuts1', 'nuts2', 'nuts3']
     num_nodes:      int
-    epipopdata:     pd.DataFrame
     shapedata:      gpd.GeoDataFrame
     nuts_names:     pd.DataFrame
-    tokenization_map: Dict[str, Dict[Union[int,str],Union[int,str]]]
+    tokenization_map: Dict[str, Dict[Union[int,str],Union[int,str]]]    
     
     def __repr__(self):
-        return (f"<ContextData(nuts_level={self.nuts_level}, num_nodes={self.num_nodes}, epipopdata, shapedata, nuts_names, tokenization_map)>")
+        return (f"<ContextData(nuts_level={self.nuts_level}, num_nodes={self.num_nodes}, shapedata, nuts_names, tokenization_map)>")    
+
+@dataclass
+class HarmonizedData:
+    """Container for nuts-harmonized data."""
+    data:     pd.DataFrame
+
+    def __repr__(self):
+        return (f"<HarmonizedData(data)>")        
+
 
 @dataclass
 class ProcessedEpiData:
-    epipopdata:     pd.DataFrame
+    data:     pd.DataFrame
     
     def __repr__(self):
-        return ('<ProcessedEpiData(epipopdata)>')        
+        return ('<ProcessedEpiData(data)>')        
 
 @dataclass
 class FeatureEpiData:
