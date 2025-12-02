@@ -77,17 +77,16 @@ class ShallowDataLoaderManager:
         """
         main_data           = self.dataorchestrator.data_final.data.copy()
         X_col_selection     = [self.dataorchestrator.config.id_column]+self.column_registration.get_by_type('feature')
-        # TODO UGLY!
-        X_col_selection     = [c for c in X_col_selection if c in main_data.columns]
         self.dataloader_collections    = {}
 
         for hh in range(self.dataorchestrator.config.horizon_size):
             horizon_name    = f'horizon_{hh}'
             steps_ahead     = int(hh+self.dataorchestrator.config.horizon_leadtime)
-            y_col_selection = f'target_ahead{steps_ahead}'
+            y_col_selection = f'target_lead{steps_ahead}'
             
             main            = main_data[[self.dataorchestrator.config.temporal_column] + X_col_selection + [y_col_selection] + self.column_registration.get_by_type("split")]
             main            = main.rename(columns = {y_col_selection:'target'}).dropna()
+
             X_train, y_train= main[main['train']][X_col_selection].reset_index(drop = True),  main[main['train']][['target']]
             X_val, y_val    = main[main['val']][X_col_selection].reset_index(drop = True),    main[main['val']][['target']]
             X_test, y_test  = main[main['test']][X_col_selection].reset_index(drop = True),   main[main['test']][['target']]

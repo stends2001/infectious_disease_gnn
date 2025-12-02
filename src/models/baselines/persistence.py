@@ -37,7 +37,6 @@ class PersistenceModel(BaseModel):
         self.train_losses           = []
         self.val_losses             = []
 
-        self.prediction_col = self._get_lag_column()
 
     def train(self):
         print("This naive model doesn't train")
@@ -49,7 +48,8 @@ class PersistenceModel(BaseModel):
         
         for hh in range(self.dataloadermanager.dataorchestrator.config.horizon_size):
             horizon_name            = f'horizon_{hh}'
-            timeshift               = f"{int(hh + self.dataloadermanager.dataorchestrator.config.horizon_leadtime)}W"
+            timeshift_num           = int(hh + self.dataloadermanager.dataorchestrator.config.horizon_leadtime)
+            timeshift_str           = f"{timeshift_num}W"
             dataloader_collection   = self.dataloadermanager.dataloader_collections[horizon_name]
 
             if dataset == 'train':
@@ -67,7 +67,7 @@ class PersistenceModel(BaseModel):
             Xy_dataset   = Xy_main[Xy_main[dataset]].reset_index(drop=True)
             evaluation_df= Xy_dataset
 
-            evaluation_df['pred'] = evaluation_df[self.prediction_col]
+            evaluation_df['pred'] = evaluation_df.groupby(self.dataloadermanager.dataorchestrator.config.id_column)['target'].shift(timeshift_num)                            
 
 
             # Get the n largest timestamps
@@ -81,12 +81,6 @@ class PersistenceModel(BaseModel):
             
         self._state['forecasted'] = True
         return self  
-
-    def _get_lag_column(self) -> str:
-        """
-        get most recent lag column to repeat as 'prediction'
-        """
-        return f'{self.dataloadermanager.dataorchestrator.column_registration.get_by_type("target")[0]}_lag0'
         
     def __str__(self):
         # Calculate width

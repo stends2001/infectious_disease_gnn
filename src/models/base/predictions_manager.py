@@ -128,11 +128,11 @@ class PredictionManager:
         
         df_denorm               = df.copy()       
         if self.epiconfig.target_column == 'incidence':
-            col_entry_target        = self.column_registration.get_by_name('incidence')
+            col_entry_target        = self.column_registration.get_by_name('target')
             transformation_dict     = col_entry_target.transformation
 
             if transformation_dict is None:
-                raise ColEntryMissingTransformationError(entryname = 'incidence')
+                raise ColEntryMissingTransformationError(entryname = 'target')
             
             for col in ['target','pred']:
                 df_denorm = self.reverse_transformations[normalization_method](df_denorm, transformation_dict['normalization'], column = col)

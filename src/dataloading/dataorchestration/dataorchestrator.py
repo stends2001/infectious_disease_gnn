@@ -422,54 +422,112 @@ class EpiFeatureBuilder:
         )                    
         return dfc
 
-    def _log_transform(self, df: pd.DataFrame, col: str) -> pd.DataFrame:
-        """log_transform target"""
-        df_transformed                              = df.copy()
-        df_transformed[col]                         = np.log(df_transformed[col] + self.config.log_shift)
-
-        self.column_registration.update_transformation(
-            col, 
-            {'log': self.config.log_shift}
-        )         
-        return df_transformed
-
     def _lags(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Include current and lagged values of the target.
+        Create lagged features and future target.
         
-        - lag0 = current value at time t
-        - lag1 = t-1 (yesterday)
-        - lag2 = t-2, etc.
-        
-        Targets are shifted forward by horizon_leadtime after this.
+        Timeline:
+        - lag_column_t0: current week (timestamp)
+        - lag_column_t_1: 1 week ago
+        - lag_column_t_2: 2 weeks ago
+        - target: horizon_leadtime weeks ahead
         """
-        for lag in range(self.config.lag_num):  # 0 to lags-1
-            feature = f'{self.config.lag_column}_lag{lag}'
-            df[feature] = df.groupby(self.config.id_column)[self.config.lag_column].shift(lag)
+        dfc = df.copy()
+        
+        # Step 1: Explicitly create t0 for the lag column (current value, unshifted)
+        dfc[f'{self.config.lag_column}_t0'] = dfc[self.config.lag_column]
+        
+        # Step 2: Create lagged features (t_1, t_2, etc.)
+        for lag in range(1, self.config.lag_num):
+            feature = f'{self.config.lag_column}_t_{lag}'
+            dfc[feature] = dfc.groupby(self.config.id_column)[self.config.lag_column].shift(lag)
             
             self.column_registration.add_column(
                 feature, 
                 'feature',
                 needs_normalization=True,
-                transformation_group=self.config.lag_column
+                transformation_group=f'{self.config.lag_column}_t0' if self.config.lag_column != self.config.target_column else 'target'
             )
         
-        df = df.dropna().reset_index(drop=True)
-        
-        # Now shift target forward by horizon_leadtime so we're predicting the future
+        # Step 3: Shift target into the future (only if it's a separate column or needs shifting)
         if self.config.horizon_leadtime > 0:
-            df[self.config.target_column] = df.groupby(
+            dfc[f'{self.config.target_column}_future'] = dfc.groupby(
                 self.config.id_column
             )[self.config.target_column].shift(-self.config.horizon_leadtime)
-            df = df.dropna().reset_index(drop=True)
+        else:
+            dfc[f'{self.config.target_column}_future'] = dfc[self.config.target_column]
         
-        return df
+        # Step 4: Drop the original unshifted columns (we have t0 and future versions now)
+        dfc = dfc.drop(columns=[self.config.lag_column, self.config.target_column])
+        
+        # Drop rows with NaN from shifting
+        dfc = dfc.dropna().reset_index(drop=True)
+        
+        return dfc
+
+    def _rename_lagt0(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        identical df with column name {self.config.lag_column} to {self.config.lag_column}_t0
+        """
+        old_featurename = self.config.lag_column
+        new_featurename = f'{self.config.lag_column}_t0'
+
+        renamed_df = df.rename(columns = {old_featurename: new_featurename})   
+
+        return renamed_df
+    
+    def _rename_target(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Rename future target to 'target'"""
+        return df.rename(columns={f'{self.config.target_column}_future': 'target'})
+
+    def _reorder_df(self, df: pd.DataFrame) -> pd.DataFrame:
+
+        dfc = df.copy()
+        first_cols      = ['timestamp','node','target']
+        feature_cols    = [col for col in df.columns if col not in first_cols]
+
+        return dfc[first_cols + feature_cols]
+
+    def _update_colregistration_postfeaturebuilding(self):
+        
+        # if lag col == target col, then the lag will be normalized following identical parameters as the target col
+        lag0_featurename = f'{self.config.lag_column}_t0'
+        if self.config.target_column!='cases':
+            self.column_registration.add_column(
+                    'target', 
+                    'target',
+                    needs_normalization=True,
+                    transformation_group=None
+                )    
+        else:
+            self.column_registration.add_column(
+                    'target', 
+                    'target',
+                    needs_normalization=False,
+                    transformation_group='NA'
+                )                
+
+        if self.config.lag_column == self.config.target_column:            
+            self.column_registration.add_column(
+                    lag0_featurename, 
+                    'feature',
+                    needs_normalization=True,
+                    transformation_group='target'
+                )    
+            
+        else:
+            self.column_registration.add_column(
+                    lag0_featurename, 
+                    'feature',
+                    needs_normalization=True,
+                    transformation_group=None
+                )      
 
     def orchestrate(self, processed_data: 'ProcessedEpiData') -> 'FeatureEpiData':
         """orchestrates entire feature addition"""
         feature_data = processed_data.data
 
-        # if population_size is a feature
+        # Feature: population_size
         if self.config.include_population:
             # add to column registration
             self.column_registration.add_column(
@@ -480,28 +538,26 @@ class EpiFeatureBuilder:
                 )            
             if self.config.verbose > 1:
                 print(f'{checkmark} population size included as feature')    
+        
         else:
             # remove column population_size
             feature_data.drop(columns = ['population_size'], inplace = True) 
         
+        # Feature: time_index (timestamp_sin, timestamp_cos)        
         if self.config.time_index:
             feature_data = self._time_index(feature_data)
             if self.config.verbose > 1:
                 print(f'{checkmark} time index (sin/cos) included as feature')   
-
-        if self.config.log_transform:
-            for col in self.config.log_transform:
-                feature_data = self._log_transform(feature_data, col)
-                if self.config.verbose > 1:
-                    print(f'{checkmark} {col} log-transformed')    
         
         feature_data = self._lags(feature_data)
+        feature_data = self._rename_lagt0(feature_data)
+        feature_data = self._rename_target(feature_data)   
+        feature_data = self._reorder_df(feature_data) 
+
+        self._update_colregistration_postfeaturebuilding()
+        
         if self.config.verbose > 1:
             print(f'{checkmark} lags included as feature')   
-
-        # feature_data.rename(columns = {self.config.target_column: 'target'}, inplace = True)
-        # if self.config.verbose > 1:
-        #     print(f'{checkmark}  {self.config.target_column} renamed to \'target\'')         
 
         return FeatureEpiData(data=feature_data)
 
@@ -509,35 +565,15 @@ class EpiFeatureBuilder:
 
 class EpiNormalizer:
     """
-    Normalizes required columns.
-
-    Parameters:
-    ----------
-    config: EpiConfig    
-    column_registration: ColumnRegistration
-        Shared registry for tracking all columns
-
-    feature_data: FeatureEpiData
-        Datacontainer holds preprocessed data with features     
-
-    Returns: (`orchestrate`())
-    -------
-    instance of NormalizedEpiData
-        Datacontainer holds normalized data 
-
-    Warnings:
-    --------
-    An Error is thrown when a normalization method is inputted which is not supported.
-
     Note:
     ----
     The optional log-transformation of target is done in EpiFeatureBuilder
     TODO I definitely need to add test function to validate the normalization and the absence of data leakage!
     """
     def __init__(self, config: 'EpiConfig', column_registration: ColumnRegistration):
-        self.config = config 
-        self.column_registration = column_registration
-        self.normalization_functions = {
+        self.config                 = config 
+        self.column_registration    = column_registration
+        self.normalization_functions= {
             'pipeline': {'minmax': pipeline_minmax_normalization,   'zscore': pipeline_zscore_normalization},
             'apply':    {'minmax': apply_minmax_scaling,            'zscore': apply_zscore_scaling}
         }
@@ -553,7 +589,18 @@ class EpiNormalizer:
             self.column_registration.add_column(split_col, 'split')
         
         return df
-    
+
+    def _log_transform(self, df: pd.DataFrame, col: str) -> pd.DataFrame:
+        """log_transform columns specified"""
+        df_transformed                              = df.copy()
+           
+        if col not in df_transformed.columns:
+            raise ValueError(f'{col} not found in df')
+
+        df_transformed[col]                         = np.log(df_transformed[col] + self.config.log_shift)
+      
+        return df_transformed
+
     def _normalize(self, df: pd.DataFrame) -> pd.DataFrame:
         """normalizes data and stores information in column_registration"""
         train_df        = df[df['train']]
@@ -581,7 +628,6 @@ class EpiNormalizer:
                     col_entry.column_name,
                     {'normalization': norm_parameters[col_entry.column_name]}
                 )
-
         # Second pass: Apply normalization to all columns
         for col_entry in self.column_registration.columns:
             
@@ -590,13 +636,13 @@ class EpiNormalizer:
                 continue
                   
             # Determine which normalization parameters to use
-            
             # independent transformation
             if col_entry.transformation_group is None:
 
                 if col_entry.transformation:
                     # Use own normalization
                     params = {col_entry.column_name: col_entry.transformation['normalization']}
+                    print(f"{col_entry.column_name} normalized independently")
 
                 else:
                     raise ColEntryMissingTransformationError(col_entry.column_name)
@@ -610,6 +656,7 @@ class EpiNormalizer:
                     raise ColEntryMissingTransformationReferralError(col_entry.column_name, ref_col_entry.column_name)
                 
                 params = {col_entry.column_name: ref_col_entry.transformation['normalization']}
+                print(f"{col_entry.column_name} normalized based on {ref_col_entry.column_name}")
             
             # Apply normalization
             normalized_df = self.normalization_functions['apply'][self.config.normalization_method](
@@ -620,12 +667,41 @@ class EpiNormalizer:
 
         return normalized_df
 
+    def _update_colregistry_postlog(self, col:str):
+            self.column_registration.update_transformation(
+                col, 
+                {'log': self.config.log_shift}
+            )           
+
     def orchestrate(self, feature_data: 'FeatureEpiData') -> 'NormalizedEpiData':
         """runs all normalization functions"""
         split_data      = self._set_splits(feature_data.data)
-
         if self.config.verbose > 1:
-            print(f'{checkmark} data split into train/val/test')   
+            print(f'{checkmark} data split into train/val/test')  
+
+        cols_to_log     = []
+        if self.config.log_transform:
+            for col in self.config.log_transform:
+
+                if col == self.config.target_column:
+                    cols_to_log += ['target']
+                    self._update_colregistry_postlog('target')
+
+                if col == self.config.lag_column:
+                    cols_to_log += [f'{self.config.lag_column}_t0'] + [f'{self.config.lag_column}_t_{lag}' for lag in range(1, self.config.lag_num)]
+                    if self.column_registration.get_by_name(f'{self.config.lag_column}_t0').transformation_group is None:
+                        self._update_colregistry_postlog(f'{self.config.lag_column}_t0')
+
+                else:
+                    cols_to_log += [col]
+                    self._update_colregistry_postlog(col)
+
+        for col in cols_to_log:
+            split_data = self._log_transform(split_data, col)
+            
+            if self.config.verbose > 1:
+                print(f'{checkmark} {col} log-transformed')
+        
         normalized_data = self._normalize(split_data)
 
         if self.config.verbose > 1:
@@ -646,47 +722,57 @@ class EpiDataFinalizer:
         """runs entire finalization"""
         dfc = normalized_data.data
 
-        # Create horizon-specific targets
-        # Each horizon is the absolute number of steps ahead from "today"
-        for horizon in range(self.config.horizon_size):
-            steps_ahead = self.config.horizon_leadtime + horizon
-            target      = f'target_ahead{steps_ahead}'
-            
-            # Shift from the base target (which is already at t+horizon_leadtime)
-            if horizon == 0:
-                dfc[target] = dfc[self.config.target_column]
-            else:
-                dfc[target] = dfc.groupby(
-                    self.config.id_column
-                )[self.config.target_column].shift(-horizon)
+        # 'target' is already at t+horizon_leadtime
+        # Rename it to reflect its actual position
+        base_lead = self.config.horizon_leadtime
+        dfc = dfc.rename(columns={'target': f'target_lead{base_lead}'})
         
-        self.column_registration.add_column(
-            'target',
-            'target',
-            transformation_group=self.config.target_column,
-            needs_normalization=True
-        )
+        # Create additional horizons if needed
+        if self.config.horizon_size > 1:
+            for additional_steps in range(1, self.config.horizon_size):
+                steps_ahead = base_lead + additional_steps
+                target_col = f'target_lead{steps_ahead}'
+                
+                # Shift from the base target
+                dfc[target_col] = dfc.groupby(
+                    self.config.id_column
+                )[f'target_lead{base_lead}'].shift(-additional_steps)
+                
+                # Register in column registry
+                self.column_registration.add_column(
+                    target_col,
+                    'target',
+                    transformation_group='target',  # Use same normalization as base target
+                    needs_normalization=True
+                )
+        
+        # For predictions (will be generated during training)
         self.column_registration.add_column(
             'pred',
             'pred',
-            transformation_group=self.config.target_column,
+            transformation_group='target',
             needs_normalization=True
-        )     
-
-        if self.config.target_column == 'cases':
-            dfc.drop(columns=['incidence'], inplace=True)      
+        )      
 
         if self.config.verbose > 1:
             print(f'{checkmark} targets for all horizons added')  
 
-        # Drop any rows with NaN in target columns
-        # dfc = dfc.dropna(subset=target_horizon_columns).reset_index(drop=True)     
+        print('dropping nans')
+        dfc_nanfree = dfc.dropna()
+        if self.config.target_column == 'cases':
+            for col in dfc_nanfree.columns:
+                if 'target' in col:
+                    dfc_nanfree[col] = dfc_nanfree[col].astype(int)
+
+        # Groundtruth uses the first target horizon
+        groundtruth_df = dfc_nanfree.copy()[['timestamp', 'node', f'target_lead{base_lead}']]
+        groundtruth_df = groundtruth_df.rename(columns={f'target_lead{base_lead}': 'target'})
 
         return FinalizedEpiData(
-            data=dfc.drop(columns = [self.config.target_column]),
+            data=dfc_nanfree,
             config=self.config,
-            groundtruth= dfc.rename(columns = {self.config.target_column: 'target'})[['timestamp','node','target']]
-        ) 
+            groundtruth=groundtruth_df
+        )
 
 # ====================================================
 # ============ MAIN LOADER (ORCHESTRATOR) ============
@@ -761,26 +847,26 @@ class DataOrchestrator:
             self.config.id_column, 
             'context'
         )   
-        if self.config.target_column != 'incidence':
-            self.column_registration.add_column(
-                self.config.target_column, 
-                'target', 
-                needs_normalization=False,
-                transformation_group=None  # Independent normalization
-            )   
-            self.column_registration.add_column(
-                'incidence', 
-                'feature', 
-                needs_normalization=True,
-                transformation_group=None  # Independent normalization
-            )                      
-        else:
-            self.column_registration.add_column(
-                'incidence', 
-                'target', 
-                needs_normalization=True,
-                transformation_group=None  # Independent normalization
-            )        
+        # if self.config.target_column != 'incidence':
+        #     self.column_registration.add_column(
+        #         self.config.target_column, 
+        #         'target', 
+        #         needs_normalization=False,
+        #         transformation_group=None  # Independent normalization
+        #     )   
+        #     self.column_registration.add_column(
+        #         'incidence', 
+        #         'feature', 
+        #         needs_normalization=True,
+        #         transformation_group=None  # Independent normalization
+        #     )                      
+        # else:
+        #     self.column_registration.add_column(
+        #         'incidence', 
+        #         'target', 
+        #         needs_normalization=True,
+        #         transformation_group=None  # Independent normalization
+        #     )        
      
         # Initialize pipeline components
         self.reader         = EpiDataReader(config)

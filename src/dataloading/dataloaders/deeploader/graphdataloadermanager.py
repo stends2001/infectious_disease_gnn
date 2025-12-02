@@ -7,6 +7,9 @@ from dataclasses import dataclass
 
 from ...dataorchestration.dataorchestrator import DataOrchestrator
 
+class GraphStructureError(Exception):
+    pass
+
 class GraphData:
     """
     An alternative to the Pytorch Data class for dataentries of X, y, edge_index and edge_weight
@@ -133,11 +136,15 @@ class GraphDataLoaderManager:
         graphpath  = os.path.join(graphdirectory, self.dataorchestrator.config.nuts_level, graphname)
         
         try:
-            self.edge_index  = torch.load(graphpath + '_edge_index.pt', weights_only = False)
-            self.edge_weight = torch.load(graphpath + '_edge_weight.pt', weights_only = False)
+            edge_index  = torch.load(graphpath + '_edge_index.pt', weights_only = False)
+            edge_weight = torch.load(graphpath + '_edge_weight.pt', weights_only = False)
 
         except Exception as e:
             raise RuntimeError(f'graph by the name of {graphname} not found')
+        
+        self._validate_graphstructure(edge_index, edge_weight)
+        self.edge_index = edge_index
+        self.edge_weight= edge_weight
         
         return self
 
@@ -195,8 +202,6 @@ class GraphDataLoaderManager:
         timestamps          = list(dfc['timestamp'].unique())
 
         feature_cols = self.column_registration.get_by_type('feature')
-        # TODO UGLY!
-        feature_cols = [c for c in feature_cols if c in dfc.columns]
         split_cols   = self.column_registration.get_by_type('split')
         target_cols  = self.column_registration.get_by_type('target')          
 
@@ -204,6 +209,7 @@ class GraphDataLoaderManager:
         self.time_splits    = time_splits
 
         for feat in feature_cols:
+            dtype = dfc[feat].dtype
             # Pivot from long to wide: rows=time, columns=nodes, values=feature
             pivoted = dfc.pivot(index=['timestamp'], columns='node', values=feat).reset_index(drop = True)
 
@@ -215,15 +221,20 @@ class GraphDataLoaderManager:
             
             # # Convert to numpy float array, replace NaNs with 0
             arr = pivoted.values
-            arr = arr.astype(np.float32)             # force float32 dtype
+            if str(dtype).startswith('int'):
+                arr = arr.astype(np.int32)
+            else:
+                arr = arr.astype(np.float32)             # force float32 dtype
+
             feature_arrays.append(arr)
 
         X_np = np.stack(feature_arrays, axis=-1)
 
         for target in target_cols:
             for dfc_col in dfc.columns:
-
+                
                 if target in dfc_col and dfc_col not in feature_cols:
+                    dtype = dfc[dfc_col].dtype
                     # Pivot from long to wide: rows=time, columns=nodes, values=feature
                     pivoted = dfc.pivot(index=['timestamp'], columns='node', values=dfc_col).reset_index(drop = True)
 
@@ -235,7 +246,10 @@ class GraphDataLoaderManager:
                     
                     # # Convert to numpy float array, replace NaNs with 0
                     arr = pivoted.values
-                    arr = arr.astype(np.float32)             # force float32 dtype
+                    if str(dtype).startswith('int'):
+                        arr = arr.astype(np.int32)
+                    else:
+                        arr = arr.astype(np.float32)   
                     target_arrays.append(arr)
 
         # Process target column using same approach
@@ -305,6 +319,16 @@ class GraphDataLoaderManager:
             test  = dataloader_test,
             main  = main_dataloader
         )
+
+    def _validate_graphstructure(self, edge_index: torch.Tensor, edge_weight: torch.Tensor):
+        num_nodes_graph = len(edge_index.unique())
+
+        if len(edge_index[0]) != len(edge_weight):
+            raise GraphStructureError('edge_index and edge_weight have a different length')
+        
+        if num_nodes_graph != self.dataorchestrator.data_context.num_nodes:
+            raise GraphStructureError(f'loaded graphstructure has {num_nodes_graph} nodes while data_orchestrator has {self.dataorchestrator.data_context.num_nodes} nodes')
+        
 
     def __repr__(self) -> str:
 
