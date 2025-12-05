@@ -8,6 +8,9 @@ valcolor   = "#1b9e77"
 testcolor  = '#d94e4e'  
 
 
+large_pallete_blue = sns.color_palette("Blues", n_colors=100)
+large_pallete_red  = sns.color_palette("Reds", n_colors=100)
+
 models_cmap = mypalette = ["#5ab1e0",'#1f78b4','#1b9e77','#33a02c','#2a7d32',"#9154ac",'#6a3d9a','#ffb84d','#e6ab02','#a6761d','#b15928','#8b3d3d','#666666',"#b1adad",'#000000']
 
 paired_colors = sns.color_palette("Paired")

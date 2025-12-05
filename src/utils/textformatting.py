@@ -2,8 +2,9 @@
 
 from typing import Dict, Any, Union, List, Tuple
 
-checkmark = '✓'
-warning_emoji = '⚠️'   
+checkmark       = '✓'
+warning_emoji   = '⚠️'   
+error_emoji     = '❌'
 
 def align(key: str, value: Any, width: int, indent: int = 4, newline: bool = False) -> str:
     """
