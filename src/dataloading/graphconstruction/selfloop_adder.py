@@ -8,14 +8,14 @@ class SelfLoopAdder:
     adds self-loops to edge_indices and edge_weights
     Called in the process of GraphConstructor
 
-    Parameters:
+    Parameters
     ----------
     edge_indices: List[Tuple[int,int]]
     edge_weights: List[float]
     node_ids: NDArray
         an array of node ids to loop over
 
-    See also:
+    See also
     --------
     GraphConstructor    → creates and returns an edge_index and a edge_weight
     GraphOrchestrator   → orchestrates the creation of a graph through GraphConstructor

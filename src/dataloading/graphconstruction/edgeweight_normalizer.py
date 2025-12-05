@@ -6,19 +6,19 @@ class EdgeWeightNormalizer:
     normalizes edge-weights. 
     Called in the process of GraphConstructor
 
-    Parameters:
+    Parameters
     ----------
     edge_indices: torch.Tensor
     edge_weights: torch.Tensor
     num_nodes: int
 
-    Examples:
+    Examples
     --------
     >>> edge_weight = EdgeWeightNormalizer(edge_indices=edge_index, 
     >>>                                    edge_weights=edge_weight, 
     >>>                                    num_nodes = self.num_nodes).normalize(scaling_method)
 
-    See also:
+    See also
     --------
     GraphConstructor    → creates and returns an edge_index and a edge_weight
     GraphOrchestrator   → orchestrates the creation of a graph through GraphConstructor

@@ -23,7 +23,6 @@ from src.utils.helpers import sum_preserve_nan
 from .predictions_manager import PredictionCollection, PredictionManager
 
 class BaseModel:
-
     """
     """
 
@@ -96,14 +95,14 @@ class BaseModel:
 
                 evaluation_df_node  = evaluation_df[evaluation_df['node'] == id]
 
-                sns.lineplot(data   = evaluation_df_node, x = 'timestamp', y = 'target',    color = testcolor,          marker = 'o',   label = 'True Incidence', ax = ax, linewidth = 2)
+                sns.lineplot(data   = evaluation_df_node, x = 'timestamp', y = 'target',    color = testcolor,          marker = 'o',   label = 'Ground truth', ax = ax, linewidth = 2)
                 sns.lineplot(data   = evaluation_df_node, x = 'timestamp', y = 'pred',      color = self.model_color,   marker = 'h',   label = 'Predictions',    ax = ax, linewidth = 2)
 
                 ax.set_title(f'{nodename} [node: {id}]')
                 ax.set_xlabel("")            
                 ax.grid()   
 
-            title = f'Predictions by {self.name}, {weeks_ahead} weeks ahead' 
+            title = f'{self.dataloadermanager.dataorchestrator.config.target_column} predictions by {self.name}, {weeks_ahead} weeks ahead' 
 
             if dataset != 'test':
                 title += f" [{dataset}]"
@@ -112,7 +111,7 @@ class BaseModel:
                 title += ' [transformed]'        
             
             plt.suptitle(title)
-            plt.tight_layout()
+            # plt.tight_layout()
             return fig, axes
         
         else:
@@ -124,7 +123,7 @@ class BaseModel:
         This is the main save method - child classes should override
         if they need to save additional things (like weights).
         
-        Returns:
+        Returns
         -------
         str : The assigned model ID
         """

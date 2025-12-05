@@ -16,7 +16,7 @@ class CommuterDataProcessor:
     
     Returns single pd.DataFrame with the number of commuters between two Kreisen.
 
-    Examples:
+    Examples
     --------
     >>> pr = CommuterDataProcessor()
     >>> # currently only 2024 is available!
@@ -34,12 +34,12 @@ class CommuterDataProcessor:
         """ 
         Loop over all years (folder) to return a merged df.
 
-        Parameters:
+        Parameters
         ----------
         years: Union[List[str], str]:
             list of years over which to loop
 
-        Returns:
+        Returns
         -------
         pd.DataFrame   
             df with columns: 'nuts3_work', 'nuts3_residence','commuters','year'
@@ -120,7 +120,7 @@ class CommuterDataLoader:
     """ 
     Simple dataloader object to return commuting_data
 
-    Parameters:
+    Parameters
     ----------
     years: Union[List[str], str]
         the years for which to select data

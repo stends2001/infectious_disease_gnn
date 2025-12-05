@@ -17,7 +17,7 @@ class GraphConstructor:
     creates graphs (edge indices and edge weights) based on geopandas dataframes
     Called through GraphConstructor
 
-    Parameters:
+    Parameters
     ----------
     gdf: gpd.GeoDataFrame
         shapefile including all nodes
@@ -27,7 +27,7 @@ class GraphConstructor:
         population data per token
     id_col: column by which name the nodes are found
 
-    See also:
+    See also
     --------
     GraphConstructor
     """
@@ -70,7 +70,7 @@ class GraphConstructor:
         """
         collects the required generation-function and feeds in the kwargs
 
-        Parameters:
+        Parameters
         ----------
         method: str
             which graph to construct
@@ -101,9 +101,9 @@ class GraphConstructor:
 
     def _commuter(self, commuting_threshold: int = 1_000, top_k: Optional[int] = None, year: str = '2024')  -> Tuple[List[Tuple[int,int]], List[float]]:
         """ 
-        creates a commuter - graph:
+        creates a commuter - graph
 
-        Parameters:
+        Parameters
         ----------
         year: str = '2024'
             the year for which to retrieve the data

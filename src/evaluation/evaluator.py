@@ -13,13 +13,13 @@ class Evaluator:
     """
     Evaluates models on spatiotemporal epidemioligal predictions
 
-    Examples:
+    Examples
     --------
     >>> evaluator = Evaluator([ml1, ml2])
     >>> evaluator.add_evaluation()
     >>> evaluator.plotter.plot_metric("ccc", plot_type = "map")
 
-    See Also:
+    See Also
     --------
     EvaluationPlotter
     Metrics
@@ -51,7 +51,7 @@ class Evaluator:
         """
         Add evaluation entry for specified horizon.
         
-        Parameters:
+        Parameters
         -----------
         horizon : int
             Prediction horizon

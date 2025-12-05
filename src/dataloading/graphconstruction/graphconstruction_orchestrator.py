@@ -3,7 +3,7 @@ import torch
 import numpy as np
 import seaborn as sns
 from dataclasses import dataclass, asdict
-from typing import Optional, List, Union, Literal, Dict
+from typing import Optional, List, Union, Literal, Dict, Tuple
 
 from .edgeweight_normalizer import EdgeWeightNormalizer
 from .graphconstructor import GraphConstructor
@@ -12,14 +12,14 @@ from .graphviewer import GraphViewer
 
 from ..dataorchestration.dataorchestrator import DataOrchestrator
 
-from ...utils.textformatting import checkmark, warning_emoji
+from ...utils.textformatting import checkmark, warning_emoji, align
 
 @dataclass 
 class GraphStructure:
     """
     Single graphstructure with
 
-    Parameters:
+    Parameters
     ----------
     edge_index: torch.Tensor
         index of edges
@@ -34,44 +34,175 @@ class GraphStructure:
     def __repr__(self) -> str:
         num_nodes      = len(self.edge_index[0].unique())
         num_edges      = len(self.edge_index)
-        representation = f'<GraphEntry(num_nodes = {num_nodes}, num_edges = {num_edges})>'
+        representation = f'<GraphStructure(num_nodes = {num_nodes}, num_edges = {num_edges})>'
         return representation
+
+@dataclass 
+class GraphStatistics:
+    """
+    Contains statistics describing a graph
+    
+    Parameters
+    ----------
+    #### General
+    num_nodes: int
+
+    num_edges: int
+
+    edge_density: float
+
+    num_isolated_nodes: int
+
+    #### Edge weights
+
+    edge_weight_mean: float
+
+    edge_weight_min: float
+
+    edge_weight_max: float
+
+    #### Out-degree
+
+    out_degree_mean:    float
+
+    out_degree_max:     int
+
+    out_degree_min:     int
+    
+    #### In-degree
+    in_degree_mean:    float
+
+    in_degree_max:     int
+
+    in_degree_min:     int    
+    """
+    
+    num_nodes:          int
+    num_edges:          int
+    edge_density:       float
+    num_isolated_nodes: int
+
+    edge_weight_mean:   float
+    edge_weight_min:    float
+    edge_weight_max:    float
+
+    out_degree_mean:    Union[int,float]
+    out_degree_max:     int
+    out_degree_min:     int    
+   
+    in_degree_mean:     Union[int,float]
+    in_degree_max:      int
+    in_degree_min:      int    
+
+    def __repr__(self) -> str:
+
+        largest_key = len("num_isolated_nodes")
+
+        statement = self._get_small_summary() +"\n"
+                        
+        statement += align('edge_weight_mean',   self.edge_weight_mean,  width=largest_key + 2, newline=True)   
+        statement += align('edge_weight_min',    self.edge_weight_min,   width=largest_key + 2, newline=True)                   
+        statement += align('edge_weight_max',    self.edge_weight_max,   width=largest_key + 2, newline=True)    
+
+        statement += "\n"      
+        statement += align('out_degree_mean',   self.out_degree_mean,  width=largest_key + 2, newline=True)   
+        statement += align('out_degree_max',    self.out_degree_max,   width=largest_key + 2, newline=True)                   
+        statement += align('out_degree_min',    self.out_degree_min,   width=largest_key + 2, newline=True)      
+
+        statement += "\n"      
+        statement += align('in_degree_mean',   self.in_degree_mean,  width=largest_key + 2, newline=True)   
+        statement += align('in_degree_max',    self.in_degree_max,   width=largest_key + 2, newline=True)                   
+        statement += align('in_degree_min',    self.in_degree_min,   width=largest_key + 2, newline=True)                
+
+        return statement      
+
+    def _get_small_summary(self) -> str:
+
+        largest_key = len("num_isolated_nodes")
+
+        statement = ""
+
+        statement += align('num_nodes',          self.num_nodes,            width=largest_key + 2, newline=True)
+        statement += align('num_edges',          self.num_edges,            width=largest_key + 2, newline=True)
+        statement += align('edge_density',       self.edge_density,         width=largest_key + 2, newline=True)
+        statement += align('num_isolated_nodes', self.num_isolated_nodes,   width=largest_key + 2, newline=True)                                 
+
+        return statement           
+
+@dataclass 
+class GraphEntry:
+    """
+    Single entry to the GraphRegistry with 
+
+    Parameters
+    ---------
+    structure:  GraphStructure
+
+    summary:
+    
+    config:
+    """
+
+    structure: GraphStructure
+    summary:   GraphStatistics
+    config:    Dict[str,str]
+
+    def __repr__(self) -> str:
+        representation = f'<GraphEntry(structure, summary, config)>'
+        return representation        
+
+    def _get_summary(self, type: Literal['small','large']) -> str:
+        
+        if type == 'large':
+            return print(self.summary)
+
+        elif type == 'small':
+            return print(self.summary._get_small_summary())
+
+
+    # def get_summary(self) -> str:
+    #     pass
 
 class GraphRegistry:
     """
     Registry of GraphStructure objects
 
-    Attributes:
+    Attributes
     ----------
-    registry: Dict[str, GraphStructure]
-        graphnames : GraphStructure object
+    registry: Dict[str, GraphEntry]
+        graphnames : GraphEntry object
     
-    Methods:
+    Methods
     -------
     add_entry       ->  None
     rename_entry    ->  None
-    get_entry       ->  GraphStructure
+    get_entry       ->  GraphEntry
     """
     def __init__(self):
-        self.registry: Dict[str, GraphStructure] = {}
+        self.registry: Dict[str, GraphEntry] = {}
+        self.alignment_width = 19
 
-    def add_entry(self, graphname: str, structure: GraphStructure) -> None:
+    def add_entry(self, graphname: str, entry: GraphEntry) -> None:
         """Add structure to .registry under graphname"""
         if self.check_entry(graphname):
-            print(f'{warning_emoji} {graphname} already exists, please rename the already existing entry')
+            print(align(f'{warning_emoji} warning', f'{graphname} already exists, please rename the already existing entry. New entry wasn\'t registered', width=self.alignment_width, newline=False))            
         else:
-            self.registry[graphname] = structure
+            self.registry[graphname] = entry
+            print(align(f'{checkmark} Graph registered', f'{graphname} successfully registered', width=self.alignment_width, newline=False))                        
         
     def rename_entry(self, current_graphname: str, new_graphname: str) -> None:
         """rename entry from current_graphname to new_graphname; current_graphname is removed"""        
         if self.check_entry(new_graphname):
-            print(f'{warning_emoji} {new_graphname} already exists, please rename the already existing entry')
+            print(align(f'{warning_emoji} warning', f'{new_graphname} already exists, please rename the already existing entry. New entry wasn\'t registered', width=self.alignment_width, newline=False))    
         else:
-            self.registry[new_graphname] = self.registry[current_graphname]
-            del self.registry[current_graphname]            
-            print(f'{current_graphname} has been replaced by {new_graphname}')
+            self.add_entry(new_graphname,self.registry[current_graphname])
+            self.remove_entry(current_graphname)           
 
-    def get_entry(self, graphname: str) -> 'GraphStructure':
+    def remove_entry(self, graphname: str) -> None:
+        del self.registry[graphname]
+        print(align(f'{checkmark} Graph removed', f'{graphname} has been deregistered', width=self.alignment_width, newline=False))        
+
+    def get_entry(self, graphname: str) -> 'GraphEntry':
         """return GraphStructure from graphname"""
         if not self.check_entry(graphname):
             print(f'{warning_emoji} {graphname} not found')
@@ -92,6 +223,11 @@ class GraphRegistry:
         """returns a list of entrynames"""
         return list(self.registry.keys())
         
+    def get_graph_stats(self, graphname: str, type: Literal['small','large']) -> str:
+        """Returns a string representation of the graph statistics, either small or extensive"""
+        
+        return self.get_entry(graphname)._get_summary(type)
+
     def __repr__(self) -> str:
         registered_entries = ', '.join(self.return_entrynames())
         return f'<GraphRegistry({registered_entries})'
@@ -115,7 +251,7 @@ class GraphOrchestrator:
     """
     Orchestrates the entire process of graph creation
 
-    Parameters:
+    Parameters
     ----------
     data_orchestrator: DataOrchestrator
         object with which data orchestration was created
@@ -124,13 +260,13 @@ class GraphOrchestrator:
     graph_dir: str = 'data/graphs'
         directory in which to store, and from which to retrieve, graphs
 
-    Methods:
+    Methods
     -------
     generate_graph  
     preview_graph
 
 
-    Examples:
+    Examples
     --------
     >>> orch                = data_orchestrator
     >>> graphconstruction   = GraphOrchestrator(data_orchestrator=data_orchestrator)
@@ -142,13 +278,13 @@ class GraphOrchestrator:
     >>> graphconstruction.preview_graph('commuter', node_idx = 223, subplots = True, title= "Preview commuter graph from Munich")
     >>> graphconstruction.preview_graph('boolean_neighbors', subplots = True, title= "Preview boolean neighbors graph")
 
-    Limitations: #TODO
+    Limitations #TODO
     -----------
     - population_size is determined as average per node over all years
     - currently deals with static graphs only, dynamic graphs should be dealt with
     - no selfloops visualization
     
-    See Also:
+    See Also
     ------------
     GraphRegistry -> registry of graph structures (.graph_registry)
     GraphViewer   -> graph previewer object (.previewer)
@@ -163,7 +299,7 @@ class GraphOrchestrator:
         # extract metadata
         shapes               = data_orchestrator.data_context.shapedata
         self.tokens          = data_orchestrator.data_context.tokenization_map['id_idx']
-        self.epipopdata      = data_orchestrator.data_context.epipopdata
+        self.epipopdata      = data_orchestrator.data_harmonized.data
         
         # mean population data TODO => currently mean is taken instead of yearly
         self.population_data = self.epipopdata.groupby(id_col)['population_size'].mean().reset_index()
@@ -203,7 +339,7 @@ class GraphOrchestrator:
 
         where '_' is used as separator
 
-        Parameters:
+        Parameters
         ----------
         method: str 
             limited to: ['boolean_neighbors', 'identity', 'mesh', 'distance_threshold','k_nearest',  'population_weighted', 'gravity_model', 'commuter']
@@ -216,7 +352,7 @@ class GraphOrchestrator:
         **kwargs:
             kwargs are method-specific.
 
-        See also:
+        See also
         --------
         The heavy lifting is done through the following classes. Each of these contains further information.
             - GraphGeneration
@@ -269,8 +405,7 @@ class GraphOrchestrator:
             edges, weights = SelfLoopAdder(edge_indices=edges, edge_weights=weights, node_ids=node_ids).add_loops(self_connection)
 
         # remove zero valued loops        
-        edges   = [edge for edge, weight in zip(edges, weights) if weight != 0]
-        weights = [weight for weight in weights if weight != 0]   
+        edges, weights = self._remove_zero_weights(edges, weights)
 
         # transform into torch objects        
         edge_weight = torch.tensor(weights, dtype=torch.float)
@@ -282,21 +417,75 @@ class GraphOrchestrator:
         if scaling_method:
            edge_weight = EdgeWeightNormalizer(edge_indices=edge_index, edge_weights=edge_weight, num_nodes = self.num_nodes).normalize(scaling_method)
 
+        edge_index, edge_weight = self._remove_zero_weights(edge_index, edge_weight)
+
         graphstructure = GraphStructure(edge_index, edge_weight)
+        graphentry     = GraphEntry(graphstructure, self._generate_graph_stats(graphstructure), asdict(graphconfig))
 
         # save config
-        graphdict = {'structure': graphstructure,
-                     'config'   : asdict(graphconfig),
-                     'summary'  : self._get_graph_summary(edge_index,edge_weight)}   
+        # graphdict = {'structure': graphstructure,
+        #              'config'   : asdict(graphconfig),
+        #              'summary'  : self._get_graph_summary(edge_index,edge_weight)}   
 
-        self.graph_registry.add_entry(graphname, graphstructure)
-        print(f'{checkmark} graph generated: {graphname}')
+        self.graph_registry.add_entry(graphname, graphentry)
+        # print(f'{checkmark} graph generated: {graphname}')
+
+    def _remove_zero_weights(
+        self, 
+        edge_index: Union[List[Tuple[int, int]], torch.Tensor], 
+        edge_weight: Union[List[float], torch.Tensor], 
+        threshold: float = 1e-9
+    ) -> Tuple[Union[List[Tuple[int, int]], torch.Tensor], Union[List[float], torch.Tensor]]:
+        """
+        Remove edges with zero or near-zero weights.
+        
+        Parameters
+        ----------
+        edge_index : Union[List[Tuple[int, int]], torch.Tensor]
+            Edge indices as list of tuples or tensor [2, num_edges]
+        edge_weight : Union[List[float], torch.Tensor]
+            Edge weights as list or tensor [num_edges]
+        threshold : float
+            Values below this are considered zero (default: 1e-9)
+            
+        Returns
+        -------
+        Tuple containing filtered edge_index and edge_weight
+        """
+        if isinstance(edge_index, torch.Tensor):
+            if not isinstance(edge_weight, torch.Tensor):
+                raise TypeError(
+                    f'edge_index is torch.Tensor but edge_weight is {type(edge_weight).__name__}'
+                )
+            
+            mask = edge_weight.abs() > threshold
+            return edge_index[:, mask], edge_weight[mask]
+        
+        elif isinstance(edge_index, list):
+            if not isinstance(edge_weight, list):
+                raise TypeError(
+                    f'edge_index is list but edge_weight is {type(edge_weight).__name__}'
+                )
+            
+            # Filter and unzip in one go
+            filtered = [(e, w) for e, w in zip(edge_index, edge_weight) if abs(w) > threshold]
+            
+            if not filtered:  # Handle empty case
+                return [], []
+            
+            filtered_edges, filtered_weights = zip(*filtered)
+            return list(filtered_edges), list(filtered_weights)
+        
+        else:
+            raise TypeError(
+                f'edge_index must be list or torch.Tensor, got {type(edge_index).__name__}'
+            )       
 
     def preview_graph(self, graphname: str, node_idx: Optional[int] = None, subplots: bool = True, title: Optional[str] = None):        
         """
         Preview graph found in registry
 
-        Parameters:
+        Parameters
         ----------
         graphname: str
             the name under which the graph structure is saved in the registry (.graph_registry shows registered graphs)
@@ -309,7 +498,7 @@ class GraphOrchestrator:
         title: Optional[str] = None
             title for the main (global) map
             
-        See Also:
+        See Also
         --------
         GraphViewer -> does the actual heavy lifting. This method simply relays parameters.
         """
@@ -322,6 +511,10 @@ class GraphOrchestrator:
         """
         self.graph_registry.rename_entry(old_graphname, new_graphname)
         
+    def get_graph_stats(self, graphname: str, type: Optional[Literal['small','large']] = 'large') -> str:
+        """Returns a string representation of the graph statistics, either small or extensive"""
+        self.graph_registry.get_graph_stats(graphname, type)
+
     def save_graph(self, graphname: Union[str,List[str]] = 'all') -> None:
         """
         Save edge index and weight from registry. 
@@ -355,39 +548,56 @@ class GraphOrchestrator:
                     torch.save(edge_weight, os.path.join(self.graph_dir, f'{graphname}_edge_weight.pt'))
                     print(f'{checkmark} graph saved: edge weight {graphname} saved to {self.graph_dir}')
 
-    def _get_graph_summary(self, global_edge_index: torch.Tensor, global_edge_weight: torch.Tensor) -> Dict[str, float]:
-
+    def _generate_graph_stats(self, graph_structure: GraphStructure) -> GraphStatistics:
         """ 
-        validate the graph created
+        Returns a summary of the graph
         """
+        global_edge_index = graph_structure.edge_index
+        global_edge_weight = graph_structure.edge_weight
 
         # statistics
-        num_edges           = global_edge_index.shape[1]
-        num_nodes           = int(global_edge_index.max().item())+1
-        edge_density        = num_edges / (num_nodes * (num_nodes - 1))
-        edge_weight_np      = global_edge_weight.cpu().numpy()
-        edge_weight_mean    = edge_weight_np.mean()
-        edge_weight_min     = edge_weight_np.min()
-        edge_weight_max     = edge_weight_np.max()
+        num_edges = global_edge_index.shape[1]
+        num_nodes = int(global_edge_index.max().item()) + 1
+        edge_density = num_edges / (num_nodes * (num_nodes - 1))
+        edge_weight_np = global_edge_weight.cpu().numpy()
+        
+        # Round edge weight statistics at creation time
+        edge_weight_mean = round(float(edge_weight_np.mean()), 4)
+        edge_weight_min = round(float(edge_weight_np.min()), 4)
+        edge_weight_max = round(float(edge_weight_np.max()), 4)
 
         # isolated nodes:
         edges_out, edges_in = global_edge_index[0], global_edge_index[1] 
-        out_degree          = torch.bincount(edges_out, minlength=num_nodes)
-        in_degree           = torch.bincount(edges_in, minlength=num_nodes)
-        isolated_mask       = (out_degree == 0) & (in_degree == 0)
-        num_isolated        = isolated_mask.sum().item()
+        out_degree = torch.bincount(edges_out, minlength=num_nodes)
+        in_degree = torch.bincount(edges_in, minlength=num_nodes)
+        isolated_mask = (out_degree == 0) & (in_degree == 0)
+        num_isolated_nodes = isolated_mask.sum().item()
 
-        summary = {
-            'num_nodes'     : num_nodes,
-            'num_edges'     : num_edges,
-            'edge_density'  : edge_density,
-            'num_isolated'  : num_isolated,
-            'edge_weight_mean'  : edge_weight_mean,
-            'edge_weight_min'   : edge_weight_min,
-            'edge_weight_max'   : edge_weight_max
-        }   
+        # Out-degree stats
+        out_degree_mean = round(float(out_degree.float().mean().item()), 2)
+        out_degree_max = out_degree.max().item()
+        out_degree_min = out_degree[out_degree > 0].min().item() if (out_degree > 0).any() else 0
 
-        return summary
+        # In-degree stats
+        in_degree_mean = round(float(in_degree.float().mean().item()), 2)
+        in_degree_max = in_degree.max().item()
+        in_degree_min = in_degree[in_degree > 0].min().item() if (in_degree > 0).any() else 0
+
+        return GraphStatistics(
+            num_edges=num_edges,
+            num_nodes=num_nodes,
+            edge_density=round(edge_density, 4),
+            edge_weight_mean=edge_weight_mean,
+            edge_weight_min=edge_weight_min,
+            edge_weight_max=edge_weight_max,
+            num_isolated_nodes=num_isolated_nodes,
+            out_degree_mean=out_degree_mean,
+            out_degree_max=out_degree_max,
+            out_degree_min=out_degree_min,
+            in_degree_mean=in_degree_mean,
+            in_degree_max=in_degree_max,
+            in_degree_min=in_degree_min
+        )
     
     def __repr__(self) -> str:
         return f'<GraphConstructor(level {self.nuts_level}. Registry: {self.graph_registry})>'

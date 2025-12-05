@@ -1,10 +1,10 @@
 
 MODELSREGISTRY = {
-        'unknown'               : 0,                    # all unknowns will be shown in black
-        'PersistenceModel'      : 1,
-        'ClimateologyModel'     : 2,        
-        'NodeRFModel'           : 3,
-        'SpatialGNNModel'       : 4,
-        'GATv2Model'            : 7,                    # skip red
-        'NodeLSTMModel'         : 9
+        'unknown'               : 16,                    # all unknowns will be shown in black
+        'PersistenceModel'      : 0,
+        'ClimateologyModel'     : 1,        
+        'NodeRFModel'           : 2,
+        'SpatialGNNModel'       : 5,
+        'GATv2Model'            : 7,
+        'NodeLSTMModel'         : 8
     }    

@@ -73,7 +73,7 @@ class EvaluationPlotter:
         """
         Plot specified metric across models.
         
-        Parameters:
+        Parameters
         -----------
         metric : str
             Metric name (corr, mse, rmse, ccc, lag_corr, neighbor_corr, spatial_autocorr)
@@ -223,7 +223,7 @@ class EvaluationPlotter:
         Plot specified metric with separate subplots for each horizon.
         Allows easier comparison of model performance within each horizon.
         
-        Parameters:
+        Parameters
         -----------
         metric : str
             Metric name (corr, mse, rmse, ccc, lag_corr, neighbor_corr, spatial_autocorr)

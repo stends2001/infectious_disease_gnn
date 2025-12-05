@@ -31,17 +31,15 @@ class ColEntryMissingTransformationReferralError(ColEntryError):
 @dataclass
 class ColEntry:
     """
-
+    Entry for a single column into the column registry
     """
     column_name:            str
     column_type:            str
     transformation_group:   Union[Literal[None, 'NA'], str] = 'NA'
     transformation:         Optional[dict] = None    
     
-
     def has_transformation(self) -> bool:
         """Check if this column should be normalized"""
-
         return self.transformation_group != 'NA' and self.transformation_group is not None
     
     def __repr__(self):
@@ -52,7 +50,6 @@ class ColEntry:
 class ColumnRegistration:
     """
     Stores and manages column metadata for the data pipeline.
-    
     Provides easy access to columns by type and normalization information.
     """
     columns: List[ColEntry] = field(default_factory=list)

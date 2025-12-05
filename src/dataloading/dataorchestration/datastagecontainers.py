@@ -12,7 +12,7 @@ class RawEpiData:
     """
     Container for raw data loaded from files. 
 
-    Parameters:
+    Parameters
     ----------
     disease: pd.DataFrame
         survstat data

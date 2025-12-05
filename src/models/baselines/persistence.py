@@ -12,7 +12,7 @@ class PersistenceModel(BaseModel):
 
     Training is therefore not necessary
 
-    Examples:
+    Examples
     --------
     >>> persistence = PersistenceModel(shallowdata)
     >>> persistence.forecast('test')    

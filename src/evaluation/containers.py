@@ -44,15 +44,15 @@ class MetricCompilation:
     A class to store and manage metrics across multiple datasets (train, val, test)
     and prediction horizons.
     
-    Structure:
+    Structure
     ---------
     _data[dataset][horizon][metric_name] = DataFrame
     
-    Example:
+    Example
     -------
     _data['test']['horizon_1']['mse'] = DataFrame with columns [node, model1, model2, ...]
     
-    Examples:
+    Examples
     --------
     >>> metrics = MetricCompilation()
     >>> metrics.add_horizon(metrics_dict, 'horizon_1', 'test')
@@ -65,7 +65,7 @@ class MetricCompilation:
         """
         Add metrics for a new horizon and dataset.
         
-        Parameters:
+        Parameters
         ----------
         data : Dict[str, pd.DataFrame]
             Dictionary mapping metric names to DataFrames
@@ -86,19 +86,19 @@ class MetricCompilation:
         """
         Get all metrics for a specified horizon and dataset.
         
-        Parameters:
+        Parameters
         ----------
         horizon : str
             Horizon identifier
         dataset : str
             Dataset name
             
-        Returns:
+        Returns
         -------
         Dict[str, pd.DataFrame]
             Dictionary mapping metric names to DataFrames
             
-        Raises:
+        Raises
         ------
         ValueError
             If dataset or horizon not found
@@ -121,7 +121,7 @@ class MetricCompilation:
         """
         Get a specific metric for a specified horizon and dataset.
         
-        Parameters:
+        Parameters
         ----------
         horizon : str
             Horizon identifier
@@ -130,12 +130,12 @@ class MetricCompilation:
         metric_name : str
             Name of the metric (e.g., 'mse', 'rmse')
             
-        Returns:
+        Returns
         -------
         pd.DataFrame
             DataFrame with columns [node, model1, model2, ...]
             
-        Raises:
+        Raises
         ------
         ValueError
             If dataset, horizon, or metric not found
@@ -160,12 +160,12 @@ class MetricCompilation:
         """
         Return the horizons available for each dataset.
         
-        Returns:
+        Returns
         -------
         Dict[str, List[str]]
             Dictionary mapping dataset names to lists of horizon identifiers
             
-        Example:
+        Example
         -------
         >>> metrics.compilations
         {'train': ['horizon_0', 'horizon_1'], 'test': ['horizon_0']}
@@ -180,12 +180,12 @@ class MetricCompilation:
         """
         Return unique metric names available for each dataset.
         
-        Returns:
+        Returns
         -------
         Dict[str, List[str]]
             Dictionary mapping dataset names to lists of available metric names
             
-        Example:
+        Example
         -------
         >>> metrics.metrics
         {'train': ['ccc', 'mse', 'rmse'], 'test': ['ccc', 'mse', 'rmse']}
@@ -206,14 +206,14 @@ class MetricCompilation:
         """
         Get list of available metrics for a specific horizon and dataset.
         
-        Parameters:
+        Parameters
         ----------
         horizon : str
             Horizon identifier
         dataset : str
             Dataset name
             
-        Returns:
+        Returns
         -------
         List[str]
             List of metric names available
@@ -225,7 +225,7 @@ class MetricCompilation:
         """
         Check if a specific metric exists for given horizon and dataset.
         
-        Parameters:
+        Parameters
         ----------
         horizon : str
             Horizon identifier
@@ -234,7 +234,7 @@ class MetricCompilation:
         metric_name : str
             Name of the metric
             
-        Returns:
+        Returns
         -------
         bool
             True if metric exists, False otherwise
@@ -249,12 +249,12 @@ class MetricCompilation:
         """
         Validate that dataset name is one of the allowed values.
         
-        Parameters:
+        Parameters
         ----------
         dataset : str
             Dataset name to validate
             
-        Raises:
+        Raises
         ------
         ValueError
             If dataset is not 'train', 'val', or 'test'
@@ -283,7 +283,7 @@ class MetricCompilation:
         """
         Return detailed summary of stored metrics.
         
-        Returns:
+        Returns
         -------
         str
             Formatted summary string

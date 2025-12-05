@@ -31,7 +31,7 @@ class ShallowDataLoaderCollection:
     """ 
     Stores all DataLoaders for shallow models
 
-    See Also:
+    See Also
     --------
     ShallowDataLoader
     """
@@ -49,18 +49,17 @@ class ShallowDataLoaderManager:
     Each horizon has a specified dataloader collection, which in turn 
     contains 3 dataloaders (t/v/t/) and a pd.dataframe (main = t+v+t).
 
-    Parameters:
+    Parameters
     ----------
     dataorchestrator: DataOrchestrator
         The object with entirely build dataset.
 
-    Attributes:
+    Attributes
     ----------
     dataloader_collections: Dict['str', 'ShallowDataLoaderCollection]
         instance of ShallowDataLoaderCollection per horizon
 
-
-    Examples:
+    Examples
     --------
     >>> data_orchestrator = DataOrchestrator(config).build()
     >>> shallowdata       = ShallowDataLoaderManager(data_orchestrator).construct_dataloaders()

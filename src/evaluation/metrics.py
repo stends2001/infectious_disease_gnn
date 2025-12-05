@@ -7,7 +7,6 @@ from tqdm import tqdm
 from pandas._libs.missing import NAType
 
 class Metrics:
-
     """
     compute metrics for dataframe    
     """
@@ -22,7 +21,7 @@ class Metrics:
         """
         Initialize metrics calculator (configuration only, not data).
         
-        Parameters:
+        Parameters
         -----------
         target_col, pred_col, id_col, temporal_col : str
             Column names
@@ -70,26 +69,6 @@ class Metrics:
         corr, _ = spearmanr(df[self.target_col], df[self.pred_col], nan_policy='omit')
         
         return float(corr)  # type: ignore
-        
-    # def ccc(self, df: pd.DataFrame) -> Union[float, NAType]:
-    #     """concordance correlation coefficient."""
-    #     target, pred = df[self.target_col], df[self.pred_col]
-                  
-    #     mean_target, mean_pred  = target.mean(), pred.mean()
-    #     var_target,  var_pred   = target.var(ddof=0), pred.var(ddof=0)
-
-    #     if var_target == 0 or var_pred == 0:
-    #         return pd.NA
-
-    #     cov = ((target - mean_target) * (pred - mean_pred)).mean()
-        
-    #     numerator   = 2 * cov
-    #     denominator = var_target + var_pred + (mean_target - mean_pred) ** 2 # type: ignore
-
-    #     if denominator == 0:
-    #         return pd.NA
-    #     else:
-    #         return cast(float, numerator / denominator)
             
     def ccc(self, df: pd.DataFrame) -> Union[float, NAType]:
         """concordance correlation coefficient."""
@@ -143,7 +122,7 @@ class Metrics:
         """
         Correlation between node's predictions and weighted average of neighbors.
         
-        Parameters:
+        Parameters
         -----------
         node_df : pd.DataFrame
             Time series for single node (columns: timestamp, node, pred, incidence)
@@ -152,7 +131,7 @@ class Metrics:
         self_loops: bool = True
             Whether to include self-loops
         
-        Returns:
+        Returns
         --------
         float : Correlation coefficient, or None if insufficient data
         """

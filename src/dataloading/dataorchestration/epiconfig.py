@@ -12,7 +12,7 @@ class EpiConfig:
     Highly standardized configuration dataclass to be fed into the DataOrchestrator.
     The str function is very very detailed.
     
-    Parameters:
+    Parameters
     ----------
     # ============= REQUIRED =============
     disease:                str
@@ -149,6 +149,8 @@ class EpiConfig:
             raise ValueError(f"horizon_leadtime must be >= 1, got {self.horizon_leadtime}")
         if self.sequence_length < 1:
             raise ValueError(f"sequence_length must be >= 1, got {self.sequence_length}")
+        if self.lag_num < 1:
+            raise ValueError(f"number of lags must be >= 1, got {self.lag_num}")            
         
         # Validate input
         self._validate_datapaths()

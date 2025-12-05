@@ -1,17 +1,19 @@
 import pandas as pd 
 import geopandas as gpd
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Literal, Optional, Dict, Union
 from ...dataloading.dataorchestration.normalization import reverse_log, reverse_minmax_scaling, reverse_zscore_scaling
 from ...dataloading.dataorchestration.epiconfig import EpiConfig
 from ...dataloading.dataorchestration.column_registry import ColumnRegistration, ColEntryMissingTransformationError
+
+from ..utils.loss.poissonloss import convert_poisson_predictions
 
 # ============= Predictions Manager =============
 class PredictionManager:
     """
     Manages predictions in a centralized class.
 
-    Parameters:
+    Parameters
     ----------
     epiconfig: EpiConfig
         the dataorchestrator's configuration object
@@ -19,15 +21,15 @@ class PredictionManager:
     column_registration: ColumnRegistration
         the dataorchestrator's columnregistration object
 
-    Attributes:
+    Attributes
     ----------
     train, val, test: PredictionCollection
         each of these is a collection of prediction - dataframes per horizon
 
-    Examples:
+    Examples
     --------
 
-    See Also:
+    See Also
     --------
     PredictionCollection
 
@@ -50,11 +52,11 @@ class PredictionManager:
             'log'   : reverse_log
         }
 
-    def add_horizon_predictions(self, dataset: Literal['train','val','test'], horizon_df: pd.DataFrame, horizon: int):
+    def add_horizon_predictions(self, dataset: Literal['train','val','test'], horizon_df: pd.DataFrame, horizon: int, additional_transformation: bool = False, transf: Optional[str] = None, transf_args: Optional[Dict[str,Union[str,float]]] = None):
         """
         add the predictions - dataframe of a certain horizon for a set dataset
 
-        Parameters:
+        Parameters
         ----------
         dataset: Literal['train','val','test']
             gets saved seperately into respective attribute
@@ -63,7 +65,7 @@ class PredictionManager:
         horizon: int
             the integer of horizon, based on which the timesteps ahead (= horizon + horizon_leadtime) is calculated
 
-        See Also:
+        See Also
         --------
         self._denorm_predictions()
         """
@@ -86,6 +88,22 @@ class PredictionManager:
             raise ValueError(f'{dataset} invalid dataset. Supply "train", "val" or "test"')      
 
         df = self._apply_prediction_timeshift(df_validated, f'{timesteps_ahead}W')
+
+        if additional_transformation:
+
+            if transf == 'poisson_sampling':
+
+                if 'sampling_mode' in  transf_args.keys():
+
+                    sampling_mode = transf_args['sampling_mode'] 
+                    df['pred'] = convert_poisson_predictions(df['pred'], sampling_mode)
+
+                else:
+                    raise ValueError('When using poisson_sampling as transformation, please supplly an argument for "sampling_mode" (options: "mean", "sample", "mode")')
+
+            else:
+                raise ValueError(f'currently only "poisson_sampling" supported as argument for additional_transformation')
+
         # add both original (nontransformed) and transformed prediction - data
         prediction_collection.add(df.copy(), horizon=horizon, is_original=False)
         prediction_collection.add(self._denorm_predictions(df), horizon=horizon, is_original=True)
@@ -114,12 +132,12 @@ class PredictionManager:
         """
         Reverse transformations (normalization and log) for predictions and target columns.
         
-        Parameters:
+        Parameters
         -----------
         df : pd.DataFrame
             DataFrame that looks like: | timestamp | node | pred | target
             
-        Returns:
+        Returns
         --------
         pd.DataFrame
             DataFrame with reversed transformations applied
@@ -198,7 +216,7 @@ class PredictionCollection:
         """
         Add predictions
 
-        Parameters:
+        Parameters
         ----------
         data: pd.DataFrame
 

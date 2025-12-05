@@ -6,16 +6,33 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 
 from ...utils.textformatting import warning_emoji, checkmark
-from ...utils.constants import berlin_district_ids
+from ...utils.constants import berlin_district_ids, berlin_id
 from .normalization import apply_minmax_scaling, apply_zscore_scaling, pipeline_minmax_normalization, pipeline_zscore_normalization
 from .column_registry import ColumnRegistration, ColEntryMissingError, ColEntryMissingTransformationError, ColEntryMissingTransformationReferralError
 from .epiconfig import EpiConfig
 from .datastagecontainers import RawEpiData, ContextData, HarmonizedData, ProcessedEpiData, FeatureEpiData, NormalizedEpiData, FinalizedEpiData, ProcessedEpiData
 
 # ============= READER CLASS =============
-
 class EpiDataReader:
     """
+    Only dataloading
+    Separate functions with which datafiles are read and stored 
+
+    Parameters
+    ----------
+    config: 'EpiConfig'
+
+    Examples
+    --------
+    >>> rawdata = EpiDataReader(config).orchestrate()
+
+    Returns
+    -------
+    .orchestrate() --> RawEpiData
+
+    Downstream
+    ----------
+    output 'RawEpiData' is input for NUTSHarmonizer.orchestrate()
     """
     
     def __init__(self, config: 'EpiConfig'):
@@ -25,7 +42,7 @@ class EpiDataReader:
         """
         Load raw disease case data downloaded from SurvStat.
         
-        Returns:
+        Returns
         --------
         pd.DataFrame with columns: [timestamp, nuts3, cases, week, year]
         """
@@ -44,9 +61,9 @@ class EpiDataReader:
     
     def _load_population_data(self) -> pd.DataFrame:
         """
-        Load population size data.
+        Load population size data
         
-        Returns:
+        Returns
         --------
         pd.DataFrame with columns: [nuts3, year, population_size]
         """
@@ -64,9 +81,9 @@ class EpiDataReader:
     
     def _load_population_data_berlin_districts(self) -> pd.DataFrame:
         """
-        Load population size data for districts in Berlin.
+        Load population size data for districts in Berlin
         
-        Returns:
+        Returns
         --------
         pd.DataFrame with columns: [nuts3, population_size]
         """        
@@ -83,9 +100,9 @@ class EpiDataReader:
 
     def _load_shapedata(self) -> gpd.GeoDataFrame:
         """
-        Load geographic shapefile.
+        Load geographic shapefile
         
-        Returns:
+        Returns
         --------
         GeoDataFrame with geometry and nuts code
         """
@@ -99,7 +116,7 @@ class EpiDataReader:
         return gdf
     
     def _load_harmonization_data(self) -> pd.DataFrame:
-        """Load NUTS harmonization mapping."""
+        """Load NUTS harmonization mapping"""
         filepath = self.config.get_harmonization_path()
                
         df = pd.read_csv(filepath, sep='\t', dtype=str)
@@ -127,9 +144,9 @@ class EpiDataReader:
     
     def orchestrate(self) -> RawEpiData:
         """
-        Load all required data files.
+        Load all required data files
         
-        Returns:
+        Returns
         --------
         RawEpiData : Container with all raw dataframes
         """
@@ -141,25 +158,49 @@ class EpiDataReader:
             nuts_names          = self._load_nuts_names(),
             population_berlin   = self._load_population_data_berlin_districts() if self.config.split_berlin else None
         )
+
+        if self.config.verbose:
+            print(f'{checkmark}{checkmark} All raw data loaded')
+        if self.config.verbose > 1:
+            print("")
+
         return rawdata
     
 # ============= HARMONIZATION CLASS =============
-
 class NUTSHarmonizer:
     """
-    """
+    Preprocesses raw data into harminized NUTS - regions
+
+    Parameters
+    ----------
+    config: 'EpiConfig'
+
+    Examples
+    --------
+    >>> harmeddata = NUTSHarmonizer(config).orchestrate(rawdata)
+
+    Returns
+    -------
+    .orchestrate() --> Tuple['HarmonizedData', 'ContextData']
+
+    Downstream
+    ----------
+    output 'HarmonizedData' is input for EpiDataProcessor.orchestrate()    
+    output 'ContextData' is stored in orchestrator object for later use of inferring node-information
+    """    
     def __init__(self, config: 'EpiConfig'):
         self.config = config    
 
     def _add_berlin_districts(self, population_nuts3: pd.DataFrame, population_berlin_districts: pd.DataFrame) -> pd.DataFrame:
         """
+        when berlin to be split -> add population data by district
         based on population data for nuts3 and for berlin districts, concatenate into one df with 412 nuts3 values.
         """
         total_population_berlin                         = sum(population_berlin_districts['population_size'])
         relative_population_size_berlin_districts       = population_berlin_districts.copy()
         relative_population_size_berlin_districts['population_size']= relative_population_size_berlin_districts['population_size'] / total_population_berlin
 
-        df_11000 = population_nuts3[population_nuts3['nuts3'] == '11000'][['year', 'population_size']].set_index('year')
+        df_11000 = population_nuts3[population_nuts3['nuts3'] == berlin_id][['year', 'population_size']].set_index('year')
             
         yearly_dfs = []  # Collect dataframes to concatenate later
 
@@ -180,7 +221,7 @@ class NUTSHarmonizer:
 
     def _mutate_berlin_district_ids(self, epidemiology_df: pd.DataFrame) -> pd.DataFrame:
         """
-        if berlin is not supposed to be split, mutate all nuts3 values of the districts into
+        When berlin not to be split -> mutate all nuts3 values of the districts into
         berlin ones (11000) for the subsequent aggregation onto nuts3/nuts2/nuts1 levels.
         """
         epidemiology_df.loc[epidemiology_df['nuts3'].isin(berlin_district_ids), 'nuts3'] = '11000'
@@ -191,11 +232,10 @@ class NUTSHarmonizer:
         return epidemiology_df
 
     def _aggregate_by_nuts(self, epidemiology_df: pd.DataFrame, population_df: pd.DataFrame) -> Tuple[pd.DataFrame,pd.DataFrame]:
-        """aggregates epidemiology and epopulation data per nuts level"""
+        """aggregates epidemiology and population data per nuts level"""
         epidemiology_df_aggr = epidemiology_df.groupby(['timestamp', self.config.nuts_level]).aggregate({'cases':'sum'}).reset_index()     
         population_df_aggr   = population_df.groupby(['year', self.config.nuts_level]).aggregate({'population_size':'sum'}).reset_index() 
 
-        
         if self.config.verbose > 1:
             print(f'{checkmark} epidemiology and population data aggregated on nuts')          
         return epidemiology_df_aggr, population_df_aggr
@@ -208,6 +248,8 @@ class NUTSHarmonizer:
         elif self.config.nuts_level =='nuts2':
             df['nuts2']= df['nuts3'].str[:3]
 
+        if self.config.verbose > 1:
+            print(f'{checkmark} nuts column added')  
         return df
 
     def _merge_epipopdata(self, epidemiology_df: pd.DataFrame, population_df: pd.DataFrame) -> pd.DataFrame:
@@ -217,6 +259,9 @@ class NUTSHarmonizer:
         """
         if 'year' not in epidemiology_df.columns:
             epidemiology_df['year'] = epidemiology_df['timestamp'].dt.year 
+
+        if self.config.verbose > 1:
+            print(f'{checkmark} epidemiological- and population data merged')  
 
         return pd.merge(epidemiology_df, population_df, on = [self.config.nuts_level,'year'])
 
@@ -229,6 +274,9 @@ class NUTSHarmonizer:
         columns     = [f'{self.config.nuts_level}_key',f'{self.config.nuts_level}_name']
         unique_nuts = raw_nuts_names[columns].drop_duplicates().reset_index(drop=True)
         unique_nuts.rename(columns = {f'{self.config.nuts_level}_key':self.config.nuts_level}, inplace=True)
+
+        if self.config.verbose > 1:
+            print(f'{checkmark} nuts levels extracted')  
 
         return unique_nuts
 
@@ -319,32 +367,76 @@ class NUTSHarmonizer:
             tokenization_map    = tokenization_map            
         )
 
+        if self.config.verbose:
+            print(f'{checkmark}{checkmark} All raw data nuts-harmonized: harmonized and context data generated')       
+        if self.config.verbose > 1:
+            print("")              
+
         return harmdata, ctxdata
 
 # ============= PREPROCESSING CLASS =============
-class EpiDataPreprocessor:
+class EpiDataProcessor:
     """ 
-    """
+    Processing raw data: adding and removing columns,
+
+    Parameters
+    ----------
+    config: 'EpiConfig'
+
+    Examples
+    --------
+    >>> processeddata = EpiDataProcessor(config).orchestrate(harmeddata)
+
+    Returns
+    -------
+    .orchestrate() --> 'ProcessedEpiData'
+
+    Downstream
+    ----------
+    output 'ProcessedEpiData' is input for EpiFeatureBuilder.orchestrate()        
+    """        
     def __init__(self, config: 'EpiConfig'):
         self.config = config
 
     def _add_incidence_column(self, epipopdata: pd.DataFrame) -> pd.DataFrame:
         """adds incidence column"""
-        epipopdata['incidence'] = epipopdata['cases'] / epipopdata['population_size'] * self.config.incidence_scalar
+        epipopdata['incidence'] = epipopdata['cases'] / epipopdata['population_size'] * self.config.incidence_scalar     
+
+        if self.config.verbose > 1:
+            print(f'{checkmark} incidence column added')    
+
         return epipopdata
     
     def _drop_cases_column(self, epipopdata: pd.DataFrame) -> pd.DataFrame:
-        """drops cases column"""
+        """drops cases column -> only if target => incidence"""
+
+        if self.config.verbose > 1:
+            print(f'{checkmark} cases column removed')    
+
         return epipopdata.drop(columns=['cases']) 
        
     def _drop_cols(self, epipopdata: pd.DataFrame) -> pd.DataFrame:
         """drop redundant columns"""
+
+        if self.config.verbose > 1:
+            print(f'{checkmark} nuts- and year- columns removed')    
+
         return epipopdata.drop(columns = [self.config.nuts_level, 'year'])
 
     def _filter_mindate(self, df, min_date: pd.Timestamp) -> pd.DataFrame:
+        if self.config.verbose:
+            print(f"{checkmark} min_date has been extended to {self.config.min_date_extended.date()}")  
+
+        if self.config.verbose > 1:
+            print(f'{checkmark} filtered on min date')            
+        
         return df.loc[df['timestamp'] >= min_date].reset_index(drop = True)                
 
     def _filter_maxdate(self, df, max_date: pd.Timestamp) -> pd.DataFrame:
+
+        if self.config.verbose > 1:
+            print(f'{checkmark} filtered on max date')  
+
         return df.loc[df['timestamp'] < max_date].reset_index(drop = True)       
 
     def orchestrate(self, harmonizeddata: 'HarmonizedData') -> 'ProcessedEpiData':
@@ -352,30 +444,43 @@ class EpiDataPreprocessor:
         The function that orchestrates all others
         """
         epipopdata      = self._add_incidence_column(harmonizeddata.data)
-        
-        print(f"target: {self.config.target_column}")
 
         if self.config.target_column != 'cases':
             epipopdata      = self._drop_cases_column(epipopdata)        
 
         epipopdata      = self._filter_maxdate(epipopdata, self.config.max_date)
         epipopdata      = self._filter_mindate(epipopdata, self.config.min_date_extended)     
+        epipopdata      = self._drop_cols(epipopdata)
 
         if self.config.verbose:
-            print(f"{checkmark} min_date has been extended to {self.config.min_date_extended.date()}")
-
+            print(f'{checkmark}{checkmark} All data preprocessed')   
         if self.config.verbose > 1:
-            print(f'{checkmark} epidata filtered between {self.config.min_date_extended.date()} - {self.config.max_date.date()}')               
-
-        epipopdata = self._drop_cols(epipopdata)
+            print("")
 
         return ProcessedEpiData(data = epipopdata)
 
-# ============= FEATURE CLASS ============= 
-            
+# ============= FEATURE CLASS =============            
 class EpiFeatureBuilder:
-    """
-    """    
+    """ 
+    Feature building, separate per function
+
+    Parameters
+    ----------
+    config: 'EpiConfig'
+    column_registration: 'ColumnRegistration'
+
+    Examples
+    --------
+    >>> featuredata = EpiFeatureBuilder(config).orchestrate(processeddata)
+
+    Returns
+    -------
+    .orchestrate() --> 'FeatureEpiData'
+
+    Downstream
+    ----------
+    output 'FeatureEpiData' is input for EpiNormalizer.orchestrate()            
+    """        
     def __init__(self, config: 'EpiConfig', column_registration: ColumnRegistration):
         self.config             = config
         self.column_registration= column_registration
@@ -406,20 +511,9 @@ class EpiFeatureBuilder:
         # Compute sine and cosine transformation to encode cyclical nature of weeks in a year
         dfc[sin_col] = np.sin(2 * np.pi * weeks / weeks_in_year)
         dfc[cos_col] = np.cos(2 * np.pi * weeks / weeks_in_year)
-        
-        self.column_registration.add_column(
-            sin_col, 
-            'feature', 
-            needs_normalization=True,
-            transformation_group=None  # Independent normalization
-        )    
 
-        self.column_registration.add_column(
-            cos_col, 
-            'feature', 
-            needs_normalization=True,
-            transformation_group=None  # Independent normalization
-        )                    
+        if self.config.verbose > 1:
+            print(f'{checkmark} time index {sin_col}, {cos_col} included as feature')                 
         return dfc
 
     def _lags(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -462,7 +556,10 @@ class EpiFeatureBuilder:
         
         # Drop rows with NaN from shifting
         dfc = dfc.dropna().reset_index(drop=True)
-        
+    
+        if self.config.verbose > 1:
+            print(f'{checkmark} lags added') 
+
         return dfc
 
     def _rename_lagt0(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -478,20 +575,29 @@ class EpiFeatureBuilder:
     
     def _rename_target(self, df: pd.DataFrame) -> pd.DataFrame:
         """Rename future target to 'target'"""
+        if self.config.verbose > 1:
+            print(f'{checkmark} target column renamed as such') 
         return df.rename(columns={f'{self.config.target_column}_future': 'target'})
 
     def _reorder_df(self, df: pd.DataFrame) -> pd.DataFrame:
-
+        """simply rearranges columns in a predefined order"""
         dfc = df.copy()
         first_cols      = ['timestamp','node','target']
         feature_cols    = [col for col in df.columns if col not in first_cols]
 
+        if self.config.verbose > 1:
+            print(f'{checkmark} columns reordered') 
+
         return dfc[first_cols + feature_cols]
 
     def _update_colregistration_postfeaturebuilding(self):
-        
+        """update column registry based on config"""
         # if lag col == target col, then the lag will be normalized following identical parameters as the target col
         lag0_featurename = f'{self.config.lag_column}_t0'
+
+        # TARGET
+        #       if target == 'incidence' (!='cases')    -> normalization needed (transformation => individual)
+        #       if target == 'cases'                    -> no normalization needed
         if self.config.target_column!='cases':
             self.column_registration.add_column(
                     'target', 
@@ -506,15 +612,17 @@ class EpiFeatureBuilder:
                     needs_normalization=False,
                     transformation_group='NA'
                 )                
-
+        
+        # LAG
+        #       if lag_column == target_column          -> normalization parameters from TARGET are used
+        #       else                                    -> individual transformation
         if self.config.lag_column == self.config.target_column:            
             self.column_registration.add_column(
                     lag0_featurename, 
                     'feature',
                     needs_normalization=True,
                     transformation_group='target'
-                )    
-            
+                )      
         else:
             self.column_registration.add_column(
                     lag0_featurename, 
@@ -523,31 +631,54 @@ class EpiFeatureBuilder:
                     transformation_group=None
                 )      
 
+        # POPULATION_SIZE
+        if self.config.include_population:
+            self.column_registration.add_column(
+                'population_size', 
+                'feature', 
+                needs_normalization=True,
+                transformation_group=None
+            )          
+
+        # TIME INDEX
+        if self.config.time_index:
+            sin_col = f'{self.config.temporal_column}_sin'
+            cos_col = f'{self.config.temporal_column}_cos'
+
+            self.column_registration.add_column(
+                sin_col, 
+                'feature', 
+                needs_normalization=True,
+                transformation_group=None  # Independent normalization
+            )    
+
+            self.column_registration.add_column(
+                cos_col, 
+                'feature', 
+                needs_normalization=True,
+                transformation_group=None  # Independent normalization
+            )              
+        
+        if self.config.verbose > 1:
+            print(f'{checkmark} column_registry updated')  
+
     def orchestrate(self, processed_data: 'ProcessedEpiData') -> 'FeatureEpiData':
         """orchestrates entire feature addition"""
         feature_data = processed_data.data
 
-        # Feature: population_size
+        # Feature: population_size => colregistry done in update the registry function
         if self.config.include_population:
-            # add to column registration
-            self.column_registration.add_column(
-                    'population_size', 
-                    'feature', 
-                    needs_normalization=True,
-                    transformation_group=None  # Independent normalization
-                )            
             if self.config.verbose > 1:
                 print(f'{checkmark} population size included as feature')    
-        
         else:
             # remove column population_size
             feature_data.drop(columns = ['population_size'], inplace = True) 
+            if self.config.verbose > 1:
+                print(f'{checkmark} population size removed')    
         
         # Feature: time_index (timestamp_sin, timestamp_cos)        
         if self.config.time_index:
             feature_data = self._time_index(feature_data)
-            if self.config.verbose > 1:
-                print(f'{checkmark} time index (sin/cos) included as feature')   
         
         feature_data = self._lags(feature_data)
         feature_data = self._rename_lagt0(feature_data)
@@ -555,21 +686,49 @@ class EpiFeatureBuilder:
         feature_data = self._reorder_df(feature_data) 
 
         self._update_colregistration_postfeaturebuilding()
-        
+
+        if self.config.verbose:
+            print(f'{checkmark}{checkmark} All features built') 
         if self.config.verbose > 1:
-            print(f'{checkmark} lags included as feature')   
+            print("")
 
         return FeatureEpiData(data=feature_data)
 
 # ============= Normalize CLASS ============= 
-
 class EpiNormalizer:
-    """
+    """ 
+    Set splits (train/val/test columns) and transforms variables (normalization and log-transforms)
+
+    Parameters
+    ----------
+    config: 'EpiConfig'
+    column_registration: 'ColumnRegistration'
+
+    Examples
+    --------
+    >>> normalizeddata = EpiNormalizer(config).orchestrate(featuredata)
+
+    Returns
+    -------
+    .orchestrate() --> 'NormalizedEpiData'
+
+    Downstream
+    ----------
+    output 'NormalizedEpiData' is input for EpiDataFinalizer.orchestrate()   
+
     Note:
     ----
-    The optional log-transformation of target is done in EpiFeatureBuilder
-    TODO I definitely need to add test function to validate the normalization and the absence of data leakage!
-    """
+    TODO I definitely need to add test function to validate the normalization and the absence of data leakage!   
+
+    See Also
+    --------
+    # normalization functions:
+    #   - pipeline_minmax_normalization (returns parameters for normalization -> input is TRAINING DATA ONLY)
+    #   - apply_minmax_scaling          (applies same normalization onto train/val/test)
+    #   - pipeline_zscore_normalization (returns parameters for normaliztation -> input is TRAINING DATA ONLY)
+    #   - apply_zscore_scaling          (applies same normalization onto train/val/test)
+    """        
+
     def __init__(self, config: 'EpiConfig', column_registration: ColumnRegistration):
         self.config                 = config 
         self.column_registration    = column_registration
@@ -587,6 +746,9 @@ class EpiNormalizer:
         # Add split columns to registry
         for split_col in ['train', 'val', 'test']:
             self.column_registration.add_column(split_col, 'split')
+
+        if self.config.verbose > 1:
+            print(f'{checkmark} split columns (train/val/test) added')             
         
         return df
 
@@ -599,6 +761,9 @@ class EpiNormalizer:
 
         df_transformed[col]                         = np.log(df_transformed[col] + self.config.log_shift)
       
+        if self.config.verbose > 1:
+            print(f'{checkmark} {col} logged')     
+
         return df_transformed
 
     def _normalize(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -609,7 +774,9 @@ class EpiNormalizer:
         if self.config.normalization_method not in self.normalization_functions['apply']:
             raise KeyError(f'No normalization function {self.config.normalization_method} found.')
 
-        # First pass: Calculate normalization parameters for columns that need independent normalization
+        ### First pass ###
+        # Calculate normalization parameters for columns that need independent normalization,
+        # that is, for col-registration entries where transformation_group = None
         for col_entry in self.column_registration.columns:
             
             # Skip columns that don't have normalization attribute
@@ -628,7 +795,16 @@ class EpiNormalizer:
                     col_entry.column_name,
                     {'normalization': norm_parameters[col_entry.column_name]}
                 )
-        # Second pass: Apply normalization to all columns
+
+        if self.config.verbose > 1:
+            print(f'{checkmark} normalization parameters retrieved and stored')     
+            
+        ### Second pass ###
+        # Apply normalization to all columns based on parameters stored
+        # or based on the reference -> for example, in the col-registry entry
+        # for 'incidence_lag3' the attribute transformation_group = 'target'
+        # meaning the variable is normalized using the normalization parameters
+        # of 'target'
         for col_entry in self.column_registration.columns:
             
             # Skip columns that don't have normalization attribute
@@ -642,7 +818,8 @@ class EpiNormalizer:
                 if col_entry.transformation:
                     # Use own normalization
                     params = {col_entry.column_name: col_entry.transformation['normalization']}
-                    print(f"{col_entry.column_name} normalized independently")
+                    if self.config.verbose > 2:
+                        print(f"{col_entry.column_name} normalized independently")
 
                 else:
                     raise ColEntryMissingTransformationError(col_entry.column_name)
@@ -656,7 +833,8 @@ class EpiNormalizer:
                     raise ColEntryMissingTransformationReferralError(col_entry.column_name, ref_col_entry.column_name)
                 
                 params = {col_entry.column_name: ref_col_entry.transformation['normalization']}
-                print(f"{col_entry.column_name} normalized based on {ref_col_entry.column_name}")
+                if self.config.verbose > 2:
+                    print(f"{col_entry.column_name} normalized based on {ref_col_entry.column_name}")
             
             # Apply normalization
             normalized_df = self.normalization_functions['apply'][self.config.normalization_method](
@@ -664,6 +842,10 @@ class EpiNormalizer:
                 [col_entry.column_name], 
                 params
             )
+
+        
+        if self.config.verbose > 1:
+            print(f'{checkmark} normalization applied')     
 
         return normalized_df
 
@@ -676,10 +858,8 @@ class EpiNormalizer:
     def orchestrate(self, feature_data: 'FeatureEpiData') -> 'NormalizedEpiData':
         """runs all normalization functions"""
         split_data      = self._set_splits(feature_data.data)
-        if self.config.verbose > 1:
-            print(f'{checkmark} data split into train/val/test')  
-
         cols_to_log     = []
+
         if self.config.log_transform:
             for col in self.config.log_transform:
 
@@ -698,25 +878,80 @@ class EpiNormalizer:
 
         for col in cols_to_log:
             split_data = self._log_transform(split_data, col)
-            
-            if self.config.verbose > 1:
-                print(f'{checkmark} {col} log-transformed')
         
         normalized_data = self._normalize(split_data)
 
+        if self.config.verbose:
+            print(f'{checkmark}{checkmark} All data normalized')         
         if self.config.verbose > 1:
-            print(f'{checkmark} data normalized')   
+            print("")
         return NormalizedEpiData(data=normalized_data)
 
 # ============= Finalize CLASS ============= 
- 
 class EpiDataFinalizer:
-    """
-    Finalizes epidata into horizon-specific dfs.
-    """
-    def __init__(self, config, column_registration: ColumnRegistration):
+    """ 
+    Finalizes the data into a shared df that may be imported by model-specific DataLoader objects.
+
+    Parameters
+    ----------
+    config: 'EpiConfig'
+    column_registration: 'ColumnRegistration'
+
+    Examples
+    --------
+    >>> finaldata = EpiDataFinalizer(config).orchestrate(normalizeddata)
+
+    Returns
+    -------
+    .orchestrate() --> 'FinalizedEpiData'
+
+    Downstream
+    ----------
+    output 'FinalizedEpiData' is input for dataloaders (ShallowDataLoaderManager, GraphDataLoaderManager)
+    """  
+    def __init__(self, config: 'EpiConfig', column_registration: ColumnRegistration):
         self.config             = config 
         self.column_registration= column_registration
+
+    def _add_horizons(self, df: pd.DataFrame) -> pd.DataFrame:
+        """loop over horizons, add shifted target under new name f'target_lead{steps_ahead}' where steps_ahead = horizon_leadtime + horizon_idx"""
+        base_lead = self.config.horizon_leadtime
+        for additional_steps in range(1, self.config.horizon_size):
+            steps_ahead = base_lead + additional_steps
+            target_col = f'target_lead{steps_ahead}'
+            
+            # Shift from the base target
+            df[target_col] = df.groupby(self.config.id_column)[f'target_lead{base_lead}'].shift(-additional_steps)
+            
+            # Register in column registry
+            self.column_registration.add_column(
+                target_col,
+                'target',
+                transformation_group='target',              # Use same normalization as base target
+                needs_normalization=True
+            )
+        if self.config.verbose > 1:
+            print(f'{checkmark} targets for all horizons added')              
+        return df
+
+    def _drop_nans(self, df: pd.DataFrame) -> pd.DataFrame:
+        if self.config.verbose > 1:
+            print(f"{checkmark} nans droppped")
+        return df.dropna()
+
+    def _set_targettype_integer(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        return df with columns of which name includes 'target' as int
+        Required when predicting casenumbers instead of incidence rates
+        """
+        for col in df.columns:
+            if 'target' in col:
+                df[col] = df[col].astype(int)
+       
+        if self.config.verbose > 1:
+            print(f"{checkmark} target columns set as integer")
+
+        return df
 
     def orchestrate(self, normalized_data: NormalizedEpiData) -> 'FinalizedEpiData':
         """runs entire finalization"""
@@ -729,23 +964,8 @@ class EpiDataFinalizer:
         
         # Create additional horizons if needed
         if self.config.horizon_size > 1:
-            for additional_steps in range(1, self.config.horizon_size):
-                steps_ahead = base_lead + additional_steps
-                target_col = f'target_lead{steps_ahead}'
-                
-                # Shift from the base target
-                dfc[target_col] = dfc.groupby(
-                    self.config.id_column
-                )[f'target_lead{base_lead}'].shift(-additional_steps)
-                
-                # Register in column registry
-                self.column_registration.add_column(
-                    target_col,
-                    'target',
-                    transformation_group='target',  # Use same normalization as base target
-                    needs_normalization=True
-                )
-        
+            dfc = self._add_horizons(dfc)
+            
         # For predictions (will be generated during training)
         self.column_registration.add_column(
             'pred',
@@ -754,19 +974,20 @@ class EpiDataFinalizer:
             needs_normalization=True
         )      
 
-        if self.config.verbose > 1:
-            print(f'{checkmark} targets for all horizons added')  
+        dfc_nanfree = self._drop_nans(dfc)
 
-        print('dropping nans')
-        dfc_nanfree = dfc.dropna()
+        # if target == 'cases' => target columns should be integers
         if self.config.target_column == 'cases':
-            for col in dfc_nanfree.columns:
-                if 'target' in col:
-                    dfc_nanfree[col] = dfc_nanfree[col].astype(int)
+            dfc_nanfree = self._set_targettype_integer(dfc_nanfree)
 
         # Groundtruth uses the first target horizon
         groundtruth_df = dfc_nanfree.copy()[['timestamp', 'node', f'target_lead{base_lead}']]
         groundtruth_df = groundtruth_df.rename(columns={f'target_lead{base_lead}': 'target'})
+
+        if self.config.verbose:
+            print(f'{checkmark}{checkmark} All data finalized') 
+        if self.config.verbose > 1:
+            print("")
 
         return FinalizedEpiData(
             data=dfc_nanfree,
@@ -777,7 +998,6 @@ class EpiDataFinalizer:
 # ====================================================
 # ============ MAIN LOADER (ORCHESTRATOR) ============
 # ====================================================
-
 class DataOrchestrationContainerNotFound(Exception):
     def __init__(self, datastage: str, previous_method: str):
         super().__init__(f"No {datastage} attribute found for DataOrchestrator. Run {previous_method}() first")
@@ -788,42 +1008,31 @@ class DataOrchestrator:
     Outsources heavy lifting to subclasses, each of which has some functionality,
     wrapped into their `orchestrate()` method.
 
-    Parameters:
+    Parameters
     ----------
     config: EpiConfig
 
-    Attributes:
+    Attributes
     ----------
     General attributes include:
         - config (identical to the input config)
         - column_registry (dictionary of all columns, their type and transformations)
 
     An attribute is set at each datastage:
-        - raw_data
-        - context_data
-        - processed_data
-        - feature_data
-        - split_data
-        - normalized_data
-        - finalized_data
-
-    Downstream:
-    ----------
-
-    See Also:
+        - data_raw
+        - data_context
+        - data_harmonized
+        - data_processed
+        - data_feature
+        - data_normalized
+        - data_final
+    
+    Examples
     --------
-    EpiConfig
-
-    Each task within this orchestrator has a designated class and datacontainer.
-    For example, self.reader is an isntance of EpiDataReader, which produces an
-    instance of RawEpiData. These datacontainers can be found in .datacontainers.py
-
-    Examples:
-    --------
-    run dataorchestrator one
+    #### run dataorchestrator one
     >>> data_orchestrator = DataOrchestrator(config).build()
 
-    run dataorchestrator stepwise
+    #### run dataorchestrator stepwise
     >>> data_orchestrator = (DataOrchestrator(config)
                             .load_raw()
                             .harmonize_raw()
@@ -832,6 +1041,22 @@ class DataOrchestrator:
                             .normalize()
                             .finalize()
                             )
+    
+    Downstream
+    ----------
+    dataloader objects: ShallowDataLoaderManager, GraphDataLoaderManager
+    These classes extract EpiConfig and data_final and prepare those into model-specific
+    datasets.
+
+    See Also
+    --------
+    #### EpiConfig
+    dataclass object that stores configuration parameters to run the orchestration process smoothly
+
+    #### datacontainers
+    Each task within this orchestrator has a designated class and datacontainer.
+    For example, self.reader is an isntance of EpiDataReader, which produces an
+    instance of RawEpiData. These datacontainers can be found in .datacontainers.py
     """
     
     def __init__(self, config: 'EpiConfig'):
@@ -847,31 +1072,11 @@ class DataOrchestrator:
             self.config.id_column, 
             'context'
         )   
-        # if self.config.target_column != 'incidence':
-        #     self.column_registration.add_column(
-        #         self.config.target_column, 
-        #         'target', 
-        #         needs_normalization=False,
-        #         transformation_group=None  # Independent normalization
-        #     )   
-        #     self.column_registration.add_column(
-        #         'incidence', 
-        #         'feature', 
-        #         needs_normalization=True,
-        #         transformation_group=None  # Independent normalization
-        #     )                      
-        # else:
-        #     self.column_registration.add_column(
-        #         'incidence', 
-        #         'target', 
-        #         needs_normalization=True,
-        #         transformation_group=None  # Independent normalization
-        #     )        
-     
+
         # Initialize pipeline components
         self.reader         = EpiDataReader(config)
         self.harmonizer     = NUTSHarmonizer(config)
-        self.preprocessor   = EpiDataPreprocessor(config)
+        self.processor      = EpiDataProcessor(config)
         self.feature_builder= EpiFeatureBuilder(config, self.column_registration)
         self.normalizer     = EpiNormalizer(config, self.column_registration)
         self.finalizer      = EpiDataFinalizer(config, self.column_registration)
@@ -888,64 +1093,31 @@ class DataOrchestrator:
     def load_raw(self) -> 'DataOrchestrator':
         """Load raw data from files"""
         self._data_raw = self.reader.orchestrate()
-        if self.config.verbose:
-            print(f'{checkmark}{checkmark} All raw data loaded')
-        if self.config.verbose > 1:
-            print("")
         return self
     
     def harmonize_raw(self) -> 'DataOrchestrator':
         """Harmonize data on NUTS-level"""        
-
-        self._data_harmonized, self._data_context = self.harmonizer.orchestrate(self.data_raw) 
-        if self.config.verbose:
-            print(f'{checkmark}{checkmark} All raw data nuts-harmonized')       
-        if self.config.verbose > 1:
-            print("")             
+        self._data_harmonized, self._data_context = self.harmonizer.orchestrate(self.data_raw)        
         return self
     
     def process_data(self) -> 'DataOrchestrator':
         """Preprocess the harmonized data"""
-       
-        self._data_processed = self.preprocessor.orchestrate(self._data_harmonized)
-        
-        if self.config.verbose:
-            print(f'{checkmark}{checkmark} All data preprocessed')   
-        if self.config.verbose > 1:
-            print("")
+        self._data_processed = self.processor.orchestrate(self._data_harmonized)
         return self
 
     def build_features(self) -> 'DataOrchestrator':
         """build features. Note that this method adjusts self.column_registry."""
-       
         self._data_feature = self.feature_builder.orchestrate(self.data_processed)
-
-        if self.config.verbose:
-            print(f'{checkmark}{checkmark} All features built') 
-        if self.config.verbose > 1:
-            print("")
         return self        
    
     def normalize(self) -> 'DataOrchestrator':
         """normalize data. Note that this method adjusts self.column_registry."""   
-
         self._data_normalized = self.normalizer.orchestrate(self.data_feature)   
-
-        if self.config.verbose:
-            print(f'{checkmark}{checkmark} All data normalized')         
-        if self.config.verbose > 1:
-            print("")
         return self      
 
     def finalize(self) -> 'DataOrchestrator':
         """Finalize data."""
-        
         self._data_final = self.finalizer.orchestrate(self.data_normalized)
-
-        if self.config.verbose:
-            print(f'{checkmark}{checkmark} All data finalized') 
-        if self.config.verbose > 1:
-            print("")
         return self        
 
     def build(self) -> 'DataOrchestrator':
@@ -1010,8 +1182,7 @@ class DataOrchestrator:
             raise DataOrchestrationContainerNotFound(datastage = 'data_harmonized', previous_method = 'harmonize_raw')
 
         return self._data_harmonized        
-          
-    
+           
     @property
     def data_processed(self) -> ProcessedEpiData:
         if not self._data_processed:

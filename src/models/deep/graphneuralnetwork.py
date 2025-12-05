@@ -402,8 +402,7 @@ class GraphNeuralNetwork(BaseModel, ABC):
         """
         Unified training loop that works for both standard and recurrent models.
         
-        
-        Parameters:
+        Parameters
         ----------
         verbose: Literal[0,1,2] = 1:
             how often to return evaluation - updates during training.
@@ -414,7 +413,7 @@ class GraphNeuralNetwork(BaseModel, ABC):
         show_loss: bool = True
             whether or not to plot train and val loss, as well as learning rate per epoch.
 
-        See also:
+        See Also
         --------
         Strategies => src.models.deep.strategies            
         """
@@ -579,7 +578,7 @@ class GraphNeuralNetwork(BaseModel, ABC):
         """
         Unified forecasting loop that works for deep learning models.
 
-        See also:
+        See Also
         --------
         Strategies => src.models.deep.strategies
         basemodel._denorm_predictions()
@@ -685,7 +684,12 @@ class GraphNeuralNetwork(BaseModel, ABC):
 
         for hh in range(horizon_size):
             horizon_data = pred_target[['timestamp','node',f'pred_{hh}',f'target_{hh}']].rename(columns = {f'pred_{hh}':'pred', f'target_{hh}':'target'})
-            self.predictions.add_horizon_predictions(dataset, horizon_data, hh)
+
+            if self.loss.loss_name in ['poisson','outbreakpoisson']:
+                print('additonal transformation')
+                self.predictions.add_horizon_predictions(dataset, horizon_data, hh, additional_transformation=True, transf = 'poisson_sampling', transf_args={'sampling_mode': 'mean'})
+            else:
+                self.predictions.add_horizon_predictions(dataset, horizon_data, hh)
         
         self._state['forecasted'] = True
         return self  

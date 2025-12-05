@@ -19,7 +19,7 @@ class GraphViewer:
     Visualizes graph structures overlaid on geographical shapes.
     Heavy lifting is done here, documentation found in GraphOrchestrator
     
-    Parameters:
+    Parameters
     ----------
     graph_entry: 'GraphEntry'
         The entry in the attribute .graph_registry
@@ -41,7 +41,7 @@ class GraphViewer:
         if graphname == 'empty':
             return self._create_empty_view()
         
-        graph_structure = self.graph_registry.get_entry(graphname)
+        graph_structure = self.graph_registry.get_entry(graphname).structure
         if graph_structure is None:
             return
 

@@ -11,7 +11,7 @@ class ClimateologyModel(BaseModel):
 
     Training is therefore not necessary
 
-    Examples:
+    Examples
     --------
     >>> seasonal_baseline = SeasonalModel(shallowdata)
     >>> seasonal_baseline.forecast('test')    
@@ -35,7 +35,6 @@ class ClimateologyModel(BaseModel):
         
         self.train_losses           = []
         self.val_losses             = []
-
 
     def train(self):
         print("This naive model doesn't train")
@@ -72,7 +71,7 @@ class ClimateologyModel(BaseModel):
         self._state['forecasted'] = True
         return self
 
-    def _get_weekly_averages(self, dataloader_main):
+    def _get_weekly_averages(self, dataloader_main: pd.DataFrame) -> pd.DataFrame:
         dl_main = dataloader_main.copy()
         dl_main['week_number'] = dl_main['timestamp'].dt.isocalendar().week
         return dl_main.groupby(['node','week_number'])['target'].mean().reset_index()

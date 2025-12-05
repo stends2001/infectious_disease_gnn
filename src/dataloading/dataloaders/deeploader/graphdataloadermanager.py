@@ -83,7 +83,7 @@ class GraphDataLoaderCollection:
     """ 
     Stores all DataLoaders for shallow models in attributes train/val/test/main
 
-    See Also:
+    See Also
     --------
     ShallowDataLoader
     """
@@ -101,8 +101,7 @@ class GraphDataLoaderManager:
     An updated version of the DeepLoader class in the previous version.
     Uses the previously constructed dataorchestrator.
 
-
-    Examples:
+    Examples
     --------
     >>> dataorchestrator= (DataOrchestrator(config).build())
     >>> graphdataloader = (GraphDataLoaderManager(dataorchestrator)

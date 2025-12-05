@@ -5,7 +5,7 @@ from typing import Dict, Any, Union, List, Tuple
 checkmark = '✓'
 warning_emoji = '⚠️'   
 
-def align(key: str, value: Any, width: int, indent: int = 4) -> str:
+def align(key: str, value: Any, width: int, indent: int = 4, newline: bool = False) -> str:
     """
     Format a single key-value line with alignment.
     
@@ -19,6 +19,8 @@ def align(key: str, value: Any, width: int, indent: int = 4) -> str:
         Width for key alignment
     indent : int
         Number of spaces for indentation
+    newline : bool
+        whether or not to return the line with "\n" 
         
     Returns
     -------
@@ -32,7 +34,13 @@ def align(key: str, value: Any, width: int, indent: int = 4) -> str:
     '    trained         : True'
     """
     spaces = ' ' * indent
-    return f"{spaces}{key:<{width}} : {value}"
+
+    line   = f"{spaces}{key:<{width}} : {value}"
+
+    if newline:
+        line+="\n"
+
+    return line
 
 
 def section(title: str, 
