@@ -36,7 +36,7 @@ class GraphConstructor:
                  gdf:       gpd.GeoDataFrame,
                  tokens:    dict,
                  popdata:   pd.DataFrame,
-                 id_col:    str = 'node',
+                 id_col:    str = 'node'
                  ):
         
         self.gdf    = gdf
@@ -63,10 +63,10 @@ class GraphConstructor:
                                 'k_nearest'             : self._k_nearest,
                                 'population_weighted'   : self._population_weighted,
                                 'gravity_model'         : self._gravity_model,
-                                'commuter'              : self._commuter,
+                                'commuter'              : self._commuter
         }        
 
-    def generate_graph(self, method: str, static: bool = True, **kwargs) -> Tuple[List[Tuple[int,int]], Optional[List[float]]]:
+    def generate_graph(self, method: str, mode: Literal['static','dynamic'] = 'static', **kwargs) -> Tuple[List[Tuple[int,int]], Optional[List[float]]]:
         """
         collects the required generation-function and feeds in the kwargs
 
@@ -74,9 +74,7 @@ class GraphConstructor:
         ----------
         method: str
             which graph to construct
-        static: bool = True
-            whether to include dynamic or static graphs.
-            #TODO: what will I do when dynamic?
+        mode: Literal['static','dynamic'] = 'static'
         """
 
         if method not in self.GENERATION_FUNCS:
@@ -86,33 +84,34 @@ class GraphConstructor:
                 f"Available methods: {available}"
             )
         
-        dynamic_options = ['population_weighted', 'gravity_model', 'commuter']
-        
-        if not static and method not in dynamic_options:
-            print(f'No dynamic graph option available for {method}. Static graph will be made')
-            static = True
-
-        if static:
+        if mode == 'static':
             edge_indices, edge_weights  =  self.GENERATION_FUNCS[method](**kwargs) 
-            return (edge_indices, edge_weights)
+            return (edge_indices, edge_weights)        
         
         else:
-            raise ValueError('no current implementation of dynamic graph structures to be created')
+            print(f'running {method} dynamically')
 
-    def _commuter(self, commuting_threshold: int = 1_000, top_k: Optional[int] = None, year: str = '2024')  -> Tuple[List[Tuple[int,int]], List[float]]:
+
+
+
+    # TODO: rename to static_commuter
+    def _commuter(self, commuting_threshold: int, years: Union[List[str], str]= '2024', mode: Literal['static','dynamic'] = 'static', top_k: Optional[int] = None)  -> Tuple[List[Tuple[int,int]], List[float]]:
         """ 
         creates a commuter - graph
 
         Parameters
         ----------
-        year: str = '2024'
+        years: str = '2024'
             the year for which to retrieve the data
+            when mode == 'dynamic', please ensure to input an iterable for years
         commuting_threshold: int = 1_000
             the threshold for number of commuters for nodes to be connected
+        mode: Literal['static','dynamic'] = 'static'            
         top_k: int = None
             the maximum number of connections for each node
         """
-        commuter_data                           = CommuterDataLoader(years=year).import_data()      
+
+        commuter_data                           = CommuterDataLoader(years=years).import_data()      
         commuter_data.loc[:, 'nuts3_work']      = commuter_data.loc[:, 'nuts3_work'].map(self.tokens)
         commuter_data.loc[:, 'nuts3_residence'] = commuter_data.loc[:, 'nuts3_residence'].map(self.tokens)
 

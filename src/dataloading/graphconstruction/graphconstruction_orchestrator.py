@@ -49,7 +49,46 @@ class GraphStructure:
         num_nodes      = len(self.edge_index[0].unique())
         num_edges      = len(self.edge_index)
         representation = f'<GraphStructure(num_nodes = {num_nodes}, num_edges = {num_edges})>'
-        return representation
+        return representation   
+
+class DynamicGraphStructure:
+    """
+    Iterable container of GraphStructure instances aligned with timestamps.
+
+    Parameters
+    ----------
+    graphstructures : List[GraphStructure]
+        List of GraphStructure objects. Indexing corresponds to timestamps.
+    timestamps : List[str]
+        Timestamp labels, same length as graphstructures.
+    """   
+    def __init__(self, graphstructures: List[GraphStructure], timestamps: List[str]):
+        self._validate_graphtimes(graphstructures, timestamps)
+        self.graphstructures = graphstructures  
+        self.timestamps      = timestamps
+
+    def __iter__(self):
+        return iter(self.graphstructures)
+    
+    def __len__(self):
+        return len(self.graphstructures)    
+    
+    def __getitem__(self, idx: int) -> Tuple[GraphStructure, str]:
+        return self.graphstructures[idx], self.timestamps[idx]    
+    
+    def __repr__(self):
+        if not self.graphstructures:
+            return f"<DynamicGraphStructure(empty)>"
+        
+        return f"<DynamicGraphStructure(n={len(self.graphstructures)} graphstructures)>"
+
+    @staticmethod
+    def _validate_graphtimes(graphstructures: List[GraphStructure], timestamps: List[str]):
+        if len(graphstructures) != len(timestamps):
+            raise ValueError(
+                f"number of graphstructures ({len(graphstructures)}) "
+                f"must equal number of timestamps ({len(timestamps)})"
+            )
 
 @dataclass 
 class GraphStatistics:
@@ -342,7 +381,6 @@ class GraphRegistry:
         if any(ch not in characters_allowed for ch in name):
             raise InvalidGraphEntryName(f"Invalid GraphEntry name! Rename before saving GraphEntry. Accepter characters are:\n{characters_allowed}")
 
-
     def __repr__(self) -> str:
         registered_entries = ', '.join(self.return_entrynames())
         return f'<GraphRegistry({registered_entries})'
@@ -540,6 +578,7 @@ class GraphOrchestrator:
                                        'population_weighted', 
                                        'gravity_model', 
                                        'commuter']
+        self.dynamic_methods        = ['population_weighted',  'gravity_model', 'commuter']
         
         self.num_nodes              = data_orchestrator.data_context.num_nodes
 
@@ -548,6 +587,7 @@ class GraphOrchestrator:
                        name_addition:   Optional[str]                                                   =  None,
                        self_connection: Literal['max','0','mean']                                       = 'mean',
                        scaling_method:  Optional[Literal['minmax','log','zscore','symmetric','rowwise']]= None,
+                       mode:            Literal['static','dynamic']                                     = 'static',
                        **kwargs) -> None:
         """
         Generates a graph structure based on the method. Depending on the method, additional kwargs may be required.
@@ -568,6 +608,9 @@ class GraphOrchestrator:
             how to deal with self_connection
         scaling_method: Optional[Literal['minmax','log','zscore','symmetric','rowwise']] = None
             how to deal with edge_weights
+        mode: Literal['static','dynamic'] = 'static'
+            whether to create a static or dynamic graph structure.
+            only certain methods are compatible with dynamic graph structure
         **kwargs:
             kwargs are method-specific.
 
@@ -581,8 +624,15 @@ class GraphOrchestrator:
 
         if method not in self.graph_methods:
             raise ValueError(f'{method} not a valid graph method. Please choose a method from this list:\n{self.graph_methods}')
+        
+        if mode == 'dynamic':
 
-        graphconfig = GraphConfig(method, self_connection, scaling_method, kwargs)
+            if method not in self.dynamic_methods:
+                print(f'for method {method}, no dynamic graph possible. mode is set to "static"')
+
+                mode = 'static'
+
+        graphconfig = GraphConfig(method, self_connection, scaling_method, mode, kwargs)
         graphname   = self._generate_graphname(method, name_addition, self_connection, scaling_method)
 
         # Ensure IDs are integers and no missing
@@ -592,7 +642,7 @@ class GraphOrchestrator:
 
         # generate graph:   
         graph_generator = GraphConstructor(gdf = shapes_cp, tokens = self.tokens, popdata = self.population_data, id_col = self.id_col)
-        edges, weights  = graph_generator.generate_graph(method=method, **kwargs)
+        edges, weights  = graph_generator.generate_graph(method=method, mode = mode, **kwargs)
         
         if weights is None:                                                                                                             # if weights is undefined, give 1 everywhere
             weights = [float(1) for _ in edges]

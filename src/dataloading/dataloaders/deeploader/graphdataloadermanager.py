@@ -132,7 +132,7 @@ class GraphDataLoaderManager:
         self
         """
     
-        graphpath  = os.path.join(graphdirectory, self.dataorchestrator.config.nuts_level, graphname)
+        graphpath  = os.path.join(graphdirectory, self.dataorchestrator.config.nuts_level, graphname, graphname)
         
         try:
             edge_index  = torch.load(graphpath + '_edge_index.pt', weights_only = False)
