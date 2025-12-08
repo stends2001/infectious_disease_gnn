@@ -2,5 +2,3 @@ from .dataorchestration.dataorchestrator import DataOrchestrator
 from .dataorchestration.epiconfig import EpiConfig
 
 from .dataloaders import ShallowDataLoaderManager, GraphDataLoaderManager
-
-from .graphconstruction import GraphOrchestrator

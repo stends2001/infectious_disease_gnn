@@ -1,248 +1,21 @@
 import os
 import torch
 import numpy as np
-import seaborn as sns
 from dataclasses import dataclass, asdict
-from typing import Optional, List, Union, Literal, Dict, Tuple
-from tqdm import tqdm
-import json
+from typing import Optional, List, Union, Literal, Tuple
+
 
 from .edgeweight_normalizer import EdgeWeightNormalizer
 from .graphconstructor import GraphConstructor
-from .selfloop_adder import SelfLoopAdder
+from .selfloopadder import SelfLoopAdder
 from .graphviewer import GraphViewer
 
-from ..dataorchestration.dataorchestrator import DataOrchestrator
+from .graphregistry import GraphEntry, GraphRegistry
+from .graphstructures import GraphStructure, DynamicGraphStructure
+from .graphstats import StaticGraphStats, DynamicGraphStats
 
-from ...utils.textformatting import checkmark, warning_emoji, error_emoji, align
-from ...utils.colors import large_pallete_blue, large_pallete_red
+from ..dataloading import DataOrchestrator
 
-class InvalidGraphEntryName(Exception):
-    pass
-
-@dataclass 
-class GraphStructure:
-    """
-    Single graphstructure with
-
-    Parameters
-    ----------
-    edge_index: torch.Tensor
-        index of edges
-        shape [num_edges, 2]
-    edge_weight: torch.Tensor
-        weights of edges
-        shape [num_edges, 1]
-
-    Downstream
-    ----------
-    GraphRegistry contains numerous GraphEntry - objects
-    Each of those is associated with each of the following objects:
-    - GraphStructure
-    - GraphStatistics
-    - GraphConfig
-    """
-    edge_index:     torch.Tensor 
-    edge_weight:    torch.Tensor    
-    
-    def __repr__(self) -> str:
-        num_nodes      = len(self.edge_index[0].unique())
-        num_edges      = len(self.edge_index)
-        representation = f'<GraphStructure(num_nodes = {num_nodes}, num_edges = {num_edges})>'
-        return representation   
-
-class DynamicGraphStructure:
-    """
-    Iterable container of GraphStructure instances aligned with timestamps.
-
-    Parameters
-    ----------
-    graphstructures : List[GraphStructure]
-        List of GraphStructure objects. Indexing corresponds to timestamps.
-    timestamps : List[str]
-        Timestamp labels, same length as graphstructures.
-    """   
-    def __init__(self, graphstructures: List[GraphStructure], timestamps: List[str]):
-        self._validate_graphtimes(graphstructures, timestamps)
-        self.graphstructures = graphstructures  
-        self.timestamps      = timestamps
-
-    def __iter__(self):
-        return iter(self.graphstructures)
-    
-    def __len__(self):
-        return len(self.graphstructures)    
-    
-    def __getitem__(self, idx: int) -> Tuple[GraphStructure, str]:
-        return self.graphstructures[idx], self.timestamps[idx]    
-    
-    def __repr__(self):
-        if not self.graphstructures:
-            return f"<DynamicGraphStructure(empty)>"
-        
-        return f"<DynamicGraphStructure(n={len(self.graphstructures)} graphstructures)>"
-
-    @staticmethod
-    def _validate_graphtimes(graphstructures: List[GraphStructure], timestamps: List[str]):
-        if len(graphstructures) != len(timestamps):
-            raise ValueError(
-                f"number of graphstructures ({len(graphstructures)}) "
-                f"must equal number of timestamps ({len(timestamps)})"
-            )
-
-@dataclass 
-class StaticGraphStatistics:
-    """
-    Contains statistics describing a graph
-    
-    Parameters
-    ----------
-    #### General
-    num_nodes: int
-        number of nodes in the graph structure
-
-    num_edges: int
-        number of edges by which these nodes are connected
-        
-    edge_density: float
-        `density = num_edges / (num_nodes * (num_nodes))`
-        edge_density is 1 for a fully connected (mesh) graph
-
-    num_isolated_nodes: int
-        number of nodes without connections
-
-    #### Edge weights
-
-    edge_weight_mean: float
-        mean of all edge_weights
-    
-    edge_weight_min: float
-        min of all edge_weights
-
-    edge_weight_max: float
-        max of all edge_weights
-
-    #### Out-degree
-
-    out_degree_mean:    float
-        mean of the number of out-connections per node
-
-    out_degree_max:     int
-        max of the number of out-connections per node
-
-    out_degree_min:     int
-        min of the number of out-connections per node
-        
-    #### In-degree
-
-    in_degree_mean:    float
-        mean of the number of in-connections per node
-
-    in_degree_max:     int
-        max of the number of in-connections per node
-
-    in_degree_min:     int    
-        min of the number of in-connections per node
-
-    Downstream
-    ----------
-    GraphRegistry contains numerous GraphEntry - objects
-    Each of those is associated with each of the following objects:
-    - GraphStructure
-    - GraphStatistics
-    - GraphConfig
-    """
-    
-    num_nodes:          int
-    num_edges:          int
-    edge_density:       float
-    num_isolated_nodes: int
-
-    edge_weight_mean:   float
-    edge_weight_min:    float
-    edge_weight_max:    float
-
-    out_degree_mean:    Union[int,float]
-    out_degree_max:     int
-    out_degree_min:     int    
-   
-    in_degree_mean:     Union[int,float]
-    in_degree_max:      int
-    in_degree_min:      int    
-
-    def __repr__(self) -> str:
-
-        largest_key = len("num_isolated_nodes")
-
-        statement = self._get_small_summary() +"\n"
-                        
-        statement += align('edge_weight_mean',   self.edge_weight_mean,  width=largest_key + 2, newline=True)   
-        statement += align('edge_weight_min',    self.edge_weight_min,   width=largest_key + 2, newline=True)                   
-        statement += align('edge_weight_max',    self.edge_weight_max,   width=largest_key + 2, newline=True)    
-
-        statement += "\n"      
-        statement += align('out_degree_mean',   self.out_degree_mean,  width=largest_key + 2, newline=True)   
-        statement += align('out_degree_max',    self.out_degree_max,   width=largest_key + 2, newline=True)                   
-        statement += align('out_degree_min',    self.out_degree_min,   width=largest_key + 2, newline=True)      
-
-        statement += "\n"      
-        statement += align('in_degree_mean',   self.in_degree_mean,  width=largest_key + 2, newline=True)   
-        statement += align('in_degree_max',    self.in_degree_max,   width=largest_key + 2, newline=True)                   
-        statement += align('in_degree_min',    self.in_degree_min,   width=largest_key + 2, newline=True)                
-
-        return statement      
-
-    def _get_small_summary(self) -> str:
-
-        largest_key = len("num_isolated_nodes")
-
-        statement = ""
-
-        statement += align('num_nodes',          self.num_nodes,            width=largest_key + 2, newline=True)
-        statement += align('num_edges',          self.num_edges,            width=largest_key + 2, newline=True)
-        statement += align('edge_density',       self.edge_density,         width=largest_key + 2, newline=True)
-        statement += align('num_isolated_nodes', self.num_isolated_nodes,   width=largest_key + 2, newline=True)                                 
-
-        return statement           
-
-@dataclass 
-class DynamicGraphStatistics:
-
-    """ 
-    Statistics for a dyanmic graph structure
-
-    for now very limited:
-    
-    Parameters
-    ----------
-    num_graphs: int
-        number of graphs inside
-    num_nodes: int
-        number of nodes per graph structure
-
-    #TODO: as the parameters / summary for now are very limited, small and large summary are the same.
-    """
-
-    num_graphs:     int
-    num_nodes:      int 
-
-    def __repr__(self) -> str:
-
-        largest_key = len("num_graphs")
-
-        statement = self._get_small_summary() +"\n"      
-
-        return statement      
-
-    def _get_small_summary(self) -> str:
-
-        largest_key = len("num_graphs")
-
-        statement = ""
-
-        statement += align('num_graphs',         self.num_graphs,           width=largest_key + 2, newline=True)
-        statement += align('num_nodes',          self.num_nodes,            width=largest_key + 2, newline=True)
-        return statement     
 
 @dataclass
 class GraphConfig:
@@ -270,159 +43,8 @@ class GraphConfig:
     method:         str
     self_connection:str
     scaling_method: Optional[str] = None
+    mode:           Literal['static','dymamic'] = None
     kwargs:         Optional[dict]= None
-
-@dataclass 
-class GraphEntry:
-    """
-    Single entry to the GraphRegistry with 
-
-    Parameters
-    ---------
-    structure:  GraphStructure
-
-    summary:    GraphStatistics
-    
-    config:     GraphConfig
-    """
-
-    structure: Union[GraphStructure, DynamicGraphStructure]
-    summary:   Union[StaticGraphStatistics, DynamicGraphStatistics]
-    config:    Dict[str,str]
-
-    def __repr__(self) -> str:
-        representation = f'<GraphEntry(structure, summary, config)>'
-        return representation        
-
-    def _get_summary(self, type: Literal['small','large']) -> str:
-        """returns str of graph summary"""
-        if type == 'large':
-            return print(self.summary)
-
-        elif type == 'small':
-            return print(self.summary._get_small_summary())
-
-class GraphRegistry:
-    """
-    Registry of GraphEntry objects
-
-    Attributes
-    ----------
-    registry: Dict[str, GraphEntry]
-        graphnames : GraphEntry object
-    
-    Methods
-    -------
-    add_entry       ->  None
-    rename_entry    ->  None
-    get_entry       ->  GraphEntry
-    """
-    def __init__(self, graph_dir: str):
-        self.registry: Dict[str, GraphEntry]    = {}
-        self.alignment_width                    = 19
-        self.graph_dir                          = graph_dir
-
-    def add_entry(self, graphname: str, entry: GraphEntry) -> None:
-        """Add structure to .registry under graphname"""
-        if self.check_entry(graphname):
-            print(align(f'{warning_emoji} warning', f'{graphname} already exists, please rename the already existing entry. New entry wasn\'t registered', width=self.alignment_width, newline=False))            
-        else:
-            self.registry[graphname] = entry
-            print(align(f'{checkmark} Graph registered', f'{graphname} successfully registered', width=self.alignment_width, newline=False))                        
-        
-    def rename_entry(self, current_graphname: str, new_graphname: str) -> None:
-        """rename entry from current_graphname to new_graphname; current_graphname is removed"""        
-        if self.check_entry(new_graphname):
-            print(align(f'{warning_emoji} warning', f'{new_graphname} already exists, please rename the already existing entry. New entry wasn\'t registered', width=self.alignment_width, newline=False))    
-        else:
-            self.add_entry(new_graphname,self.registry[current_graphname])
-            self.remove_entry(current_graphname)           
-
-    def remove_entry(self, graphname: str) -> None:
-        del self.registry[graphname]
-        print(align(f'{checkmark} Graph removed', f'{graphname} has been deregistered', width=self.alignment_width, newline=False))        
-
-    def get_entry(self, graphname: str) -> 'GraphEntry':
-        """return GraphStructure from graphname"""
-        if not self.check_entry(graphname):
-            print(align(f'{warning_emoji} Graph not found', f'{graphname} wasn\'t found', width=self.alignment_width, newline=False))                  
-            registered_entries = ', '.join(self.return_entrynames())
-            raise ValueError(f"the following graphs are registered:\n{registered_entries}")
-        
-        else:
-            return self.registry[graphname]
-
-    def check_entry(self, graphname: str) -> bool:
-        """return boolean reflecting whether or not graphname is registered"""
-        if graphname in self.registry.keys():
-            return True
-        else:
-            return False
-        
-    def return_entrynames(self) -> List[str]:
-        """returns a list of entrynames"""
-        return list(self.registry.keys())
-        
-    def get_graph_stats(self, graphname: str, type: Literal['small','large']) -> str:
-        """Returns a string representation of the graph statistics, either small or extensive"""
-        
-        return self.get_entry(graphname)._get_summary(type)
-
-    def save_graphentry(self, graphname: str) -> None:
-        """
-        Save graphentry
-
-        Seperately, the following objects are saved:
-        - edge_index
-        - edge_weight
-        - graphconfig
-        """
-        graph_entry = self.get_entry(graphname)
-        
-        directory   = os.path.join(self.graph_dir, graphname)
-        
-        if os.path.exists(directory):
-            raise FileExistsError(f'{error_emoji} GraphEntry Not Saved: {graphname} directory already exists')
-
-        os.makedirs(directory, exist_ok=True)
-
-        if graph_entry is not None:
-            
-            edge_index  = graph_entry.structure.edge_index
-            edge_weight = graph_entry.structure.edge_weight
-
-            torch.save(edge_index, os.path.join(directory, f'{graphname}_edge_index.pt'))
-
-            if edge_weight is not None:
-                torch.save(edge_weight, os.path.join(directory, f'{graphname}_edge_weight.pt'))       
-
-        # Save config as JSON
-        config_path = os.path.join(directory, f'{graphname}_config.json')
-
-        # copy to make sure the original config isn't adjusted
-        config_copy = graph_entry.config.copy()
-
-        config_copy['graphname'] = graphname
-        
-        if config_copy.get("scaling_method") is None:
-            config_copy.pop("scaling_method", None)
-        
-        with open(config_path, 'w') as f:
-            json.dump(config_copy, f, indent=2) 
-        
-        print(align(f'{checkmark} GraphEntry Saved', f'{graphname} has been saved', width=self.alignment_width, newline=False))    
-
-    def _validate_graphentry_name(self, name: str) -> None:
-        """test whether name is suitable or not to be saved into a directory"""
-
-        characters_allowed =  set("abcdefghijklmnopqrstuvwxyz0123456789_-")
-
-        if any(ch not in characters_allowed for ch in name):
-            raise InvalidGraphEntryName(f"Invalid GraphEntry name! Rename before saving GraphEntry. Accepter characters are:\n{characters_allowed}")
-
-    def __repr__(self) -> str:
-        registered_entries = ', '.join(self.return_entrynames())
-        return f'<GraphRegistry({registered_entries})'
 
 class GraphOrchestrator:
     """
@@ -701,7 +323,9 @@ class GraphOrchestrator:
         edge_index, edge_weight = self._remove_zero_weights(edge_index, edge_weight)                                                    # remove zero valued loops  (now post-normalization)
 
         graphstructure = GraphStructure(edge_index, edge_weight)
-        graphentry     = GraphEntry(graphstructure, self._generate_graph_stats(graphstructure), asdict(graphconfig))
+
+        if mode == 'static':
+            graphentry     = GraphEntry(graphstructure, self._generate_static_graph_stats(graphstructure), asdict(graphconfig))
 
         self.graph_registry.add_entry(graphname, graphentry)
 
@@ -822,9 +446,23 @@ class GraphOrchestrator:
                 f'edge_index must be list or torch.Tensor, got {type(edge_index).__name__}'
             )       
 
-    def _generate_static_graph_stats(self, graph_structure: GraphStructure) -> StaticGraphStatistics:
+    def _generate_dynamic_graph_stats(self, graph_structures: DynamicGraphStructure) -> DynamicGraphStats:
         """ 
-        Returns a summary of the graph
+        Returns a summary of the dynamic graph
+        """ 
+        graph_snapshot = graph_structures[0]
+
+        num_graphs = len(graph_structures)       
+        num_nodes  = int(graph_snapshot.edge_index.max().item()) + 1
+
+        return DynamicGraphStats(
+            num_graphs = num_graphs,
+            num_nodes  = num_nodes
+        )
+
+    def _generate_static_graph_stats(self, graph_structure: GraphStructure) -> StaticGraphStats:
+        """ 
+        Returns a summary of the static graph
         """
         global_edge_index   = graph_structure.edge_index
         global_edge_weight  = graph_structure.edge_weight
@@ -857,7 +495,7 @@ class GraphOrchestrator:
         in_degree_max       = in_degree.max().item()
         in_degree_min       = in_degree[in_degree > 0].min().item() if (in_degree > 0).any() else 0
 
-        return StaticGraphStatistics(
+        return StaticGraphStats(
             num_edges           = num_edges,
             num_nodes           = num_nodes,
             edge_density        = round(edge_density, 4),
