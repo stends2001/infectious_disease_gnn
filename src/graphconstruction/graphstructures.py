@@ -2,28 +2,9 @@ import torch
 from dataclasses import dataclass
 from typing import List, Tuple
 
-
 @dataclass 
 class GraphStructure:
     """
-    Single graphstructure with
-
-    Parameters
-    ----------
-    edge_index: torch.Tensor
-        index of edges
-        shape [num_edges, 2]
-    edge_weight: torch.Tensor
-        weights of edges
-        shape [num_edges, 1]
-
-    Downstream
-    ----------
-    GraphRegistry contains numerous GraphEntry - objects
-    Each of those is associated with each of the following objects:
-    - GraphStructure
-    - GraphStatistics
-    - GraphConfig
     """
     edge_index:     torch.Tensor 
     edge_weight:    torch.Tensor    
@@ -72,3 +53,4 @@ class DynamicGraphStructure:
                 f"number of graphstructures ({len(graphstructures)}) "
                 f"must equal number of timestamps ({len(timestamps)})"
             )
+

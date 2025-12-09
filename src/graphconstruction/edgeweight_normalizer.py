@@ -1,5 +1,6 @@
 # EdgeWeightNormalizer
 import torch
+from typing import Tuple
 
 class EdgeWeightNormalizer:
     """ 
@@ -41,16 +42,25 @@ class EdgeWeightNormalizer:
                                     'rowwise'   : self._rowwise
         }
 
-    def normalize(self, method: str) -> torch.Tensor:
+    def normalize(self, method: str) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         collects the required generation-function and feeds in the kwargs
         """
+        # filtering:    
+        self.edge_indices, self.edge_weights = self._remove_zeros()
 
         if method not in self.NORMALIZATION_FUNCS:
-            raise KeyError(f"Unknown normalization method: {method}. Available methods are: {', '.join(self.NORMALIZATION_FUNCS.keys())}")
+            raise KeyError(f"Unknown normalization method: {method}. Available methods are: {', '.join(self.NORMALIZATION_FUNCS.keys())}")   
+            
+        return self.edge_indices, self.NORMALIZATION_FUNCS[method]()
         
-        return self.NORMALIZATION_FUNCS[method]()
-        
+    def _remove_zeros(self, threshold: float = 0) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        removes zero weights
+        """
+        mask = self.edge_weights.abs() > threshold
+        return self.edge_indices[:, mask], self.edge_weights[mask]
+
     def _minmax(self) -> torch.Tensor:
         """ 
         Normalizes edge-weights globally by linearly mapping between 0 and 1.

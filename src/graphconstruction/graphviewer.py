@@ -32,7 +32,7 @@ class GraphViewer:
         self.palette_reds   = sns.color_palette("Reds", n_colors=100)
         self.figsize        = figsize
 
-    def view(self, graphname: str, node_idx: Optional[int] = None, subplots: bool = True, title: Optional[str] = None):
+    def view(self, graphname: str, node_idx: Optional[int] = None, subplots: bool = True, title: Optional[str] = None) -> Figure:
         """
         """
         if not title:

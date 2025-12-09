@@ -5,67 +5,7 @@ from ..utils.textformatting import align
 
 @dataclass 
 class StaticGraphStats:
-    """
-    Contains statistics describing a graph
-    
-    Parameters
-    ----------
-    #### General
-    num_nodes: int
-        number of nodes in the graph structure
-
-    num_edges: int
-        number of edges by which these nodes are connected
-        
-    edge_density: float
-        `density = num_edges / (num_nodes * (num_nodes))`
-        edge_density is 1 for a fully connected (mesh) graph
-
-    num_isolated_nodes: int
-        number of nodes without connections
-
-    #### Edge weights
-
-    edge_weight_mean: float
-        mean of all edge_weights
-    
-    edge_weight_min: float
-        min of all edge_weights
-
-    edge_weight_max: float
-        max of all edge_weights
-
-    #### Out-degree
-
-    out_degree_mean:    float
-        mean of the number of out-connections per node
-
-    out_degree_max:     int
-        max of the number of out-connections per node
-
-    out_degree_min:     int
-        min of the number of out-connections per node
-        
-    #### In-degree
-
-    in_degree_mean:    float
-        mean of the number of in-connections per node
-
-    in_degree_max:     int
-        max of the number of in-connections per node
-
-    in_degree_min:     int    
-        min of the number of in-connections per node
-
-    Downstream
-    ----------
-    GraphRegistry contains numerous GraphEntry - objects
-    Each of those is associated with each of the following objects:
-    - GraphStructure
-    - GraphStatistics
-    - GraphConfig
-    """
-    
+ 
     num_nodes:          int
     num_edges:          int
     edge_density:       float

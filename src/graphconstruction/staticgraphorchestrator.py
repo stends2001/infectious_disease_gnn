@@ -4,7 +4,6 @@ import numpy as np
 from dataclasses import dataclass, asdict
 from typing import Optional, List, Union, Literal, Tuple
 
-
 from .edgeweight_normalizer import EdgeWeightNormalizer
 from .graphconstructor import GraphConstructor
 from .selfloopadder import SelfLoopAdder
@@ -16,9 +15,8 @@ from .graphstats import StaticGraphStats, DynamicGraphStats
 
 from ..dataloading import DataOrchestrator
 
-
 @dataclass
-class GraphConfig:
+class StaticGraphConfig:
     """
     Config with which graph structure was created
 
@@ -43,13 +41,12 @@ class GraphConfig:
     method:         str
     self_connection:str
     scaling_method: Optional[str] = None
-    mode:           Literal['static','dymamic'] = None
     kwargs:         Optional[dict]= None
 
-class GraphOrchestrator:
+class StaticGraphOrchestrator:
     """
-    Orchestrates the entire process of graph creation
-
+    Orchestrates the creation of a static graph
+    # TODO update documentation for static graph 
     Parameters
     ----------
     data_orchestrator: DataOrchestrator
@@ -211,8 +208,8 @@ class GraphOrchestrator:
     """
     def __init__(self,                  
                  data_orchestrator: DataOrchestrator,
-                 id_col:          str = 'node',
-                 graph_dir:       str = "data/graphs/"):
+                 id_col:            str = 'node',
+                 graph_dir:         str = "data/graphs/"):
         
         # extract metadata
         shapes               = data_orchestrator.data_context.shapedata
@@ -238,9 +235,7 @@ class GraphOrchestrator:
                                        'k_nearest', 
                                        'population_weighted', 
                                        'gravity_model', 
-                                       'commuter']
-        self.dynamic_methods        = ['population_weighted',  'gravity_model', 'commuter']
-        
+                                       'commuter']        
         self.num_nodes              = data_orchestrator.data_context.num_nodes
 
     def generate_graph(self, 
@@ -248,7 +243,6 @@ class GraphOrchestrator:
                        name_addition:   Optional[str]                                                   =  None,
                        self_connection: Literal['max','0','mean']                                       = 'mean',
                        scaling_method:  Optional[Literal['minmax','log','zscore','symmetric','rowwise']]= None,
-                       mode:            Literal['static','dynamic']                                     = 'static',
                        **kwargs) -> None:
         """
         Generates a graph structure based on the method. Depending on the method, additional kwargs may be required.
@@ -269,9 +263,8 @@ class GraphOrchestrator:
             how to deal with self_connection
         scaling_method: Optional[Literal['minmax','log','zscore','symmetric','rowwise']] = None
             how to deal with edge_weights
-        mode: Literal['static','dynamic'] = 'static'
-            whether to create a static or dynamic graph structure.
-            only certain methods are compatible with dynamic graph structure
+        graph_group: Optional[str] = None
+            indicates whether the graph structure generate stands alone, or is part of a dynamic collection
         **kwargs:
             kwargs are method-specific.
 
@@ -286,14 +279,9 @@ class GraphOrchestrator:
         if method not in self.graph_methods:
             raise ValueError(f'{method} not a valid graph method. Please choose a method from this list:\n{self.graph_methods}')
         
-        if mode == 'dynamic':
+        graphconfig = StaticGraphConfig(method, self_connection, scaling_method, kwargs)
 
-            if method not in self.dynamic_methods:
-                print(f'for method {method}, no dynamic graph possible. mode is set to "static"')
-
-                mode = 'static'
-
-        graphconfig = GraphConfig(method, self_connection, scaling_method, mode, kwargs)
+        
         graphname   = self._generate_graphname(method, name_addition, self_connection, scaling_method)
 
         # Ensure IDs are integers and no missing

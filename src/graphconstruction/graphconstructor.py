@@ -66,7 +66,7 @@ class GraphConstructor:
                                 'commuter'              : self._commuter
         }        
 
-    def generate_graph(self, method: str, mode: Literal['static','dynamic'] = 'static', **kwargs) -> Tuple[List[Tuple[int,int]], Optional[List[float]]]:
+    def generate_graph(self, method: str, **kwargs) -> Tuple[List[Tuple[int,int]], Optional[List[float]]]:
         """
         collects the required generation-function and feeds in the kwargs
 
@@ -84,18 +84,13 @@ class GraphConstructor:
                 f"Available methods: {available}"
             )
         
-        if mode == 'static':
-            edge_indices, edge_weights  =  self.GENERATION_FUNCS[method](**kwargs) 
-            return (edge_indices, edge_weights)        
+
+        edge_indices, edge_weights  =  self.GENERATION_FUNCS[method](**kwargs) 
+        return (edge_indices, edge_weights)        
         
-        else:
-            print(f'running {method} dynamically')
-
-
-
 
     # TODO: rename to static_commuter
-    def _commuter(self, commuting_threshold: int, years: Union[List[str], str]= '2024', mode: Literal['static','dynamic'] = 'static', top_k: Optional[int] = None)  -> Tuple[List[Tuple[int,int]], List[float]]:
+    def _commuter(self, commuting_threshold: int, years: Union[List[str], str]= '2024', top_k: Optional[int] = None)  -> Tuple[List[Tuple[int,int]], List[float]]:
         """ 
         creates a commuter - graph
 
@@ -105,13 +100,12 @@ class GraphConstructor:
             the year for which to retrieve the data
             when mode == 'dynamic', please ensure to input an iterable for years
         commuting_threshold: int = 1_000
-            the threshold for number of commuters for nodes to be connected
-        mode: Literal['static','dynamic'] = 'static'            
+            the threshold for number of commuters for nodes to be connected       
         top_k: int = None
             the maximum number of connections for each node
         """
 
-        commuter_data                           = CommuterDataLoader(years=years).import_data()      
+        commuter_data                           = CommuterDataLoader(years=years).return_data()      
         commuter_data.loc[:, 'nuts3_work']      = commuter_data.loc[:, 'nuts3_work'].map(self.tokens)
         commuter_data.loc[:, 'nuts3_residence'] = commuter_data.loc[:, 'nuts3_residence'].map(self.tokens)
 
