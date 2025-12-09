@@ -209,7 +209,7 @@ class DynamicGraphOrchestrator(BaseGraphOrchestrator):
         self.population_data= self.epipopdata[['timestamp',id_col,'population_size']]
         self.graph_methods  = ['population_weighted', 'gravity_model', 'commuter']
 
-    def generate_graphstructure(self, method, self_connection, scaling_method, graphname: Optional[str] = None, **kwargs):
+    def generate_graphstructure(self, method, self_connection: Literal['mean','0','max'] = 'mean', scaling_method: Optional[str] = None, graphname: Optional[str] = None, **kwargs) -> None:
         
         if method not in self.graph_methods:
             raise ValueError(f'invalid method {method} for StaticGraphOrchestrator. Supported methods include: {self.graph_methods}')
