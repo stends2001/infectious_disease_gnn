@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from .graphregistry import GraphRegistry
     from .containers import GraphStructure
 
-class GraphViewer:
+class StaticGraphViewer:
     """
     Visualizes graph structures overlaid on geographical shapes.
     Heavy lifting is done here, documentation found in GraphOrchestrator
@@ -33,7 +33,7 @@ class GraphViewer:
         self.palette_reds   = sns.color_palette("Reds", n_colors=100)
         self.figsize        = figsize
 
-    def view(self, graphname: str, node_idx: Optional[int] = None, subplots: bool = True, title: Optional[str] = None) -> Figure:
+    def view(self, graphname: str, node_idx: Optional[int] = None, subplots: bool = True, title: Optional[str] = None, time_idx: Optional[int] = None) -> Figure:
         """
         """
         if not title:
@@ -42,9 +42,18 @@ class GraphViewer:
         if graphname == 'empty':
             return self._create_empty_view()
         
-        graph_structure = self.graph_registry.get_entry(graphname).structure
+        graph_entry = self.graph_registry.get_entry(graphname)
+
+        if graph_entry.mode == 'dynamic':
+            if time_idx is None:
+                raise ValueError('for previewing a dynamic graph, please supply a time_idx')
+            time, graph_structure = graph_entry.structure[time_idx]
+            title+= time
+        elif graph_entry.mode == 'static':
+            graph_structure = graph_entry.structure
+
         if graph_structure is None:
-            return
+            raise ValueError('no graph_structure found!')
 
         if node_idx is None:
             return self._create_global_view(graph_structure, subplots, title, graphname)

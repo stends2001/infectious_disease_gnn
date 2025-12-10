@@ -162,7 +162,7 @@ class RawGraphConstructor:
 
         return edges, weights
 
-    def _commuter(self, commuter_data: pd.DataFrame, commuting_threshold: int, top_k: Optional[int] = None, **kwargs)  -> Tuple[List[Tuple[int,int]], List[float]]:
+    def _commuter(self, commuter_data: pd.DataFrame, commuting_threshold: int = 1_000, top_k: Optional[int] = None, **kwargs)  -> Tuple[List[Tuple[int,int]], List[float]]:
         """ 
         creates a commuter - graph
 
@@ -177,27 +177,30 @@ class RawGraphConstructor:
             the maximum number of connections for each node
         """
   
-        commuter_data.loc[:, 'nuts3_work']      = commuter_data.loc[:, 'nuts3_work'].map(self.tokens)
-        commuter_data.loc[:, 'nuts3_residence'] = commuter_data.loc[:, 'nuts3_residence'].map(self.tokens)
+        data = commuter_data.copy()
 
-        commuter_data   = commuter_data[commuter_data['commuters'] > commuting_threshold]
+        data.loc[:, 'nuts3_work']      = data.loc[:, 'nuts3_work'].map(self.tokens)
+        data.loc[:, 'nuts3_residence'] = data.loc[:, 'nuts3_residence'].map(self.tokens)
+
+        data   = data[data['commuters'] > commuting_threshold]
 
         if top_k is not None:
             # Keep only top_k strongest links per source (nuts3_work)
-            commuter_data = (
-                commuter_data
+            data = (
+                data
                 .sort_values(by='commuters', ascending=False)
                 .groupby('nuts3_work', group_keys=False)
                 .head(top_k)
             )
 
-        node_edges = list(zip(
-            commuter_data['nuts3_work'].astype(int),
-            commuter_data['nuts3_residence'].astype(int)
+        edges = list(zip(
+            data['nuts3_work'].astype(int),
+            data['nuts3_residence'].astype(int)
         ))
-        node_weights = commuter_data['commuters'].astype(float).tolist()
+        weights = data['commuters'].astype(float).tolist()
 
-        return (node_edges, node_weights)
+
+        return edges, weights
                          
     def _distance_threshold(self, max_distance: float) -> Tuple[List[Tuple[int,int]], None]:
         """

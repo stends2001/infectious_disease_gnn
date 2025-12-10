@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import List, Tuple
 import torch
+import pandas as pd
 
 @dataclass
 class RawGraphStructure:
@@ -31,51 +32,6 @@ class RawGraphStructure:
         num_edges = len(self.edge_index_ls)
         return f"<RawGraphStructure(num_nodes={num_nodes}, num_edges={num_edges})>"
 
-
-@dataclass
-class DynamicRawGraphStructure:
-    """
-    Sequence of RawGraphStructure objects with associated timestamps
-
-    Parameters
-    ----------
-    timestamps: List[str]
-        list of timestamps, each of which associated with a RawGraphStructure
-    rawstructures: List[RawGraphStructure]
-        list of RawGraphStructures, associated with timestamps
-
-    Methods
-    -------
-    - length
-    - iterate
-    - getitem
-
-    Downstream
-    ----------
-    """
-    timestamps:    List[str]
-    rawstructures: List[RawGraphStructure]
-
-    def __post_init__(self):
-        T = len(self.timestamps)
-        if len(self.rawstructures) != T:
-            raise ValueError(
-                f"Number of rawstructures ({len(self.rawstructures)}) must match timestamps ({T})"
-            )
-
-    def __len__(self):
-        return len(self.timestamps)
-
-    def __iter__(self):
-        return iter(self.rawstructures)
-
-    def __getitem__(self, idx) -> Tuple[RawGraphStructure, str]:
-        return self.rawstructures[idx], self.timestamps[idx]
-
-    def __repr__(self):
-        return f"<DynamicRawGraphStructure(T={len(self)})>"
-
-
 @dataclass 
 class GraphStructure:
     """
@@ -97,3 +53,38 @@ class GraphStructure:
     def __repr__(self) -> str:
         representation = f'<GraphStructure(num_nodes = {self.num_nodes}, num_edges = {self.num_edges})>'
         return representation 
+    
+@dataclass
+class DynamicGraphStructure:
+    """
+    Dynamic graph structure storing snapshots over time.
+    
+    Parameters
+    ----------
+    timestamps : torch.Tensor
+        Tensor of shape [T] containing timestamp values (Unix timestamps)
+    graphstructures: List[GraphStructure]
+    """
+    timestamps:      List[pd.Timestamp | str]       # Unix timestamps as int64
+    graphstructures: List[GraphStructure]
+    
+    def __post_init__(self):
+        T = len(self.timestamps)
+        if len(self.graphstructures) != T:
+            raise ValueError(f"Number of graphstructures ({len(self.graphstructures)}) must match timestamps ({T})")
+    
+    def get_snapshot(self, t_idx: int):
+        """Get static graph structure at time index t_idx"""
+
+        return self.graphstructures[t_idx]
+    
+    def __len__(self):
+        """Return number of time snapshots"""
+        return len(self.timestamps)
+    
+    def __getitem__(self, idx: int):
+        return self.timestamps[idx], self.graphstructures[idx]
+    
+    def __repr__(self):
+        dates = self.timestamps
+        return f"<DynamicGraphStructure(T={len(self)}, {dates[0]} to {dates[-1]})>"

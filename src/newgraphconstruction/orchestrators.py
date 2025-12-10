@@ -7,15 +7,19 @@ from typing import Optional, List, Union, Literal, Tuple
 import geopandas as gpd
 from matplotlib.figure import Figure
 from pandas import Timestamp
+from tqdm import tqdm
 
-from .containers import RawGraphStructure, DynamicRawGraphStructure
+
+from ..utils.textformatting import warning_emoji
+
+from .containers import RawGraphStructure, DynamicGraphStructure, GraphStructure
 
 from .edgeweight_normalizer import EdgeWeightNormalizer
 from .rawgraphconstructor import RawGraphConstructor
 from .selfloopadder import SelfLoopAdder
-from .graphviewer import GraphViewer
+from .staticgraphviewer import StaticGraphViewer
 from .graphregistry import GraphEntry, GraphRegistry
-from .graphstructures import GraphStructure, DynamicGraphStructure
+# from .graphstructures import GraphStructure, DynamicGraphStructure
 from .graphstats import StaticGraphStats, DynamicGraphStats
 from .graphconfig import StaticGraphConfig, DynamicGraphConfig
 from ..dataloading import DataOrchestrator
@@ -24,7 +28,14 @@ from .commuterdataloader import CommuterDataLoader
 
 class BaseGraphOrchestrator:
     """
-    Parent class for StaticGraphOrchestrator and DynamicGraphOrchestrator.
+    Parent class for StaticGraphOrchestrator and DynamicGraphOrchestrator
+    while there is some shared behaviour among the two, there's large fundamental
+    differences in generating a static or a dynamic graph structure
+
+    Methods
+    -------
+    - _generate_graphname
+    - _validate_shapedata
     """
     def __init__(self,                  
                  data_orchestrator: DataOrchestrator,
@@ -47,26 +58,19 @@ class BaseGraphOrchestrator:
         # registry of graphs
         os.makedirs(self.graph_dir, exist_ok=True)
         self.graph_registry = GraphRegistry(self.graph_dir)
-        self.previewer      = GraphViewer(self.graph_registry, self.shapes)
          
-    def generate_graphstructure(self, method, self_connection, scaling_method, graphname, **kwargs):
+    def generate_graphstructure(self):
         raise NotImplementedError("Each graph orchestrator class must implement its own generate_graphstructure method.")     
     
-    def preview_graphstructure(self,
-                               graphname: Optional[str] = None,
-                               node_idx: Optional[int]  = None,
-                               subplots: bool           = True,
-                               title:    Optional[str]  = None) -> Figure:
-        if not graphname:
-            graphname = 'empty'
-        return self.previewer.view(graphname, node_idx, subplots, title)
+    def preview_graphstructure(self):
+        raise NotImplementedError("Each graph orchestrator class must implement its own preview_graphstructure method.")    
 
     def _generate_graphstats(self):
         raise NotImplementedError("Each graph orchestrator class must implement its own _generate_graphstats method.")      
       
-    def _generate_graphname(self, method: str, self_connection: str, scaling_method: str, name_addition: str = ""):
+    def _generate_graphname(self, method: str, self_connection: str, scaling_method: str):
         """returns graphname str"""
-        graphname = f'{method}_{name_addition}' if name_addition else f'{method}'
+        graphname = f'{method}'
         graphname = f'{graphname}_self{self_connection}' if self_connection else f'{graphname}'
         graphname = f'{graphname}_{scaling_method}' if scaling_method else f'{graphname}'
         return graphname
@@ -76,10 +80,15 @@ class BaseGraphOrchestrator:
         shapedata[self.id_col] = shapedata[self.id_col].astype(int)
         return shapedata      
 
-
 class StaticGraphOrchestrator(BaseGraphOrchestrator):
     """
-    Orchestrates creation of static graph structures.
+    Orchestrates creation of static graph structures
+
+    Methods
+    -------
+    - generate_graphstructure
+    - preview_graphstructure
+    - _generate_graphstats
     """
     def __init__(self,                  
                  data_orchestrator: DataOrchestrator,
@@ -87,19 +96,65 @@ class StaticGraphOrchestrator(BaseGraphOrchestrator):
                  graph_dir:         str = "data/graphs/"):
         
         super().__init__(data_orchestrator, id_col, graph_dir)
-        
+               
+        self.previewer       = StaticGraphViewer(self.graph_registry, self.shapes) 
         self.population_data = self.epipopdata.groupby(id_col)['population_size'].mean().reset_index()
-        self.graph_methods = ['geographic_neighbors', 'identity', 'mesh', 
-                             'distance_threshold', 'k_nearest', 'population_weighted', 
-                             'gravity_model', 'commuter']        
+        self.graph_methods   = ['geographic_neighbors', 'identity',  'mesh', 
+                                'distance_threshold',   'k_nearest', 'population_weighted', 
+                                'gravity_model',        'commuter']        
 
     def generate_graphstructure(self, 
                                 method:             str, 
-                                self_connection:    Literal['mean','0','max'] = 'mean', 
+                                graphname:          Optional[str] = None,                                
+                                self_connection:    Literal['mean','0','max'] = '0', 
                                 normalization:      Optional[Literal['minmax','log','zscore','symmetric','rowwise']] = None, 
-                                graphname:          Optional[str] = None, 
                                 **kwargs) -> None:
+        """
+        Generates a single (static) graphstructure which is added to the graph registry
+
+        Parameters
+        ----------
+        method: str
+            static graphstructure- method. any of:
+            - identity
+            - mesh
+            - geographic_neighbors
+            - distance_threshold
+            - k_nearest
+            - population_weighted
+            - gravity_model
+            - commuter
+             
+        graphname: Optional[str]
+            the name under which the graph entry will be saved. Recommended to supply. 
+            If None, an artificial name will be generated according to `_generate_graphname`
+
+        self_connection: Literal['mean','0','max'] = '0'
+            how to create self-loops. By default '0' => None
+
+        normalization: Optional[Literal['minmax','log','zscore','symmetric','rowwise']] = None
+            how to normalize edge-weights. By default non-normalized
+
+        Downstream
+        ----------
+        when called, this method calls upon:
+        - RawGraphConstructor
+            creates RawGraphStructure depending on method called and **kwargs. 
+            this is a collection of a list of edge-index and a list of edge-weights
+        - SelfLoopAdder
+            adds self-loops depending on method called in, according to parameter self_connection
+        - EdgeWeightNormalizer
+            normalizes edge-weights according to parameter normalization
         
+        to complete a GraphEntry which is to be added to graphregistry, further called are:
+        - self._generate_graphstats() 
+            returns a dictionary of statistics for the graph
+        - StaticGraphConfig
+            returns a dictionary of the configuration for the graph
+            
+        then the graphstructure is added to the registry:
+            self.graph_registry.add_entry()
+        """
         if method not in self.graph_methods:
             raise ValueError(f'invalid method {method} for StaticGraphOrchestrator. Supported methods: {self.graph_methods}')
         
@@ -108,8 +163,8 @@ class StaticGraphOrchestrator(BaseGraphOrchestrator):
 
         # Generate raw graph structure
         graph_generator = RawGraphConstructor(shapedata=self.shapes.copy(), 
-                                             tokens=self.tokens, 
-                                             id_col=self.id_col)
+                                              tokens=self.tokens, 
+                                              id_col=self.id_col)
         
         # Methods that need population data
         if method in ['population_weighted','gravity_model']:
@@ -126,12 +181,9 @@ class StaticGraphOrchestrator(BaseGraphOrchestrator):
                 raw_structure = graph_generator.generate_graph(method=method, 
                                                           commuter_data=commuter_data, 
                                                           **kwargs)      
-
-
         else:
             raw_structure = graph_generator.generate_graph(method=method, **kwargs)
 
-  
         # Add self-loops (only when method is neither identity nor mesh)
         if method not in ['identity', 'mesh']:
             raw_structure = SelfLoopAdder(rawgraphstructure=raw_structure, 
@@ -154,6 +206,40 @@ class StaticGraphOrchestrator(BaseGraphOrchestrator):
         self.graph_registry.add_entry(graphname, 
                                      GraphEntry(graphstructure_normalized, graphstats, graphconfig, 'static'))
 
+    def preview_graphstructure(self,
+                               graphname: Optional[str] = None,
+                               node_idx: Optional[int]  = None,
+                               subplots: bool           = True,
+                               title:    Optional[str]  = None) -> Figure:
+        """
+        preview a static graphstructure in self.graph_registry
+        
+        Parameters
+        ----------
+        graphname: Optional[str] = None
+            name under which graph is saved in self.graph_registry
+            when none, the emtpy graph structure is viewed
+        node_idx: Optional[int] = None
+            a node to zoom into (neighborhood will be shown)
+            when none, the global graph structure is viewed
+        subplots: bool = True
+            whether or not to show some more information in side-panels
+            when False, only the main map is shown
+        title: Optional[str] = None
+            extra title to be shown
+
+        Returns
+        -------
+        Figure
+
+        Downstream
+        ----------
+        heavy lifting is done by StaticGraphViewer
+        """
+        if not graphname:
+            graphname = 'empty'
+        return self.previewer.view(graphname, node_idx, subplots, title)
+
     def _generate_graphstats(self, graph_structure: GraphStructure) -> StaticGraphStats:
         """Returns a summary of the static graph"""
         global_edge_index = graph_structure.edge_index
@@ -172,7 +258,7 @@ class StaticGraphOrchestrator(BaseGraphOrchestrator):
         # Degree statistics
         edges_out, edges_in = global_edge_index[0], global_edge_index[1] 
         out_degree = torch.bincount(edges_out, minlength=num_nodes)
-        in_degree = torch.bincount(edges_in, minlength=num_nodes)
+        in_degree  = torch.bincount(edges_in, minlength=num_nodes)
         isolated_mask = (out_degree == 0) & (in_degree == 0)
         num_isolated_nodes = isolated_mask.sum().item()
 
@@ -203,10 +289,18 @@ class StaticGraphOrchestrator(BaseGraphOrchestrator):
     def __repr__(self) -> str:
         return f'<StaticGraphOrchestrator(level {self.nuts_level}. Registry: {self.graph_registry})>'
 
-
 class DynamicGraphOrchestrator(BaseGraphOrchestrator):
     """
-    Orchestrates creation of dynamic (time-varying) graph structures.
+    Orchestrates creation of dynamic (time-varying) graph structures
+
+    Methods
+    -------
+    - generate_graphstructure
+    - preview_graphstructure
+    - _generate_graphstats
+    - _resample_population_data
+    - _return_list_timestamps
+    - _set_frequency
     """
     def __init__(self,                  
                  data_orchestrator: DataOrchestrator,
@@ -216,85 +310,176 @@ class DynamicGraphOrchestrator(BaseGraphOrchestrator):
         super().__init__(data_orchestrator, id_col, graph_dir)    
         
         # Prepare yearly population data
-        population_data = self.epipopdata[['timestamp', id_col, 'population_size']].copy()
-        population_data['timestamp'] = population_data['timestamp'].dt.year
-        self.population_data = population_data[['timestamp', id_col, 'population_size']].drop_duplicates().reset_index(drop=True)
         
+        population_data              = self.epipopdata[['timestamp', id_col, 'population_size']].copy()
+        population_data['timestamp'] = population_data['timestamp'].dt.year
+        self.population_data         = population_data[['timestamp', id_col, 'population_size']].drop_duplicates().reset_index(drop=True)
+        self.static_previewer        = StaticGraphViewer(self.graph_registry, self.shapes) 
         self.graph_methods = ['population_weighted', 'gravity_model', 'commuter']
 
     def generate_graphstructure(self, 
-                                method: str, 
-                                time_window: List[Union[Timestamp, str]], 
-                                frequency: str = 'yearly', 
-                                self_connection: Literal['mean','0','max'] = 'mean', 
-                                scaling_method: Optional[str] = None, 
-                                graphname: Optional[str] = None, 
+                                method:             str,                              
+                                time_window:        List[Union[Timestamp, str]], 
+                                frequency:          str = 'yearly',                                 
+                                graphname:          Optional[str] = None,                                    
+                                self_connection:    Literal['mean','0','max'] = '0', 
+                                normalization:      Optional[str] = None, 
                                 **kwargs) -> None:
+        """
+        Generates a dynamic graphstructure which is added to the graph registry
+
+        Parameters
+        ----------
+        method: str
+            dynamic graphstructure- method. any of:
+            - population_weighted
+            - gravity_model
+            - commuter
+
+        time_window: List[Union[Timestamp, str]]
+            ...
+
+        frequency: str = 'yearly'
+            frequency of graphs to be created
+
+        graphname: Optional[str]
+            the name under which the graph entry will be saved. Recommended to supply. 
+            If None, an artificial name will be generated according to `_generate_graphname`
+
+        self_connection: Literal['mean','0','max'] = '0'
+            how to create self-loops. By default '0' => None
+
+        normalization: Optional[Literal['minmax','log','zscore','symmetric','rowwise']] = None
+            how to normalize edge-weights. By default non-normalized
+
+        Downstream
+        ----------
+        when called, this method calls upon:
+        - RawGraphConstructor
+            creates RawGraphStructure depending on method called and **kwargs. 
+            this is a collection of a list of edge-index and a list of edge-weights
+        - SelfLoopAdder
+            adds self-loops depending on method called in, according to parameter self_connection
+        - EdgeWeightNormalizer
+            normalizes edge-weights according to parameter normalization
         
+        to complete a GraphEntry which is to be added to graphregistry, further called are:
+        - self._generate_graphstats() 
+            returns a dictionary of statistics for the graph
+        - StaticGraphConfig
+            returns a dictionary of the configuration for the graph
+            
+        then the graphstructure is added to the registry:
+            self.graph_registry.add_entry()
+        """        
         if method not in self.graph_methods:
             raise ValueError(f'invalid method {method}. Supported methods: {self.graph_methods}')
         
         if graphname is None:
-            graphname = self._generate_graphname(method, self_connection, scaling_method)
+            graphname = self._generate_graphname(method, self_connection, normalization)
 
-        # Prepare time axis and population data
-        popdata = self._resample_population_data(frequency)
-        freq = self._set_frequency(frequency)
-        time_axis = self._return_list_timestamps(time_window, frequency, freq)
+        # Prepare population data if needed
+        if method in ['population_weighted', 'gravity_model']:
+            all_external_data     = self._resample_population_data(frequency)
+            all_external_data     = all_external_data[[self.id_col, 'population_size','timestamp']]
+        # Prepare time axis
+        freq        = self._set_frequency(frequency)
+        time_axis   = self._return_list_timestamps(time_window, frequency, freq)
+
+        if method == 'commuter':
+            all_external_data = CommuterDataLoader(years=time_axis).return_data()
+            all_external_data['year'] = all_external_data['year'].astype(int)
+            all_external_data=all_external_data.rename(columns = {'year':'timestamp'})
+            
+            all_external_data = all_external_data[['nuts3_work', 'nuts3_residence', 'commuters', 'timestamp']]                       
 
         # Generate raw graph structures for each timestamp
         graph_generator = RawGraphConstructor(shapedata=self.shapes.copy(), 
                                              tokens=self.tokens, 
                                              id_col=self.id_col)
         
-        raw_structures = []
-        for tt in time_axis:
-            population_data_tt = popdata[popdata['timestamp'] == tt].reset_index()[[self.id_col, 'population_size']]
-            raw_structure = graph_generator.generate_graph(method=method, 
-                                                          population_data=population_data_tt, 
-                                                          **kwargs)
-            
-            # Add self-loops if needed
-            if method not in ['identity', 'mesh']:
-                raw_structure = SelfLoopAdder(rawgraphstructure=raw_structure, 
-                                             node_ids=self.node_ids).add_loops(self_connection)
-            
-            raw_structures.append(raw_structure)
+        structures = []
+        for tt in tqdm(time_axis,desc=f"generating graph => {graphname}", total = len(time_axis)):
 
-        # Convert time_axis to string format for storage
-        time_strings = [str(t) for t in time_axis]
-        dynamic_raw = DynamicRawGraphStructure(time_strings, raw_structures)
+            external_data_tt = all_external_data[all_external_data['timestamp'] == tt].reset_index(drop = True).drop(columns = 'timestamp')
 
-        # Process each snapshot into tensors
-        edge_indices_list = []
-        edge_weights_list = []
-        
-        for raw_struct in dynamic_raw.rawstructures:
-            edge_weight = torch.tensor(raw_struct.edge_weight, dtype=torch.float)
-            edge_index = torch.tensor(raw_struct.edge_index, dtype=torch.long).t().contiguous()
-            
-            # Apply normalization if specified
-            if scaling_method:
-                norm = EdgeWeightNormalizer(edge_indices=edge_index, 
-                                           edge_weights=edge_weight, 
-                                           num_nodes=self.num_nodes)
-                edge_index, edge_weight = norm.normalize(scaling_method)
-            
-            edge_indices_list.append(edge_index)
-            edge_weights_list.append(edge_weight)
+            if len(external_data_tt) == 0:
+                raise ValueError(f'{warning_emoji} empty dataframe found for {tt}')
 
-        # Convert timestamps to Unix timestamps for tensor storage
-        timestamps_pd = pd.to_datetime(time_strings)
-        timestamps_unix = torch.tensor([int(ts.timestamp()) for ts in timestamps_pd], dtype=torch.int64)
+            if method == 'commuter':
+                raw_structure = graph_generator.generate_graph(method=method, 
+                                                            commuter_data=external_data_tt, 
+                                                            **kwargs)                
+            else:
+                raw_structure = graph_generator.generate_graph(method=method, 
+                                                            population_data=external_data_tt, 
+                                                            **kwargs)
+            
+            raw_structure = SelfLoopAdder(rawgraphstructure=raw_structure, 
+                                            node_ids=self.node_ids).add_loops(self_connection)
+
+            # Convert to tensors
+            edge_weight                 = torch.tensor(raw_structure.edge_weight_ls, dtype=torch.float)
+            edge_index                  = torch.tensor(raw_structure.edge_index_ls,   dtype=torch.long).t().contiguous() 
+
+            graphstructre_prenormalized = GraphStructure(edge_index, edge_weight)
+
+            # Edge-weight normalization (removes zero values)
+            edgeweight_normalizer       = EdgeWeightNormalizer(graphstructre_prenormalized)
+            graphstructure_normalized   = edgeweight_normalizer.normalize(normalization)
+
+            structures.append(graphstructure_normalized)
+
+        # timestamps_pd   = pd.to_datetime(time_axis)
+        # timestamps_unix = torch.tensor([int(ts.timestamp()) for ts in timestamps_pd], dtype=torch.int64)
+        time_axis_str = [str(tt) for tt in time_axis]
 
         # Create final structures
-        graphstructure = DynamicGraphStructure(timestamps_unix, edge_indices_list, edge_weights_list)
-        graphstats = self._generate_graphstats(graphstructure, time_strings)
-        graphconfig = DynamicGraphConfig(method, time_strings, frequency, 
-                                        self_connection, scaling_method, kwargs)
+        dynamicgraphstructure   = DynamicGraphStructure(time_axis_str, structures)
+        graphstats              = self._generate_graphstats(dynamicgraphstructure, time_axis_str)
+        graphconfig             = DynamicGraphConfig(method, time_axis, frequency, 
+                                        self_connection, normalization, kwargs)
 
         self.graph_registry.add_entry(graphname, 
-                                     GraphEntry(graphstructure, graphstats, graphconfig, 'dynamic'))
+                                     GraphEntry(dynamicgraphstructure, graphstats, graphconfig, 'dynamic'))
+
+    def preview_graphstructure(self,
+                               graphname: Optional[str] = None,
+                               time_idx:  Optional[int] = None,
+                               node_idx:  Optional[int]  = None,
+                               subplots:  bool           = True,
+                               title:     Optional[str]  = None) -> Figure:
+        """
+        preview a static graphstructure in self.graph_registry
+        
+        Parameters
+        ----------
+        graphname: Optional[str] = None
+            name under which graph is saved in self.graph_registry
+            when none, the emtpy graph structure is viewed
+        time_idx: Optional[int] = None
+            timestamp for which to show the graph
+            when none, the graphname must also be none
+        node_idx: Optional[int] = None
+            a node to zoom into (neighborhood will be shown)
+            when none, the global graph structure is viewed
+        subplots: bool = True
+            whether or not to show some more information in side-panels
+            when False, only the main map is shown
+        title: Optional[str] = None
+            extra title to be shown
+
+        Returns
+        -------
+        Figure
+
+        Downstream
+        ----------
+        heavy lifting is done by StaticGraphViewer
+        """
+        if not graphname:
+            graphname = 'empty'
+        return self.static_previewer.view(graphname, node_idx, subplots, title, time_idx = time_idx)
 
     def _generate_graphstats(self, graph_structure: DynamicGraphStructure, 
                             time_strings: List[str]) -> DynamicGraphStats:

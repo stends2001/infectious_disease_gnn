@@ -4,8 +4,7 @@ from dataclasses import dataclass
 from typing import List, Union, Dict, Literal
 import json
 
-from .containers import GraphStructure
-from .graphstructures import DynamicGraphStructure
+from .containers import GraphStructure, DynamicGraphStructure
 from .graphstats import StaticGraphStats, DynamicGraphStats
 from .graphconfig import StaticGraphConfig, DynamicGraphConfig
 
@@ -37,6 +36,7 @@ class GraphEntry:
 
     def _get_summary(self, type: Literal['small','large']) -> str:
         """returns str of graph summary"""
+
         if type == 'large':
             return print(self.summary)
 
