@@ -12,7 +12,8 @@ from matplotlib.ticker import MaxNLocator
 
 # import not at runtime, prevents circular import
 if TYPE_CHECKING: 
-    from .orchestrator import GraphStructure, GraphRegistry
+    from .graphregistry import GraphRegistry
+    from .containers import GraphStructure
 
 class GraphViewer:
     """

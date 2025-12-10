@@ -3,18 +3,20 @@ from dataclasses import dataclass
 from typing import List, Tuple
 import pandas as pd
 
-@dataclass 
-class GraphStructure:
-    """
-    """
-    edge_index:     torch.Tensor 
-    edge_weight:    torch.Tensor    
+from .containers import GraphStructure
+
+# @dataclass 
+# class GraphStructure:
+#     """
+#     """
+#     edge_index:     torch.Tensor 
+#     edge_weight:    torch.Tensor    
     
-    def __repr__(self) -> str:
-        num_nodes      = len(self.edge_index[0].unique())
-        num_edges      = len(self.edge_index)
-        representation = f'<GraphStructure(num_nodes = {num_nodes}, num_edges = {num_edges})>'
-        return representation   
+#     def __repr__(self) -> str:
+#         num_nodes      = len(self.edge_index[0].unique())
+#         num_edges      = len(self.edge_index)
+#         representation = f'<GraphStructure(num_nodes = {num_nodes}, num_edges = {num_edges})>'
+#         return representation   
 
 @dataclass
 class DynamicGraphStructure:
@@ -43,7 +45,7 @@ class DynamicGraphStructure:
     
     def get_snapshot(self, t_idx: int):
         """Get static graph structure at time index t_idx"""
-        from .graphstructures import GraphStructure
+
         return GraphStructure(
             edge_index=self.edge_indices[t_idx],
             edge_weight=self.edge_weights[t_idx]

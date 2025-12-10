@@ -9,6 +9,7 @@ from matplotlib.figure import Figure
 from pandas import Timestamp
 
 from .containers import RawGraphStructure, DynamicRawGraphStructure
+
 from .edgeweight_normalizer import EdgeWeightNormalizer
 from .rawgraphconstructor import RawGraphConstructor
 from .selfloopadder import SelfLoopAdder
@@ -19,6 +20,7 @@ from .graphstats import StaticGraphStats, DynamicGraphStats
 from .graphconfig import StaticGraphConfig, DynamicGraphConfig
 from ..dataloading import DataOrchestrator
 
+from .commuterdataloader import CommuterDataLoader
 
 class BaseGraphOrchestrator:
     """
@@ -92,30 +94,43 @@ class StaticGraphOrchestrator(BaseGraphOrchestrator):
                              'gravity_model', 'commuter']        
 
     def generate_graphstructure(self, 
-                                method: str, 
-                                self_connection: Literal['mean','0','max'] = 'mean', 
-                                scaling_method: Optional[str] = None, 
-                                graphname: Optional[str] = None, 
+                                method:             str, 
+                                self_connection:    Literal['mean','0','max'] = 'mean', 
+                                normalization:      Optional[Literal['minmax','log','zscore','symmetric','rowwise']] = None, 
+                                graphname:          Optional[str] = None, 
                                 **kwargs) -> None:
         
         if method not in self.graph_methods:
             raise ValueError(f'invalid method {method} for StaticGraphOrchestrator. Supported methods: {self.graph_methods}')
         
         if graphname is None:
-            graphname = self._generate_graphname(method, self_connection, scaling_method)    
+            graphname = self._generate_graphname(method, self_connection, normalization)    
 
         # Generate raw graph structure
         graph_generator = RawGraphConstructor(shapedata=self.shapes.copy(), 
                                              tokens=self.tokens, 
                                              id_col=self.id_col)
         
-        # Methods that don't need population data
-        if method in ['geographic_neighbors', 'identity', 'mesh', 'distance_threshold', 'k_nearest']:
-            raw_structure = graph_generator.generate_graph(method=method, **kwargs)
-        else:
+        # Methods that need population data
+        if method in ['population_weighted','gravity_model']:
             raw_structure = graph_generator.generate_graph(method=method, 
                                                           population_data=self.population_data, 
-                                                          **kwargs)         
+                                                          **kwargs)           
+        elif method == 'commuter':
+
+            if 'year' not in kwargs:
+                raise ValueError(f'when using commuter data please supply a year')
+            
+            else:
+                commuter_data = CommuterDataLoader(years=kwargs['year']).return_data()    
+                raw_structure = graph_generator.generate_graph(method=method, 
+                                                          commuter_data=commuter_data, 
+                                                          **kwargs)      
+
+
+        else:
+            raw_structure = graph_generator.generate_graph(method=method, **kwargs)
+
   
         # Add self-loops (only when method is neither identity nor mesh)
         if method not in ['identity', 'mesh']:
@@ -123,23 +138,21 @@ class StaticGraphOrchestrator(BaseGraphOrchestrator):
                                          node_ids=self.node_ids).add_loops(self_connection)
 
         # Convert to tensors
-        edge_weight = torch.tensor(raw_structure.edge_weight, dtype=torch.float)
-        edge_index = torch.tensor(raw_structure.edge_index, dtype=torch.long).t().contiguous()    
+        edge_weight                 = torch.tensor(raw_structure.edge_weight_ls, dtype=torch.float)
+        edge_index                  = torch.tensor(raw_structure.edge_index_ls,   dtype=torch.long).t().contiguous() 
+
+        graphstructre_prenormalized = GraphStructure(edge_index, edge_weight)
 
         # Edge-weight normalization (removes zero values)
-        if scaling_method:
-            norm = EdgeWeightNormalizer(edge_indices=edge_index, 
-                                       edge_weights=edge_weight, 
-                                       num_nodes=self.num_nodes)
-            edge_index, edge_weight = norm.normalize(scaling_method)
+        edgeweight_normalizer       = EdgeWeightNormalizer(graphstructre_prenormalized)
+        graphstructure_normalized   = edgeweight_normalizer.normalize(normalization)
 
         # Create final structures
-        graphstructure = GraphStructure(edge_index, edge_weight)
-        graphstats = self._generate_graphstats(graphstructure)
-        graphconfig = StaticGraphConfig(method, self_connection, scaling_method, kwargs)
+        graphstats = self._generate_graphstats(graphstructure_normalized)
+        graphconfig = StaticGraphConfig(method, self_connection, normalization, kwargs)
 
         self.graph_registry.add_entry(graphname, 
-                                     GraphEntry(graphstructure, graphstats, graphconfig, 'static'))
+                                     GraphEntry(graphstructure_normalized, graphstats, graphconfig, 'static'))
 
     def _generate_graphstats(self, graph_structure: GraphStructure) -> StaticGraphStats:
         """Returns a summary of the static graph"""

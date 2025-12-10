@@ -7,18 +7,16 @@ import geopandas as gpd
 import numpy as np
 
 from sklearn.metrics.pairwise import euclidean_distances
-from src.utils import get_data_env
 
 from .containers import RawGraphStructure
-# graph edge returning class setting:
-# population_data
-# shapedata
-# id_col
+
+from .commuterdataloader import CommuterDataLoader
 
 class RawGraphConstructor:
 
     """
-    creates and returns single RawGraphStructures 
+    creates and returns single RawGraphStructures;
+    a List of edge_index and a List of edge_weights
     """
 
     def __init__(self,
@@ -38,11 +36,11 @@ class RawGraphConstructor:
                             'geographic_neighbors'  : self._geographic_neighbors,
                             'identity'              : self._identity,
                             'mesh'                  : self._mesh,
-                            # 'distance_threshold'    : self._distance_threshold,
-                            # 'k_nearest'             : self._k_nearest,
-                            # 'population_weighted'   : self._population_weighted,
+                            'distance_threshold'    : self._distance_threshold,
+                            'k_nearest'             : self._k_nearest,
+                            'population_weighted'   : self._population_weighted,
                             'gravity_model'         : self._gravity_model,
-                            # 'commuter'              : self._commuter
+                            'commuter'              : self._commuter
                             }           
 
     def generate_graph(self, method: str, **kwargs) -> RawGraphStructure:
@@ -53,7 +51,6 @@ class RawGraphConstructor:
         ----------
         method: str
             which graph to construct
-        mode: Literal['static','dynamic'] = 'static'
         """
 
         if method not in self.GENERATION_FUNCS:
@@ -93,7 +90,6 @@ class RawGraphConstructor:
         edges       = list(set(edges))
         weights     = [float(1) for i in range(len(edges))]
         return edges, weights
-    
 
     def _mesh(self) -> Tuple[List[Tuple[int,int]], List[float]]:
         """
@@ -105,8 +101,7 @@ class RawGraphConstructor:
         node_ids    = list(dfc[self.id_col].unique())
         edges       = [(int(s), int(t)) for s in node_ids for t in node_ids]
         weights     = [float(1) for i in range(len(edges))]        
-        return edges, weights
-       
+        return edges, weights      
 
     def _gravity_model(self,
                        population_data:   pd.DataFrame, 
@@ -167,98 +162,96 @@ class RawGraphConstructor:
 
         return edges, weights
 
-    # # TODO: rename to static_commuter
-    # def _commuter(self, commuting_threshold: int, years: Union[List[str], str]= '2024', top_k: Optional[int] = None)  -> Tuple[List[Tuple[int,int]], List[float]]:
-    #     """ 
-    #     creates a commuter - graph
+    def _commuter(self, commuter_data: pd.DataFrame, commuting_threshold: int, top_k: Optional[int] = None, **kwargs)  -> Tuple[List[Tuple[int,int]], List[float]]:
+        """ 
+        creates a commuter - graph
 
-    #     Parameters
-    #     ----------
-    #     years: str = '2024'
-    #         the year for which to retrieve the data
-    #         when mode == 'dynamic', please ensure to input an iterable for years
-    #     commuting_threshold: int = 1_000
-    #         the threshold for number of commuters for nodes to be connected       
-    #     top_k: int = None
-    #         the maximum number of connections for each node
-    #     """
+        Parameters
+        ----------
+        years: str = '2024'
+            the year for which to retrieve the data
+            when mode == 'dynamic', please ensure to input an iterable for years
+        commuting_threshold: int = 1_000
+            the threshold for number of commuters for nodes to be connected       
+        top_k: int = None
+            the maximum number of connections for each node
+        """
+  
+        commuter_data.loc[:, 'nuts3_work']      = commuter_data.loc[:, 'nuts3_work'].map(self.tokens)
+        commuter_data.loc[:, 'nuts3_residence'] = commuter_data.loc[:, 'nuts3_residence'].map(self.tokens)
 
-    #     commuter_data                           = CommuterDataLoader(years=years).return_data()      
-    #     commuter_data.loc[:, 'nuts3_work']      = commuter_data.loc[:, 'nuts3_work'].map(self.tokens)
-    #     commuter_data.loc[:, 'nuts3_residence'] = commuter_data.loc[:, 'nuts3_residence'].map(self.tokens)
+        commuter_data   = commuter_data[commuter_data['commuters'] > commuting_threshold]
 
-    #     commuter_data   = commuter_data[commuter_data['commuters'] > commuting_threshold]
+        if top_k is not None:
+            # Keep only top_k strongest links per source (nuts3_work)
+            commuter_data = (
+                commuter_data
+                .sort_values(by='commuters', ascending=False)
+                .groupby('nuts3_work', group_keys=False)
+                .head(top_k)
+            )
 
-    #     if top_k is not None:
-    #         # Keep only top_k strongest links per source (nuts3_work)
-    #         commuter_data = (
-    #             commuter_data
-    #             .sort_values(by='commuters', ascending=False)
-    #             .groupby('nuts3_work', group_keys=False)
-    #             .head(top_k)
-    #         )
+        node_edges = list(zip(
+            commuter_data['nuts3_work'].astype(int),
+            commuter_data['nuts3_residence'].astype(int)
+        ))
+        node_weights = commuter_data['commuters'].astype(float).tolist()
 
-    #     node_edges = list(zip(
-    #         commuter_data['nuts3_work'].astype(int),
-    #         commuter_data['nuts3_residence'].astype(int)
-    #     ))
-    #     node_weights = commuter_data['commuters'].astype(float).tolist()
-
-    #     return (node_edges, node_weights)
+        return (node_edges, node_weights)
                          
-    # def _distance_threshold(self, max_distance: float) -> Tuple[List[Tuple[int,int]], None]:
-    #     """
-    #     creates a distance_threshold - graph:
-    #     each node is connected to all other nodes within max_distance with uniform edge_weights
-    #     """        
-    #     dfc         = self.gdf[[self.id_col, 'geometry']].sort_values(self.id_col).reset_index(drop=True)
-    #     centroids   = dfc.geometry.centroid
-    #     coords      = np.column_stack([centroids.x, centroids.y])
-    #     distances   = euclidean_distances(coords)
-    #     edges       = []
-    #     for i in range(len(dfc)):
-    #         for j in range(len(dfc)):
-    #             if distances[i, j] <= max_distance:
-    #                 edges.append((int(dfc.iloc[i][self.id_col]), int(dfc.iloc[j][self.id_col])))
-    #     return edges, None
+    def _distance_threshold(self, max_distance: float) -> Tuple[List[Tuple[int,int]], None]:
+        """
+        creates a distance_threshold - graph:
+        each node is connected to all other nodes within max_distance with uniform edge_weights
+        """        
+        dfc         = self.gdf[[self.id_col, 'geometry']].sort_values(self.id_col).reset_index(drop=True)
+        centroids   = dfc.geometry.centroid
+        coords      = np.column_stack([centroids.x, centroids.y])
+        distances   = euclidean_distances(coords)
+        edges       = []
+        for i in range(len(dfc)):
+            for j in range(len(dfc)):
+                if distances[i, j] <= max_distance:
+                    edges.append((int(dfc.iloc[i][self.id_col]), int(dfc.iloc[j][self.id_col])))
+        return edges, None
 
-    # def _k_nearest(self, k: int) -> Tuple[List[Tuple[int,int]], None]:
-    #     """
-    #     creates a k-nearest-neighbors - graph:
-    #     each node is connected to its k-nearest-neighbors with uniform edge_weights
-    #     """        
-    #     dfc         = self.gdf[[self.id_col, 'geometry']].sort_values(self.id_col).reset_index(drop=True)
-    #     centroids   = dfc.geometry.centroid
-    #     coords      = np.column_stack([centroids.x, centroids.y])
-    #     distances   = euclidean_distances(coords)
-    #     edges       = []
-    #     for i in range(len(dfc)):
-    #         nearest_indices = np.argsort(distances[i])[1:k+1]
-    #         for j in nearest_indices:
-    #             edges.append((int(dfc.iloc[i][self.id_col]), int(dfc.iloc[j][self.id_col])))
-    #     return edges, None
+    def _k_nearest(self, k: int) -> Tuple[List[Tuple[int,int]], None]:
+        """
+        creates a k-nearest-neighbors - graph:
+        each node is connected to its k-nearest-neighbors with uniform edge_weights
+        """        
+        dfc         = self.gdf[[self.id_col, 'geometry']].sort_values(self.id_col).reset_index(drop=True)
+        centroids   = dfc.geometry.centroid
+        coords      = np.column_stack([centroids.x, centroids.y])
+        distances   = euclidean_distances(coords)
+        edges       = []
+        for i in range(len(dfc)):
+            nearest_indices = np.argsort(distances[i])[1:k+1]
+            for j in nearest_indices:
+                edges.append((int(dfc.iloc[i][self.id_col]), int(dfc.iloc[j][self.id_col])))
+        return edges, None
 
-    # def _population_weighted(self, max_distance: float) -> Tuple[List[Tuple[int,int]], List[float]]:
-    #     """
-    #     creates a population_weighted - graph:
-    #     each node is connected only to all nodes within max_distance, with weights proportional to population_sizes of these nodes.
-    #     """        
-    #     dfc                     = self.gdf[[self.id_col, 'geometry']].sort_values(self.id_col).reset_index(drop=True)
-    #     dfc                     = dfc.merge(self.popdata[[self.id_col, 'population_size']], on=self.id_col, how='left')
-    #     dfc['population_size']  = dfc['population_size'].fillna(dfc['population_size'].mean())
-    #     centroids               = dfc.geometry.centroid
-    #     coords                  = np.column_stack([centroids.x, centroids.y])
-    #     distances               = euclidean_distances(coords)
-    #     edges                   = []
-    #     weights                 = []
+    def _population_weighted(self, max_distance: float) -> Tuple[List[Tuple[int,int]], List[float]]:
+        """
+        creates a population_weighted - graph:
+        each node is connected only to all nodes within max_distance, with weights proportional to population_sizes of these nodes.
+        """        
+        dfc                     = self.gdf[[self.id_col, 'geometry']].sort_values(self.id_col).reset_index(drop=True)
+        dfc                     = dfc.merge(self.popdata[[self.id_col, 'population_size']], on=self.id_col, how='left')
+        dfc['population_size']  = dfc['population_size'].fillna(dfc['population_size'].mean())
+        centroids               = dfc.geometry.centroid
+        coords                  = np.column_stack([centroids.x, centroids.y])
+        distances               = euclidean_distances(coords)
+        edges                   = []
+        weights                 = []
 
-    #     for i in range(len(dfc)):
-    #         for j in range(len(dfc)):
-    #             if distances[i, j] <= max_distance and i != j:
-    #                 edges.append((int(dfc.iloc[i][self.id_col]), int(dfc.iloc[j][self.id_col])))
-    #                 pop_i = dfc.iloc[i]['population_size']
-    #                 pop_j = dfc.iloc[j]['population_size']
-    #                 dist = distances[i, j]
-    #                 weight = (pop_i * pop_j) / (dist + 1)
-    #                 weights.append(weight)       
-    #     return edges, weights
+        for i in range(len(dfc)):
+            for j in range(len(dfc)):
+                if distances[i, j] <= max_distance and i != j:
+                    edges.append((int(dfc.iloc[i][self.id_col]), int(dfc.iloc[j][self.id_col])))
+                    pop_i = dfc.iloc[i]['population_size']
+                    pop_j = dfc.iloc[j]['population_size']
+                    dist = distances[i, j]
+                    weight = (pop_i * pop_j) / (dist + 1)
+                    weights.append(weight)       
+        return edges, weights

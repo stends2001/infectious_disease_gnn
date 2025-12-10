@@ -12,8 +12,7 @@ class SelfLoopAdder:
 
     Parameters
     ----------
-    edge_indices: List[Tuple[int,int]]
-    edge_weights: List[float]
+    rawgraphstructure: RawGraphStructure
     node_ids: NDArray
         an array of node ids to loop over
 
@@ -26,10 +25,9 @@ class SelfLoopAdder:
                  rawgraphstructure: RawGraphStructure,
                  node_ids    : np.ndarray):
         
-        self.edge_indices_ls =rawgraphstructure.edge_index
-        self.edge_weights_ls =rawgraphstructure.edge_weight
+        self.edge_indices_ls =rawgraphstructure.edge_index_ls
+        self.edge_weights_ls =rawgraphstructure.edge_weight_ls
         self.node_ids        = node_ids
-
 
         self.SELFLOOP_FUNCS = {
                                     '0'     : self._add0,
@@ -37,7 +35,7 @@ class SelfLoopAdder:
                                     'mean'  : self._addmean,
         }    
 
-    def add_loops(self, method: str) -> Tuple[List[Tuple[int,int]], List[float]]:
+    def add_loops(self, method: str) -> RawGraphStructure:
         """
         collects the required loop-adding-function and feeds in the kwargs
         """

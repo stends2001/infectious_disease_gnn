@@ -57,17 +57,20 @@ class EdgeWeightNormalizer:
             self.graphstructure.edge_weight
         )
 
-        if method not in self.NORMALIZATION_FUNCS:
+        if method is None:
+            print('normalization method is None')
+            return GraphStructure(edge_index, edge_weight)   
+
+        elif method not in self.NORMALIZATION_FUNCS:
             raise KeyError(
                 f"Unknown normalization method: {method}. Available methods are: "
                 f"{', '.join(self.NORMALIZATION_FUNCS.keys())}"
             ) 
-        
-        # pass tensors explicitly instead of storing to self
-        normalize_fn        = self.NORMALIZATION_FUNCS[method]
-        normalized_weights  = normalize_fn(edge_index, edge_weight)
-
-        return GraphStructure(edge_index, normalized_weights)        
+        else:
+            # pass tensors explicitly instead of storing to self
+            normalize_fn        = self.NORMALIZATION_FUNCS[method]
+            normalized_weights  = normalize_fn(edge_index, edge_weight)
+            return GraphStructure(edge_index, normalized_weights)        
          
     def _remove_zeros(self, edge_index: torch.Tensor, edge_weight: torch.Tensor, threshold: float = 0) -> Tuple[torch.Tensor, torch.Tensor]:
         """

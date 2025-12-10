@@ -23,7 +23,7 @@ class RawGraphStructure:
     def __post_init__(self):
         if len(self.edge_index_ls) != len(self.edge_weight_ls):
             raise ValueError(
-                f"Incompatiable shapes of edge_index (len = {len(self.edge_index_ls)}) and edge_weight (len = {self.edge_weight_ls}) in RawGraphStructure"
+                f"Incompatiable shapes of edge_index (len = {len(self.edge_index_ls)}) and edge_weight (len = {len(self.edge_weight_ls)}) in RawGraphStructure"
             )
 
     def __repr__(self) -> str:
@@ -79,14 +79,16 @@ class DynamicRawGraphStructure:
 @dataclass 
 class GraphStructure:
     """
+    edge_index:     torch.Tensor 
+    edge_weight:    torch.Tensor   
     """
     edge_index:     torch.Tensor 
     edge_weight:    torch.Tensor    
 
     def __post_init__(self):
-        if len(self.edge_index) != len(self.edge_weight):
+        if self.edge_index.shape[1] != len(self.edge_weight):
             raise ValueError(
-                f"Incompatiable shapes of edge_index (len = {len(self.edge_index[0])}) and edge_weight (len = {self.edge_weight}) in RawGraphStructure"
+                f"Incompatiable shapes of edge_index (len = {self.edge_index.shape[1]}) and edge_weight (len = {len(self.edge_weight)}) in GraphStructure"
             )
         
         self.num_nodes      = len(self.edge_index[0].unique())
