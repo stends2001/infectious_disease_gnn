@@ -1,6 +1,5 @@
 {
-  "method": "boolean_neighbors",
+  "method": "geographic_neighbors",
   "self_connection": "mean",
-  "kwargs": {},
-  "graphname": "geographical_neighbors1"
+  "kwargs": {}
 }

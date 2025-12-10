@@ -1,0 +1,10 @@
+{
+  "method": "commuter",
+  "self_connection": "eps",
+  "normalization": "rowwise",
+  "kwargs": {
+    "commuting_threshold": 0,
+    "year": "2014",
+    "top_k": 4
+  }
+}

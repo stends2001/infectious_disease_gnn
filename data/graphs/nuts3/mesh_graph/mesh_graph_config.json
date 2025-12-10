@@ -1,6 +1,5 @@
 {
   "method": "mesh",
-  "self_connection": "mean",
-  "kwargs": {},
-  "graphname": "mesh_graph"
+  "self_connection": "0",
+  "kwargs": {}
 }

@@ -1,0 +1,10 @@
+{
+  "method": "commuter",
+  "self_connection": "0",
+  "scaling_method": "rowwise",
+  "kwargs": {
+    "commuting_threshold": 1000,
+    "top_k": 4
+  },
+  "graphname": "static_commuter24_4"
+}

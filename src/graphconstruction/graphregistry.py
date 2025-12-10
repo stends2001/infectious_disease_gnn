@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import List, Union, Dict, Literal
 import json
 
-from .graphstructures import GraphStructure, DynamicGraphStructure
+from .containers import GraphStructure, DynamicGraphStructure
 from .graphstats import StaticGraphStats, DynamicGraphStats
 from .graphconfig import StaticGraphConfig, DynamicGraphConfig
 
@@ -34,12 +34,9 @@ class GraphEntry:
     config:    Union[StaticGraphConfig, DynamicGraphConfig]
     mode:      Literal['static','dynamic']
 
-    def __repr__(self) -> str:
-        representation = f'<GraphEntry(structure, summary, config, mode)>'
-        return representation        
-
     def _get_summary(self, type: Literal['small','large']) -> str:
         """returns str of graph summary"""
+
         if type == 'large':
             return print(self.summary)
 
@@ -48,29 +45,33 @@ class GraphEntry:
 
 class GraphRegistry:
     """
-    Registry of GraphEntry objects
+    Registry of GraphEntry objects into self.registry: Dict[str, GraphEntry]
+
+    Parameters
+    ----------
+    graph_dir: str
+        directory in which to save graphstructures from the registry
 
     Methods
     -------
-    add_entry
-        adds an entry
-
-    get_entry
-        retrieves an entry        
-
-    rename_entry
+    - add_entry
+        adds an entry to the current registry
+    - get_entry
+        retrieves an entry from the current registry      
+    - rename_entry
         renames an entry from current_graphname to new_graphname
-
-    remove_entry
-        removes an entry
-
-    save_entry
-        saves an entry
+    - remove_entry
+        removes an entry from the current registry
+    - save_entry
+        saves an entry from the current registry
     """
     def __init__(self, graph_dir: str):
         self.registry: Dict[str, GraphEntry]= {}
-        self._print_alignment_width         = 19
+        # saving graphs into:
         self.graph_dir                      = graph_dir
+
+        # for printing
+        self._print_alignment_width         = 19
 
     def add_entry(self, graphname: str, entry: GraphEntry) -> None:
         """adds entry to registry under graphname"""
@@ -85,7 +86,7 @@ class GraphRegistry:
         """returns entry from graphname"""
         if not self._check_entry(graphname):
             print(align(f'{warning_emoji} Graph not found', f'{graphname} wasn\'t found', width=self._print_alignment_width, newline=False))                  
-            registered_entries = ', '.join(self.return_entrynames())
+            registered_entries = ', '.join(self._return_entrynames())
             raise ValueError(f"the following graphs are registered:\n{registered_entries}")
         
         else:
@@ -103,50 +104,101 @@ class GraphRegistry:
         del self.registry[graphname]
         print(align(f'{checkmark} Graph removed', f'{graphname} has been deregistered', width=self._print_alignment_width, newline=False))        
 
-    def save_graphentry(self, graphname: str) -> None:
+    def save_graphentry(self, graphname: Union[List[str],str]) -> None:
         """
-        Save graphentry
+        Save graphentry (static or dynamic)
 
-        Seperately, the following objects are saved:
-        - edge_index
-        - edge_weight
-        - graphconfig
+        For static graphs:
+        in self.graph_dir / {graphname}, graph is saved into:
+        - edge_index.pt
+        - edge_weight.pt
+        - config.json
+
+        For dynamic graphs:
+        in self.graph_dir / {graphname}, graph is saved into:
+            for timestamp:
+            
+            - edge_index_{timestamp}.pt
+            - edge_weight_{timestamp}.pt
+            
+        - config.json
         """
-        graph_entry = self.get_entry(graphname)
-        directory   = os.path.join(self.graph_dir, graphname)
+
+        if graphname == 'all':
+            print('please use ALL instead')
+            return None
         
+        if graphname == 'ALL':
+            graphnames = self._return_entrynames()
+
+        elif isinstance(graphname,str):
+            graphnames = [graphname]
+        else:
+            graphnames = graphname
+
+        for graph_n in graphnames:
+
+            graph_entry = self.get_entry(graph_n)
+            directory   = os.path.join(self.graph_dir, graph_n)
+
+            if graph_entry.config.mode == 'static':
+                self._save_static_graph(graph_entry, graph_n, directory)
+            
+            elif graph_entry.config.mode == 'dynamic':
+                self._save_dynamic_graph(graph_entry, graph_n, directory)
+            
+            print(align(f'{checkmark} GraphEntry Saved', f'{graph_n} has been saved', 
+                        width=self._print_alignment_width, newline=False))
+
+    def _save_static_graph(self, graph_entry: GraphEntry, graphname: str, directory: str) -> None:
+        """Save static graph structure"""
         if os.path.exists(directory):
             raise FileExistsError(f'{error_emoji} GraphEntry Not Saved: {graphname} directory already exists')
 
         os.makedirs(directory, exist_ok=True)
 
-        if graph_entry.config.mode == 'static':            
-            edge_index  = graph_entry.structure.edge_index
-            edge_weight = graph_entry.structure.edge_weight
+        edge_index = graph_entry.structure.edge_index
+        edge_weight = graph_entry.structure.edge_weight
 
-            torch.save(edge_index, os.path.join(directory, f'{graphname}_edge_index.pt'))
+        torch.save(edge_index, os.path.join(directory, f'{graphname}_edge_index.pt'))
 
-            if edge_weight is not None:
-                torch.save(edge_weight, os.path.join(directory, f'{graphname}_edge_weight.pt'))       
+        if edge_weight is not None:
+            torch.save(edge_weight, os.path.join(directory, f'{graphname}_edge_weight.pt'))
 
-            # Save config as JSON
-            config_path = os.path.join(directory, f'{graphname}_config.json')
+        # Save config as JSON
+        config_path = os.path.join(directory, f'{graphname}_config.json')
+        config_copy = graph_entry.config.copy()
 
-            # copy to make sure the original config isn't adjusted
-            config_copy = graph_entry.config.copy()
+        # Remove None values
+        config_copy = {k: v for k, v in config_copy.items() if v is not None}
+    
+        with open(config_path, 'w') as f:
+            json.dump(config_copy, f, indent=2)
 
-            config_copy['graphname'] = graphname
+    def _save_dynamic_graph(self, graph_entry: GraphEntry, graphname: str, directory: str) -> None:
+        """Save dynamic graph structure with timestamp subdirectories"""
+        dynamic_structure   = graph_entry.structure
+
+        os.makedirs(directory, exist_ok=True)
         
-            if config_copy.get("scaling_method") is None:
-                config_copy.pop("scaling_method", None)
-        
-            with open(config_path, 'w') as f:
-                json.dump(config_copy, f, indent=2) 
-        
-            print(align(f'{checkmark} GraphEntry Saved', f'{graphname} has been saved', width=self.alignment_width, newline=False))    
+        # Save each snapshot in its own subdirectory
+        for time, graph in dynamic_structure:
 
-        elif graph_entry.config.mode == 'dynamic':
-            print('dont know how to save a dynamic config yet')
+            # Save tensors
+            torch.save(graph.edge_index, os.path.join(directory, f'{time}_edge_index.pt'))
+
+            if graph.edge_weight is not None:
+                torch.save(graph.edge_weight, os.path.join(directory, f'{time}_edge_weight.pt'))
+        
+        # Save config at top level
+        config_path = os.path.join(directory, f'{graphname}_config.json')
+        config_copy = graph_entry.config.copy()
+        
+        # Remove None values
+        config_copy = {k: v for k, v in config_copy.items() if v is not None}
+        
+        with open(config_path, 'w') as f:
+            json.dump(config_copy, f, indent=2)
 
     def _check_entry(self, graphname: str) -> bool:
         """return boolean reflecting whether or not graphname is registered"""

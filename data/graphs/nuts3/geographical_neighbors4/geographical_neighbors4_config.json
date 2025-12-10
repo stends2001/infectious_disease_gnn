@@ -1,7 +1,6 @@
 {
-  "method": "boolean_neighbors",
+  "method": "geographic_neighbors",
   "self_connection": "0",
-  "scaling_method": "rowwise",
-  "kwargs": {},
-  "graphname": "geographical_neighbors4"
+  "normalization": "rowwise",
+  "kwargs": {}
 }

@@ -1135,7 +1135,7 @@ class DataOrchestrator:
         """preview dataloader"""
         if status == 'processed':
             fig, ax = plt.subplots(1,1, figsize = (14,4))
-            data = self.data_processed.epipopdata
+            data = self.data_processed.data
             sns.lineplot(data[data['node'] == node_idx], x = 'timestamp', y=f'{self.config.target_column}')
             ax.grid()
             ax.set_xlabel("")

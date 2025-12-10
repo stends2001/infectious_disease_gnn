@@ -1,9 +1,9 @@
 {
   "method": "commuter",
-  "self_connection": "0",
-  "scaling_method": "rowwise",
+  "self_connection": "eps",
+  "normalization": "rowwise",
   "kwargs": {
-    "commuting_threshold": 2500
-  },
-  "graphname": "static_commuter24_3"
+    "commuting_threshold": 2500,
+    "year": "2024"
+  }
 }

@@ -1,6 +1,5 @@
 {
   "method": "identity",
-  "self_connection": "mean",
-  "kwargs": {},
-  "graphname": "identity_graph"
+  "self_connection": "0",
+  "kwargs": {}
 }

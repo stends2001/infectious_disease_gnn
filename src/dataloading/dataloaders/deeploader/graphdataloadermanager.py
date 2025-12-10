@@ -13,6 +13,17 @@ class GraphStructureError(Exception):
 class GraphData:
     """
     An alternative to the Pytorch Data class for dataentries of X, y, edge_index and edge_weight
+
+    Parameters
+    ----------
+    x: torch.Tensor
+        input data of shape ...
+    y: torch.Tensor
+        target data of shape ...
+    edge_index: torch.Tensor
+        edge_index of a graphstructure
+    edge_weight: torch.Tensor
+        edge_weight of a graphstructure
     """
     def __init__(self, 
                  x:             torch.Tensor, 
@@ -26,7 +37,7 @@ class GraphData:
         self.edge_weight= edge_weight
 
     def to(self, device: torch.device) -> 'GraphData':
-        """Move all tensors to the specified device."""
+        """Move all tensors to the specified device (GPU)"""
         return GraphData(
             x=self.x.to(device),
             y=self.y.to(device),
@@ -46,9 +57,8 @@ class GraphData:
     
 class GraphDataLoader:
     """
-    An alternative to the Pytorch DataLoader class. 
-    Basically a list of GraphData entries.
-    To be iterated through
+    An alternative to the Pytorch DataLoader class
+    Basically a list of GraphData entries
     """    
     def __init__(self, data_list: List[GraphData]):
         self.data_list = data_list
@@ -66,9 +76,7 @@ class GraphDataLoader:
         cls = self.__class__.__name__
         if not self.data_list:
             return f"{cls}(empty)"
-        
         snapshot = self.data_list[0]
-
         info = (
             f"{len(self.data_list)} datapoints, "
             f"sample: x={tuple(snapshot.x.shape)}, "
@@ -81,11 +89,21 @@ class GraphDataLoader:
 @dataclass
 class GraphDataLoaderCollection:
     """ 
-    Stores all DataLoaders for shallow models in attributes train/val/test/main
+    Stores all DataLoaders for GNN - dataloaders in attributes train/val/test/main
 
-    See Also
+    Parameters
+    ----------
+    train: 'GraphDataLoader
+
+    val: 'GraphDataLoader
+
+    test: 'GraphDataLoader
+
+    main: 'GraphDataLoader
+
+    Downstream
     --------
-    ShallowDataLoader
+    GraphDataLoaderManager: class that manages and stores GraphDataLoaderCollection
     """
     train:              'GraphDataLoader'
     val:                'GraphDataLoader'   
@@ -97,9 +115,14 @@ class GraphDataLoaderCollection:
 
 class GraphDataLoaderManager:
     """
-    DataLoader manager for Graph - neural - networks. 
+    DataLoader manager for GNNs. 
     An updated version of the DeepLoader class in the previous version.
     Uses the previously constructed dataorchestrator.
+
+    Parameters
+    ----------
+    dataorchestrator: DataOrchestrator
+        built dataorchestrator - object
 
     Examples
     --------
@@ -127,9 +150,8 @@ class GraphDataLoaderManager:
             The name of the file. Should correspond to the filename: f'{graphdirectory}/{graphname}/_edge_index.pt' and edge_weight.
         graphdirectory: str = 'data/graphs'
 
-        Returns:
-        -------
-        self
+        Note:
+        TODO currently limited to the retrieval of static graphs only
         """
     
         graphpath  = os.path.join(graphdirectory, self.dataorchestrator.config.nuts_level, graphname, graphname)
@@ -264,7 +286,7 @@ class GraphDataLoaderManager:
         """
         construct main dataloader based on X, y, edge_index and edge_weight
 
-        Returns:
+        Returns
         -------
         GraphDataLoader
         """

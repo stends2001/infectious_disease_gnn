@@ -1,0 +1,12 @@
+{
+  "method": "gravity_model",
+  "self_connection": "0",
+  "scaling_method": "rowwise",
+  "kwargs": {
+    "max_distance": 1000000,
+    "top_k": 10,
+    "alpha": 2,
+    "decay": 1
+  },
+  "graphname": "gravity4"
+}

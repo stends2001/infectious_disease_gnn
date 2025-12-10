@@ -3,6 +3,8 @@ from typing import Optional, Tuple, List, Union, Literal, Dict
 import numpy as np
 from statistics import mean
 
+from .containers import RawGraphStructure
+
 class SelfLoopAdder:
     """ 
     adds self-loops to edge_indices and edge_weights
@@ -10,8 +12,7 @@ class SelfLoopAdder:
 
     Parameters
     ----------
-    edge_indices: List[Tuple[int,int]]
-    edge_weights: List[float]
+    rawgraphstructure: RawGraphStructure
     node_ids: NDArray
         an array of node ids to loop over
 
@@ -21,22 +22,21 @@ class SelfLoopAdder:
     GraphOrchestrator   → orchestrates the creation of a graph through GraphConstructor
     """    
     def __init__(self,
-                 edge_indices: List[Tuple[int,int]],
-                 edge_weights: List[float],
+                 rawgraphstructure: RawGraphStructure,
                  node_ids    : np.ndarray):
         
-        self.edge_weights_ls = edge_weights 
-        self.edge_indices_ls = edge_indices
+        self.edge_indices_ls =rawgraphstructure.edge_index_ls
+        self.edge_weights_ls =rawgraphstructure.edge_weight_ls
         self.node_ids        = node_ids
-
 
         self.SELFLOOP_FUNCS = {
                                     '0'     : self._add0,
+                                    'eps'   : self._addepsilon,
                                     'max'   : self._addmax,
                                     'mean'  : self._addmean,
         }    
 
-    def add_loops(self, method: str) -> Tuple[List[Tuple[int,int]], List[float]]:
+    def add_loops(self, method: str) -> RawGraphStructure:
         """
         collects the required loop-adding-function and feeds in the kwargs
         """
@@ -50,8 +50,11 @@ class SelfLoopAdder:
         # add the weights
         updated_weights        = self.SELFLOOP_FUNCS[method]() 
 
-        return (updated_indices, updated_weights)
+        return RawGraphStructure(updated_indices, updated_weights)
                   
+    def _addepsilon(self, epsilon: float = 1e-6):
+        return self.edge_weights_ls + [epsilon for _ in self.node_ids]
+
     def _add0(self):
         return self.edge_weights_ls + [0 for _ in self.node_ids]
 

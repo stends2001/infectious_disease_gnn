@@ -1,10 +1,10 @@
 import os
-from typing import Optional, Tuple, List, Union, Literal, Dict
+from typing import Optional, List, Union
 from collections.abc import Iterable
 import pandas as pd
 from io import StringIO
 from ..utils import get_data_env
-from ..utils.textformatting import checkmark
+from ..utils.textformatting import checkmark, warning_emoji
 from tqdm import tqdm
 
 dir_commuting_raw   = os.path.join(get_data_env(),'raw/germany/mobility/commuter_data/auspendler/')
@@ -138,6 +138,7 @@ class CommuterDataLoader:
 
     def return_data(self) -> pd.DataFrame:
         self.data = self._import_data()
+        self._check_years()
         return self.data
 
     def _import_data(self) -> pd.DataFrame:
@@ -147,8 +148,13 @@ class CommuterDataLoader:
             dtype={'nuts3_work': 'str', 'nuts3_residence': 'str', 'year': 'str'}
         )
         df = df[df['year'].isin(self.years)]
-        print(f"{checkmark} data loaded")
+        print(f"{checkmark} commuting-data loaded for {self.years}")
         return df
+
+    def _check_years(self):
+        for yy in self.years:
+            if yy not in self.data['year'].unique():
+                print(f"{warning_emoji} {yy} in __init__ but not in commuting-data.\nDownloaded data runs from 2002-2024")
 
     def __repr__(self) -> str:
         if self.data is not None:
