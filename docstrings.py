@@ -7,6 +7,9 @@
     Returns:
     -------
 
+    Methods:
+    -------
+
     Attributes:
     ----------
 
