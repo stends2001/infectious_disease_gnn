@@ -1,200 +1,161 @@
-from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Literal, List, Union
+from typing import Literal, Optional
+from ..dataloading import DataOrchestrator, GraphDataLoaderManager, ShallowDataLoaderManager
+from ..models import MODELSREGISTRY
+from ..models.base.basemodel import BaseModel
+from ..evaluation import Evaluator
 
-from src.utils import get_data_env
-from src.dataloading import DeepDataLoader
-from src.configmanager._baseconfigmanager import ConfigManager
-from src.models import MODELSREGISTRY
-from src.models import PersistenceModel, GATv2Model, GConvLSTMModel, TGCNModel, NodeRFModel, SpatialGNNModel
+class ExperimentRunner:
 
-from src.evaluation import Evaluator
-
-@dataclass
-class DataConfig:
-    disease_name:       str
-    nuts_level:         Literal['nuts1','nuts2','nuts3'] = 'nuts2'
-    min_date:           str = '2001-01-01'
-    max_date:           str = '2020-06-01'
-    split_berlin:       bool = False
-    include_population: bool = False
-    
-@dataclass
-class TimeSeriesConfig:
-    sequence_length:    int = 12
-    horizon_size:       int = 1
-    horizon_leadtime:   int = 3
-    lags:               int = 1
-    
-@dataclass
-class PreprocessingConfig:
-    log_transform_target:   bool = True
-    add_time_features:      bool = True
-    normalization_method:   Literal['minmax','zscore'] = 'zscore'
-    
-@dataclass
-class SplitConfig:
-    split_trainval: str = '2018-06-01'
-    split_valtest:  str = '2019-06-01'
-
-@dataclass
-class ExperimentConfig:
-    name:           str
-    data:           DataConfig
-    timeseries:     TimeSeriesConfig
-    preprocessing:  PreprocessingConfig
-    splits:         SplitConfig
-    graphs:         Union[List[str], str]
-    model:          Union[List[str], str] = 'spatialgcn'
-    baseline:       bool                  = True
-    global_hparams: dict = field(default_factory=dict)
-    model_hparams:  dict = field(default_factory=dict)
-    train_hparams:  dict = field(default_factory=dict)
-
-    def __post_init__(self):
-
-        if isinstance(self.model, str):
-            self.models_list = [self.model]
-        else:
-            self.models_list = self.model
-
-        # Validate each model in the list
-        for model in self.models_list:  # Changed from self.model to self.models_list
-            # Normalize model name to lowercase for comparison
-            model_name = model.lower()  # Simplified - model is already a string here
-            
-            # Create a case-insensitive lookup
-            registry_lower = {k.lower(): k for k in MODELSREGISTRY.keys()}
-            
-            # Check if model exists in registry (case-insensitive)
-            if model_name not in registry_lower:
-                available = ', '.join(sorted(MODELSREGISTRY.keys()))
-                raise ValueError(
-                    f"Model '{model}' not found in registry. "  # Changed from self.model to model
-                    f"Available models: {available}"
-                )
-
-class ExperimentRunner(ConfigManager):
     """
-    Manages configurations of:
+    class to run Experiments with
+    add models using .add_baseline_model(), .add_shallow_model()
+    or .add_gnn(), and go for .run()
 
-    - experiments
+    Parameters
+    ----------
+    data_orchestrator: DataOrchestrator
+        object of finalized and processed EpiConfig
+
+    Returns
+    -------
+    None, attributes .evaluation and .models are set    
+
+    Examples
+    --------
+    >>> runner = (ExperimentRunner(data_orchestrator)
+    >>>    .add_baseline_model('PersistenceModel', 'persistence')
+    >>>    .add_baseline_model('ClimateologyModel', 'climateology')    
+    >>>    .add_shallow_model('NodeRFModel', 'node_rf', model_hparams={'n_estimators': 100},                                       train_kwargs={'verbose': 0})
+    >>>    .add_gnn('SpatialGNNModel', 'gcn-identity_graph',    'identity_graph',                 global_hparams=global_hparams,   train_kwargs={'verbose': 0, 'show_loss': False})
+    >>>    .add_gnn('SpatialGNNModel', 'gcn-mesh_graph',        'mesh_graph',                     global_hparams=global_hparams,   train_kwargs={'verbose': 0, 'show_loss': False})        
+    >>>    .add_gnn('SpatialGNNModel', 'gcn-commuter14_2',      'static_commuter14_2',            global_hparams=global_hparams,   train_kwargs={'verbose': 0, 'show_loss': False})        
+    >>>    .add_gnn('SpatialGNNModel', 'gcn-commuter24_2',      'static_commuter24_2',            global_hparams=global_hparams,   train_kwargs={'verbose': 0, 'show_loss': False})                      
+    >>>    .add_gnn('SpatialGNNModel', 'gcn-dynamic_commuter2', 'dynamic_commuter2','dynamic', data_kwargs={'timesteps': range(2006,2021)} , global_hparams=global_hparams, train_kwargs={'verbose': 0, 'show_loss': False})                     
+    >>>    # GATVs
+    >>>    .add_gnn('GATv2Model',      'gatv2-identity_graph', 'identity_graph',                 global_hparams=global_hparams,            train_kwargs={'verbose': 0, 'show_loss': False})
+    >>>    .add_gnn('GATv2Model',      'gatv2-mesh_graph',     'mesh_graph',                     global_hparams=global_hparams,            train_kwargs={'verbose': 0, 'show_loss': False})    
+    >>>    .add_gnn('GATv2Model',      'gatv2-commuter14_2',   'static_commuter14_2',                     global_hparams=global_hparams,   train_kwargs={'verbose': 0, 'show_loss': False})    
+    >>>    .add_gnn('GATv2Model',      'gatv2-commuter24_2',   'static_commuter24_2',                     global_hparams=global_hparams,   train_kwargs={'verbose': 0, 'show_loss': False})        
+    >>>    .add_gnn('GATv2Model',      'gatv2-dynamic_commuter2',     'dynamic_commuter2', data_kwargs={'timesteps': range(2006,2021)} , global_hparams=global_hparams, train_kwargs={'verbose': 0, 'show_loss': False})                     
+    >>>     )
+
+    >>> results = runner.run()    
     """
 
-    def __init__(self, base_dir: str = "config/experiments/"):
-        self.base_dir       = Path(base_dir)
-        self.experiment_log = {}
-        self.base_dir.mkdir(parents=True, exist_ok=True)
 
-    def define(self, config: ExperimentConfig) -> 'ExperimentRunner':
-        """
-        Define an experiment using an ExperimentConfig object
-        """
-        if config.name in self.experiment_log:
-            raise KeyError(
-                f'An experiment under the name {config.name} has been found in the log. '
-                f'Please ensure no double naming.'
-            )
-        
-        self.experiment_log[config.name] = config
+    def __init__(self, data_orchestrator: DataOrchestrator):
+        self.data_orchestrator = data_orchestrator
+        self.models = []
+        self.graph_data = {}
+        self.shallow_data = None
+    
+    def add_baseline_model(self, model_class, name, **kwargs):
+        """Add baseline model to the experiment"""
+        self.models.append({
+            'class': model_class,
+            'name': name,
+            'model_type': 'baseline',
+            'data_type': 'shallow',
+            'kwargs': kwargs
+        })
         return self
-    def execute(self, experiment_name: str):
+
+    def add_shallow_model(self, model_class, name, **kwargs):
+        """Add shallow model to the experiment"""
+        self.models.append({
+            'class': model_class,
+            'name': name,
+            'model_type': 'shallow',
+            'data_type': 'shallow',
+            'kwargs': kwargs
+        })
+        return self
+    
+    def add_gnn(self, model_class, name, graph, graph_mode: Literal['static','dynamic'] = 'static', data_kwargs: Optional[dict] = None, **kwargs):
         """
-        Execute an experiment
+        add GNN to experiment
+        
+        Examples
+        --------
+        >>> .add_gnn('GATv2Model', 
+                    'gatv2-commuter24_2', 
+                    'static_commuter24_2',
+                    global_hparams=global_hparams,
+                    train_kwargs = {'verbose': 0, 'show_loss': False}
+                    )        
+        >>> .add_gnn('GATv2Model',
+                    'gatv2-dynamic_commuter2',
+                    'dynamic_commuter2',
+                    data_kwargs={'timesteps': range(2006,2021)},
+                    global_hparams=global_hparams,
+                    train_kwargs={'verbose': 0, 'show_loss': False}
+                    )          
         """
-        if experiment_name not in self.experiment_log:
-            raise KeyError(f'No experiment {experiment_name} found in experiment_log')
+        self.models.append({
+            'class': model_class,
+            'name': name,
+            'model_type': 'deep',
+            'graph_mode': graph_mode,
+            'graph_name': graph,
+            'data_type': 'deepgraph',
+            'data_kwargs': data_kwargs,
+            'kwargs': kwargs
+        })
+        return self
+    
+    def run(self):
+        """run an experiment"""
+        models_dictionary = {}
+        for model_spec in self.models:
+            # Get data
+            if model_spec['data_type'] == 'shallow':
+                data = self._get_shallow()
+            elif model_spec['data_type'] == 'deepgraph':
+
+                data = self._get_graph(model_spec['graph_name'], model_spec['graph_mode'], model_spec['data_kwargs'])
+          
+            self._execute_experiment_modeltype(model_spec, data, models_dictionary)
         
-        config = self.experiment_log[experiment_name]
-
-        # Section 1: Get epi-dataloader
-        epidata = self._prepare_data(config)
-
-        # Section 2: Get gnn-dataloaders
-        gnn_datasets = self._prepare_datasets(epidata, config)
-        self.gnn_datasets = gnn_datasets
-
-        # Section 3: run baseline model
-        persistence_baseline = PersistenceModel(epidata, name='baseline')
-        persistence_baseline.forecast('test')
-
-        # Section 4: Models - iterate over all models in the list
-        models_dict = {}
+        self.evaluation = Evaluator(list(models_dictionary.values()))
+        self.evaluation.add_evaluation(0,'test')
+        self.models_dictionary = models_dictionary
+    
+    def _get_shallow(self) -> ShallowDataLoaderManager:
+        """return ShallowDataLoaderManager"""
+        if self.shallow_data is None:
+            self.shallow_data = ShallowDataLoaderManager(self.data_orchestrator).construct_dataloaders()
+        return self.shallow_data
+    
+    def _execute_experiment_modeltype(self, model_spec, data, results) -> None:
+        """for a specific model, run the pipeline"""
+        ModelClass = MODELSREGISTRY[model_spec['class']]
+        model: BaseModel = ModelClass(data, name=model_spec['name'])
+        kwargs = model_spec['kwargs']
         
-        for model_name in config.models_list:  # Iterate over the list of models
-            # Get the model class from registry
-            ModelClass = MODELSREGISTRY[model_name]
-            
-            for graph, dataset in gnn_datasets.items():
-                # Create unique name combining model and graph
-                instance_name = f'{model_name}_{graph}'
-                
-                ml_instance = ModelClass(
-                    name=instance_name,
-                    dataloader=dataset
-                )
-                models_dict[instance_name] = ml_instance  
+        # Set hyperparameters (order depends on model type)
+        if model_spec['model_type'] == 'shallow':
+            model.set_global_hparams(**kwargs.get('global_hparams', {}))
+            model.set_model_hparams(**kwargs.get('model_hparams', {}))
+        elif model_spec['model_type'] == 'deep':
+            model.set_model_hparams(**kwargs.get('model_hparams', {}))
+            model.set_global_hparams(**kwargs.get('global_hparams', {}))
+        
+        # Train non-baseline models
+        if model_spec['model_type'] != 'baseline':
+            model.train(**kwargs.get('train_kwargs', {}))
+        
+        # Forecast
+        results[model_spec['name']] = model.forecast('test')  
 
-        # Section 5: Train and evaluate
-        for instance_name, ml_instance in models_dict.items():
-            if instance_name == 'persistence_baseline':
-                continue
-                
-            ml_instance.set_model_hparams(**config.model_hparams)
-            ml_instance.set_global_hparams(**config.global_hparams)
-            ml_instance.train(**config.train_hparams)
-            ml_instance.forecast()
-            # ml_instance.show_forecasts(dataset='test', target_h=0)
-        
-        models_dict['persistence_baseline'] = persistence_baseline
-        self.models_dict = models_dict
-
-        self._evaluate() 
-        return self.evaluation    
-    def _prepare_data(self, config: ExperimentConfig) -> DeepDataLoader:
-        """Handle all data loading and preprocessing"""
-        epidata = DeepDataLoader(
-            disease_name=config.data.disease_name,
-            data_env_dir=get_data_env(),
-            min_date=config.data.min_date,
-            max_date=config.data.max_date,
-            nuts_level=config.data.nuts_level,
-            include_population=config.data.include_population,
-            sequence_length=config.timeseries.sequence_length,
-            horizon_size=config.timeseries.horizon_size,
-            horizon_leadtime=config.timeseries.horizon_leadtime,
-            split_berlin=config.data.split_berlin
-        )
-        
-        if config.preprocessing.add_time_features:
-            epidata.add_time_features()
-        if config.preprocessing.log_transform_target:
-            epidata.log_transform_target()
-
-        epidata.set_splits(
-            split_trainval=config.splits.split_trainval,
-            split_valtest=config.splits.split_valtest
-        )
-        
-        epidata.normalize(normalization_method=config.preprocessing.normalization_method)
-        epidata.add_lagged_features(lags=config.timeseries.lags)
-        epidata.finalize()
-        
-        return epidata
-
-    def _evaluate(self):
-        self.evaluation = Evaluator(list(self.models_dict.values()))      
-
-    def _prepare_datasets(self, epidata: DeepDataLoader, config: ExperimentConfig) -> dict:
-        """Prepare GNN datasets for all graphs"""
-        graphs = config.graphs if isinstance(config.graphs, list) else [config.graphs]
-        
-        gnn_datasets = {}
-        for graph in graphs:
-            gnn_datasets[graph] = (
-                epidata.copy(deep=True)
-                .retrieve_graph(graphname=graph)
-                .construct_dataloaders()
-            )
-        
-        return gnn_datasets
+    def _get_graph(self, graph, mode: Literal['static','dynamic'], data_kwargs):
+        """return GraphDataLoaderManager"""
+        if graph not in self.graph_data:
+            if mode == 'static':
+                self.graph_data[graph] = (GraphDataLoaderManager(self.data_orchestrator)
+                                            .retrieve_static_graph(graph)
+                                            .construct_dataloaders())
+            elif mode == 'dynamic':
+                self.graph_data[graph] = (GraphDataLoaderManager(self.data_orchestrator)
+                                            .retrieve_dynamic_graph(graph,**data_kwargs)
+                                            .construct_dataloaders())                
+        return self.graph_data[graph]

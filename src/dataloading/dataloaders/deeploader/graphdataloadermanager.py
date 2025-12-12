@@ -2,10 +2,15 @@ import torch
 import pandas as pd
 import numpy as np 
 import os
-from typing import List, Tuple
+from typing import List, Tuple, Optional, Union, Literal
 from dataclasses import dataclass
 
+from tqdm import tqdm
+
+from ....graphconstruction.containers import GraphStructure, DynamicGraphStructure
 from ...dataorchestration.dataorchestrator import DataOrchestrator
+
+from ....utils.textformatting import error_emoji
 
 class GraphStructureError(Exception):
     pass
@@ -137,35 +142,69 @@ class GraphDataLoaderManager:
         
         self.dataorchestrator       = dataorchestrator
         self.column_registration    = dataorchestrator.column_registration
+        self._graphmode: Optional[Literal['static','dynamic']] = None
 
-    def retrieve_graph(self, 
-                       graphname:     str, 
-                       graphdirectory:str = 'data/graphs') -> 'GraphDataLoaderManager':
+    def retrieve_dynamic_graph(self, graphname:str , timesteps: Optional[List[str]] = None, frequency: str = 'yearly', graphdirectory:str = 'data/graphs'):
+        """
+        retrieves graphs in the folder and sets them as an instance of DynamicGraphStructure into self.graphs
+        
+        #TODO when timesteps = None => loop over files and import them all extracting timestep from filename
+        """
+        
+        if isinstance(timesteps, range):
+            timesteps = list(timesteps)
+            timesteps = [str(t) for t in timesteps]
+
+        graphpath  = os.path.join(graphdirectory, self.dataorchestrator.config.nuts_level, graphname)
+
+        if frequency.lower() != 'yearly':
+            raise ValueError(f'frequency of {frequency} is unsupported. Currently only yearly frequency is valid.')
+        
+        graphs = []
+        for year in tqdm(timesteps, total = len(timesteps), desc = 'loading graphs'):
+
+            name_t = f'{year}'
+
+            try:
+                i       = torch.load(graphpath + "/" + name_t + '_edge_index.pt', weights_only = False)
+                w       = torch.load(graphpath + "/" + name_t  + '_edge_weight.pt', weights_only = False)
+                self._validate_graphstructure(i, w, name_t)
+                graph_t = GraphStructure(i, w)
+                graphs.append(graph_t)
+
+            except Exception as e:
+                raise RuntimeError(f'graph by the name of {name_t} not found in {graphpath}')
+            
+        self.graph      = DynamicGraphStructure(timesteps, graphs)
+        self._graphmode = 'dynamic'
+        
+        return self
+            
+    def retrieve_static_graph(self, graphname: str, graphdirectory: str = 'data/graphs') -> 'GraphDataLoaderManager':
         """
         load a graph object.
 
-        Parameters:
+        Parameters
         ----------
         graphname: str
             The name of the file. Should correspond to the filename: f'{graphdirectory}/{graphname}/_edge_index.pt' and edge_weight.
         graphdirectory: str = 'data/graphs'
-
-        Note:
-        TODO currently limited to the retrieval of static graphs only
         """
     
         graphpath  = os.path.join(graphdirectory, self.dataorchestrator.config.nuts_level, graphname, graphname)
         
         try:
-            edge_index  = torch.load(graphpath + '_edge_index.pt', weights_only = False)
-            edge_weight = torch.load(graphpath + '_edge_weight.pt', weights_only = False)
-
+            i           = torch.load(graphpath + '_edge_index.pt', weights_only = False)
+            w           = torch.load(graphpath + '_edge_weight.pt', weights_only = False)
+            graph       = GraphStructure(i,w)
+           
         except Exception as e:
             raise RuntimeError(f'graph by the name of {graphname} not found')
-        
-        self._validate_graphstructure(edge_index, edge_weight)
-        self.edge_index = edge_index
-        self.edge_weight= edge_weight
+    
+        self._validate_graphstructure(i, w, graphname)
+
+        self.graph      = graph
+        self._graphmode = 'static'
         
         return self
 
@@ -197,15 +236,15 @@ class GraphDataLoaderManager:
         
     def construct_dataloaders(self):
         """
-        Creates the actual dataloaders
+        creates the actual dataloaders
         """
-        X,y                             = self._construct_Xy(self.dataorchestrator.data_final.data)
-        main_dataloader                 = self._construct_main_dataloader(X = X, y = y)
-        self.dataloader_collection      = self._split_dataloader(main_dataloader = main_dataloader)
+        X,y,t                             = self._construct_Xy(self.dataorchestrator.data_final.data)
+        main_dataloader                   = self._construct_main_dataloader(X = X, y = y, t= t)
+        self.dataloader_collection        = self._split_dataloader(main_dataloader = main_dataloader)
         return self     
     
     def _construct_Xy(self, 
-                      df: pd.DataFrame) -> Tuple[torch.Tensor, torch.Tensor]:
+                      df: pd.DataFrame) -> Tuple[torch.Tensor, torch.Tensor, List[Union[pd.Timestamp, str]]]:
         """
         constructs torch.tensor objects from df, which should be the dataorchestrator's final data object.
         
@@ -220,7 +259,7 @@ class GraphDataLoaderManager:
         dfc                 = df.copy()
         feature_arrays      = []
         target_arrays       = []
-        timestamps          = list(dfc['timestamp'].unique())
+        t                   = dfc['timestamp'].unique().tolist()
 
         feature_cols = self.column_registration.get_by_type('feature')
         split_cols   = self.column_registration.get_by_type('split')
@@ -278,11 +317,12 @@ class GraphDataLoaderManager:
 
         X = torch.tensor(X_np, dtype=torch.float)
         y = torch.tensor(y_np,dtype=torch.float)
-        return X, y
+        return X, y, t
 
     def _construct_main_dataloader(self, 
                                    X: torch.Tensor,
-                                   y: torch.Tensor) -> GraphDataLoader:
+                                   y: torch.Tensor,
+                                   t: List[str]) -> GraphDataLoader:
         """
         construct main dataloader based on X, y, edge_index and edge_weight
 
@@ -290,8 +330,7 @@ class GraphDataLoaderManager:
         -------
         GraphDataLoader
         """
-        edge_index  = self.edge_index 
-        edge_weight = self.edge_weight
+
 
         dataset = []
         T       = X.shape[0]  # Total number of timesteps
@@ -305,16 +344,23 @@ class GraphDataLoaderManager:
             raise ValueError(f"Not enough data: T={T}, periods={self.dataorchestrator.config.sequence_length}"
                             f"Need at least {self.dataorchestrator.config.sequence_length} timesteps.")
 
-        for start in range(max_start):
+        for t_idx, start in enumerate(range(max_start)):
             # Input window: periods consecutive timesteps
             x_seq = X[start : start + self.dataorchestrator.config.sequence_length]  # shape [periods, nodes, features]
             y_seq = y[start + self.dataorchestrator.config.sequence_length - 1]
+
+            if self._graphmode == 'dynamic':
+                year            = t[t_idx].year
+                graphstructure_t = self.graph.get_snapshot(str(year))
+
+            else:
+                graphstructure_t = self.graph
             
             data = GraphData(
                 x = x_seq.clone().detach().float().permute(1, 2, 0),  # (nodes, features, periods)
                 y = y_seq.clone().detach().float(),                   # (nodes, horizon)
-                edge_index = edge_index,
-                edge_weight =edge_weight
+                edge_index = graphstructure_t.edge_index,
+                edge_weight =graphstructure_t.edge_weight
             )
             dataset.append(data)
 
@@ -341,23 +387,17 @@ class GraphDataLoaderManager:
             main  = main_dataloader
         )
 
-    def _validate_graphstructure(self, edge_index: torch.Tensor, edge_weight: torch.Tensor):
+    def _validate_graphstructure(self, edge_index: torch.Tensor, edge_weight: torch.Tensor, structure_name: str):
+        """validates edge index and edge weight; num_nodes is compared to each other and to data_orchestrator"""
         num_nodes_graph = len(edge_index.unique())
-
+        
         if len(edge_index[0]) != len(edge_weight):
-            raise GraphStructureError('edge_index and edge_weight have a different length')
+            raise GraphStructureError(f'{error_emoji} {structure_name}: edge_index and edge_weight have a different length')
         
         if num_nodes_graph != self.dataorchestrator.data_context.num_nodes:
-            raise GraphStructureError(f'loaded graphstructure has {num_nodes_graph} nodes while data_orchestrator has {self.dataorchestrator.data_context.num_nodes} nodes')
+            raise GraphStructureError(f'{error_emoji} {structure_name}: has {num_nodes_graph} nodes while data_orchestrator has {self.dataorchestrator.data_context.num_nodes} nodes')
         
-
     def __repr__(self) -> str:
 
-        representation = f'<GraphDataLoaderManager(dataloaders at .dataloader_collection'          
-
-        if self.edge_index is not None:
-            representation += "edge index"
-        if self.edge_weight is not None:
-            representation += 'edge weight'
-
+        representation = f'<GraphDataLoaderManager(dataloaders at .dataloader_collection)>'          
         return representation

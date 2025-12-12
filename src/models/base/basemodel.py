@@ -56,6 +56,12 @@ class BaseModel:
         """supposed to create the attribute `evaluation_df`"""
         raise NotImplementedError("Each model must implement its own forecast method.")
 
+    def set_global_hparams(self, **kwargs):
+        print(f'set_global_hparams is not implemented for {self.name}')
+    
+    def set_model_hparams(self, **kwargs):
+        print(f'set_model_hparams is not implemented for {self.name}')
+
     def show_forecasts(self,
                        node_idx:    Union[List[int], int]           = 1,
                        dataset:     Literal['train','val','test']   = 'test',

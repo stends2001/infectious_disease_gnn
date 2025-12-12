@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import List, Tuple
+from typing import List, Tuple, Union
 import torch
 import pandas as pd
 
@@ -51,7 +51,7 @@ class GraphStructure:
         self.num_edges      = len(self.edge_index)
     
     def __repr__(self) -> str:
-        representation = f'<GraphStructure(num_nodes = {self.num_nodes}, num_edges = {self.num_edges})>'
+        representation = f'<GraphStructure(num_nodes = {self.num_nodes}, num_edges = {len(self.edge_weight)})>'
         return representation 
     
 @dataclass
@@ -65,18 +65,27 @@ class DynamicGraphStructure:
         Tensor of shape [T] containing timestamp values (Unix timestamps)
     graphstructures: List[GraphStructure]
     """
-    timestamps:      List[pd.Timestamp | str]       # Unix timestamps as int64
+    timestamps:      List[pd.Timestamp | str]       
     graphstructures: List[GraphStructure]
     
     def __post_init__(self):
         T = len(self.timestamps)
         if len(self.graphstructures) != T:
             raise ValueError(f"Number of graphstructures ({len(self.graphstructures)}) must match timestamps ({T})")
-    
-    def get_snapshot(self, t_idx: int):
-        """Get static graph structure at time index t_idx"""
+        
+    def get_snapshot(self, t: Union[pd.Timestamp, str]):
+        """Return the GraphStructure at timestamp t."""
 
-        return self.graphstructures[t_idx]
+        times = [
+            ts for ts in self.timestamps
+        ]
+
+        try:
+            idx = times.index(t)
+        except ValueError:
+            raise KeyError(f"Timestamp {t} not found in DynamicGraphStructure")
+
+        return self.graphstructures[idx]
     
     def __len__(self):
         """Return number of time snapshots"""

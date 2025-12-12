@@ -7,7 +7,7 @@ from pathlib import Path
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
-    from ..models._basemodel import BaseModel
+    from ..models.base.basemodel import BaseModel
 
 from ..utils.helpers import list_files, write_yaml_file, to_underscore_string,reorder_dict
 
@@ -16,7 +16,10 @@ class ConfigManager:
 
     """
     Parent class for the configmanagers.
-    Inheritance into:
+
+    Downstream
+    ----------
+    The following children inherit from this class
     - ExperimentConfigManager
     - ModelConfigManager
     
@@ -35,7 +38,7 @@ class ConfigManager:
         
         Returns:
         -------
-        str : The assigned model ID
+        str : The assigned ID
         """
         try:
             entry_name = config['name']
@@ -51,7 +54,6 @@ class ConfigManager:
         config       = config.copy()
         config['id'] = entry_id
     
-        
         entry_name_safe = to_underscore_string(entry_name)
         
         # Reorder config for readability => put name and id before anything else
