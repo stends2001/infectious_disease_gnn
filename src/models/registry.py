@@ -6,5 +6,7 @@ MODELSREGISTRY = {
         'NodeRFModel'           : 2,
         'SpatialGNNModel'       : 5,
         'GATv2Model'            : 7,
-        'NodeLSTMModel'         : 8
+        'NodeLSTMModel'         : 8,
+        'NodeBiLSTMModel'       : 9,
+        'NodeGRUModel'          : 10,
     }    

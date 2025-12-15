@@ -563,12 +563,10 @@ class GraphNeuralNetwork(BaseModel, ABC):
                                                 'patience'      : list_patience,
                                                 'learning_rate' : list_lr}).reset_index(names='epoch')
         self.monitoring_metrics['epoch'] = self.monitoring_metrics['epoch'] + 1
-        self._state['trained'] = True
-        
-        if self.verbose>=0:
-            print(self._return_model_trained_print())
+
         if self.verbose >=1:
             self.show_monitoring_metrics()
+        self._update_status('trained')
 
     def forecast(self, dataset: Literal['train','val','test'] = 'test'):
         """
@@ -688,10 +686,8 @@ class GraphNeuralNetwork(BaseModel, ABC):
                 self.predictions.add_horizon_predictions(dataset, horizon_data, hh, additional_transformation=True, transf = 'poisson_sampling', transf_args={'sampling_mode': 'mean'})
             else:
                 self.predictions.add_horizon_predictions(dataset, horizon_data, hh)
+            if self.verbose > 1:
+                print(f"{dataset.capitalize()} loss: {loss:.4f}")
         
-        if self.verbose>=0:
-            print(self._return_model_predicted_print())        
-            print(f"{dataset.capitalize()} loss: {loss:.4f}")
-
-        self._state['forecasted'] = True
+        self._update_status('forecasted')
         return self  

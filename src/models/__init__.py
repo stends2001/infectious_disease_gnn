@@ -3,12 +3,9 @@ from .baselines.climateology import ClimateologyModel
 from .shallow.noderf import NodeRFModel
 from .deep.gatv2model import GATv2Model
 from .deep.nodelstm import NodeLSTMModel
-
-# from .deep.gatv2 import GATv2Model
-# from .deep.tgcn import TGCNModel
-# from .deep.gconvlstm import GConvLSTMModel
 from .deep.spatialgnnmodel import SpatialGNNModel
-# from .deep.gatv2_embeddings import GATv2EmbeddingsModel
+from .deep.nodebilstm import NodeBiLSTMModel
+from .deep.nodegru import NodeGRUModel
 
 # from .shallow.node_rf import NodeRFModel
 
@@ -24,5 +21,7 @@ MODELSREGISTRY = {
         # 'GATv2EmbeddingsModel'  : GATv2EmbeddingsModel,
         'NodeRFModel'           : NodeRFModel,
         'ClimateologyModel'     : ClimateologyModel,
-        'NodeLSTMModel'         : NodeLSTMModel
+        'NodeLSTMModel'         : NodeLSTMModel,
+        'NodeBiLSTMModel'       : NodeBiLSTMModel,
+        'NodeGRUModel'          : NodeGRUModel,
     }   
