@@ -1,4 +1,7 @@
 from typing import Literal, Optional
+
+from tqdm import tqdm
+
 from ..dataloading import DataOrchestrator, GraphDataLoaderManager, ShallowDataLoaderManager
 from ..models import MODELSREGISTRY
 from ..models.base.basemodel import BaseModel
@@ -15,6 +18,13 @@ class ExperimentRunner:
     ----------
     data_orchestrator: DataOrchestrator
         object of finalized and processed EpiConfig
+    verbose: Literal[-1, 0, 1, 2] = 0
+        levels for showing progress.
+
+        - 2: model - verbose 2 (epoch-lvl updates)
+        - 1: model - verbose 1 (status updates and tqdm for training loop)
+        - 0: model - verbose 0 (single line with model names)
+        - -1: model - verbose -1 (nothing) + tqdm over experiment
 
     Returns
     -------
@@ -25,29 +35,30 @@ class ExperimentRunner:
     >>> runner = (ExperimentRunner(data_orchestrator)
     >>>    .add_baseline_model('PersistenceModel', 'persistence')
     >>>    .add_baseline_model('ClimateologyModel', 'climateology')    
-    >>>    .add_shallow_model('NodeRFModel', 'node_rf', model_hparams={'n_estimators': 100},                                       train_kwargs={'verbose': 0})
-    >>>    .add_gnn('SpatialGNNModel', 'gcn-identity_graph',    'identity_graph',                 global_hparams=global_hparams,   train_kwargs={'verbose': 0, 'show_loss': False})
-    >>>    .add_gnn('SpatialGNNModel', 'gcn-mesh_graph',        'mesh_graph',                     global_hparams=global_hparams,   train_kwargs={'verbose': 0, 'show_loss': False})        
-    >>>    .add_gnn('SpatialGNNModel', 'gcn-commuter14_2',      'static_commuter14_2',            global_hparams=global_hparams,   train_kwargs={'verbose': 0, 'show_loss': False})        
-    >>>    .add_gnn('SpatialGNNModel', 'gcn-commuter24_2',      'static_commuter24_2',            global_hparams=global_hparams,   train_kwargs={'verbose': 0, 'show_loss': False})                      
-    >>>    .add_gnn('SpatialGNNModel', 'gcn-dynamic_commuter2', 'dynamic_commuter2','dynamic', data_kwargs={'timesteps': range(2006,2021)} , global_hparams=global_hparams, train_kwargs={'verbose': 0, 'show_loss': False})                     
+    >>>    .add_shallow_model('NodeRFModel', 'node_rf', model_hparams={'n_estimators': 100})
+    >>>    .add_gnn('SpatialGNNModel', 'gcn-identity_graph',    'identity_graph',                 global_hparams=global_hparams)
+    >>>    .add_gnn('SpatialGNNModel', 'gcn-mesh_graph',        'mesh_graph',                     global_hparams=global_hparams)        
+    >>>    .add_gnn('SpatialGNNModel', 'gcn-commuter14_2',      'static_commuter14_2',            global_hparams=global_hparams)        
+    >>>    .add_gnn('SpatialGNNModel', 'gcn-commuter24_2',      'static_commuter24_2',            global_hparams=global_hparams)                      
+    >>>    .add_gnn('SpatialGNNModel', 'gcn-dynamic_commuter2', 'dynamic_commuter2','dynamic', data_kwargs={'timesteps': range(2006,2021)} , global_hparams=global_hparams)                     
     >>>    # GATVs
-    >>>    .add_gnn('GATv2Model',      'gatv2-identity_graph', 'identity_graph',                 global_hparams=global_hparams,            train_kwargs={'verbose': 0, 'show_loss': False})
-    >>>    .add_gnn('GATv2Model',      'gatv2-mesh_graph',     'mesh_graph',                     global_hparams=global_hparams,            train_kwargs={'verbose': 0, 'show_loss': False})    
-    >>>    .add_gnn('GATv2Model',      'gatv2-commuter14_2',   'static_commuter14_2',                     global_hparams=global_hparams,   train_kwargs={'verbose': 0, 'show_loss': False})    
-    >>>    .add_gnn('GATv2Model',      'gatv2-commuter24_2',   'static_commuter24_2',                     global_hparams=global_hparams,   train_kwargs={'verbose': 0, 'show_loss': False})        
-    >>>    .add_gnn('GATv2Model',      'gatv2-dynamic_commuter2',     'dynamic_commuter2', data_kwargs={'timesteps': range(2006,2021)} , global_hparams=global_hparams, train_kwargs={'verbose': 0, 'show_loss': False})                     
+    >>>    .add_gnn('GATv2Model',      'gatv2-identity_graph', 'identity_graph',                 global_hparams=global_hparams)
+    >>>    .add_gnn('GATv2Model',      'gatv2-mesh_graph',     'mesh_graph',                     global_hparams=global_hparams)    
+    >>>    .add_gnn('GATv2Model',      'gatv2-commuter14_2',   'static_commuter14_2',                     global_hparams=global_hparams)    
+    >>>    .add_gnn('GATv2Model',      'gatv2-commuter24_2',   'static_commuter24_2',                     global_hparams=global_hparams)        
+    >>>    .add_gnn('GATv2Model',      'gatv2-dynamic_commuter2',     'dynamic_commuter2', data_kwargs={'timesteps': range(2006,2021)} , global_hparams=global_hparams)                     
     >>>     )
 
     >>> results = runner.run()    
     """
 
 
-    def __init__(self, data_orchestrator: DataOrchestrator):
-        self.data_orchestrator = data_orchestrator
-        self.models = []
-        self.graph_data = {}
-        self.shallow_data = None
+    def __init__(self, data_orchestrator: DataOrchestrator, verbose: Literal[-1,0,1,2] = 0):
+        self.data_orchestrator  = data_orchestrator
+        self.models             = []
+        self.graph_data         = {}
+        self.shallow_data       = None
+        self.verbose            = verbose
     
     def add_baseline_model(self, model_class, name, **kwargs):
         """Add baseline model to the experiment"""
@@ -106,7 +117,12 @@ class ExperimentRunner:
     def run(self):
         """run an experiment"""
         models_dictionary = {}
-        for model_spec in self.models:
+        if self.verbose < 0:
+            iterator = tqdm(self.models, desc = "running models", total=len(self.models))
+        else:
+            iterator = self.models
+
+        for model_spec in iterator:
             # Get data
             if model_spec['data_type'] == 'shallow':
                 data = self._get_shallow()
@@ -129,7 +145,7 @@ class ExperimentRunner:
     def _execute_experiment_modeltype(self, model_spec, data, results) -> None:
         """for a specific model, run the pipeline"""
         ModelClass = MODELSREGISTRY[model_spec['class']]
-        model: BaseModel = ModelClass(data, name=model_spec['name'])
+        model: BaseModel = ModelClass(data, name=model_spec['name'], verbose = self.verbose)
         kwargs = model_spec['kwargs']
         
         # Set hyperparameters (order depends on model type)

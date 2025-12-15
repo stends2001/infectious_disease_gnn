@@ -21,23 +21,17 @@ class PersistenceModel(BaseModel):
 
     def __init__(self, 
                  dataloadermanager: ShallowDataLoaderManager, 
-                 name:              Optional[str] = None):
+                 name:              Optional[str] = None,
+                 verbose:           Literal[-1, 0, 1, 2] = -1):
         
-        super().__init__(dataloadermanager, name)
-        
-        if not self.name:
-            self.name = f'Persistence Model'
-        
-        self._state = {
-            'model_initialized' : False,
-            'trained'           : False,
-            'forecasted'        : False,
-        }
+        if not name:
+            name = f'Persistence Model'
+
+        super().__init__(dataloadermanager, name, verbose)
         
         self.train_losses           = []
         self.val_losses             = []
-
-
+        
     def train(self):
         print("This naive model doesn't train")
 
@@ -79,7 +73,7 @@ class PersistenceModel(BaseModel):
                          
             self.predictions.add_horizon_predictions(dataset, evaluation_df, hh)
             
-        self._state['forecasted'] = True
+        self._update_status('forecasted')   
         return self  
         
     def __str__(self):

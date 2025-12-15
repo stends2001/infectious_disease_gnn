@@ -76,7 +76,7 @@ class ShallowDataLoaderManager:
         """
         main_data           = self.dataorchestrator.data_final.data.copy()
         X_col_selection     = [self.dataorchestrator.config.id_column]+self.column_registration.get_by_type('feature')
-        self.dataloader_collections    = {}
+        self.dataloader_collections: Dict[str, ShallowDataLoaderCollection]    = {}
 
         for hh in range(self.dataorchestrator.config.horizon_size):
             horizon_name    = f'horizon_{hh}'

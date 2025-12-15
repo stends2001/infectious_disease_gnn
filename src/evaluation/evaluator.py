@@ -27,7 +27,7 @@ class Evaluator:
 
     def __init__(self, models: Union[BaseModel, List[BaseModel]]):
         models_list             = models if isinstance(models, list) else [models]
-        self.evaluated_models   = {ml.clean_name: ml for ml in models_list}
+        self.evaluated_models   = {ml.name: ml for ml in models_list}
         
         # Column names
         self.target_col     = 'target'

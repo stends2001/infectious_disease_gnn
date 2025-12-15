@@ -1,26 +1,17 @@
 import seaborn as sns
-import matplotlib.gridspec as gridspec
-import seaborn as sns
-import pandas as pd
-from typing import Optional, Dict, List, Literal, Any, Union, Tuple
+from typing import Optional, List, Literal, Any, Union
 import matplotlib.pyplot as plt
-import matplotlib.colors as colors
-
-from ...utils import testcolor
-from ...dataloading import ShallowDataLoaderManager
-from ...dataloading import GraphDataLoaderManager
-from ...dataloading.dataorchestration.normalization import reverse_log, reverse_minmax_scaling, reverse_zscore_scaling
+import matplotlib.figure as Figure
+from .predictions_manager import PredictionManager
 
 from ..registry import MODELSREGISTRY
-from src.models.utils import MODELSCOLORPALETTE
+from ..utils import MODELSCOLORPALETTE
 
-from src.configmanagement.modelconfigmanager import ModelConfigManager
-
-from matplotlib.figure import Figure
-from matplotlib.axes import Axes
-from src.utils.helpers import sum_preserve_nan
-
-from .predictions_manager import PredictionCollection, PredictionManager
+from ...dataloading import ShallowDataLoaderManager
+from ...dataloading import GraphDataLoaderManager
+from ...utils import testcolor
+from ...utils.textformatting import warning_emoji, error_emoji, checkmark
+from ...configmanagement.modelconfigmanager import ModelConfigManager
 
 class BaseModel:
     """
@@ -28,11 +19,17 @@ class BaseModel:
 
     def __init__(self, 
                  dataloadermanager: Union[ShallowDataLoaderManager, GraphDataLoaderManager], 
-                 name:              Optional[str] = None):
+                 name:              Optional[str]        = None,
+                 verbose:           Literal[-1, 0, 1, 2] = -1):
+        
+        if not name:
+            self.name = 'unnamed'
+        else:
+            self.name = self._clean_name(name)
         
         self.dataloadermanager          = dataloadermanager
         self.column_registration        = dataloadermanager.dataorchestrator.column_registration
-        self.name                       = name 
+        self.verbose                    = verbose
         self.config_info                = {}
         self.model_class                = self.__class__.__name__
         self.model_color                = self.get_model_color()
@@ -52,15 +49,25 @@ class BaseModel:
         self.nutsnames                  = self.dataloadermanager.dataorchestrator.data_context.nuts_names     
         self.nutslevel                  = self.dataloadermanager.dataorchestrator.config.nuts_level
 
+        self._state = {
+            'model_initialized' : False,
+            'model_hparams_set' : False,
+            'global_hparams_set': False,
+            'trained'           : False,
+            'forecasted'        : False,
+        }
+
+        self._update_status('model_initialized')
+
     def forecast(self):
         """supposed to create the attribute `evaluation_df`"""
-        raise NotImplementedError("Each model must implement its own forecast method.")
+        raise NotImplementedError(f"{error_emoji} Each model must implement its own forecast method.")
 
     def set_global_hparams(self, **kwargs):
-        print(f'set_global_hparams is not implemented for {self.name}')
+        print(f'{warning_emoji} set_global_hparams is not implemented for {self.name}')
     
     def set_model_hparams(self, **kwargs):
-        print(f'set_model_hparams is not implemented for {self.name}')
+        print(f'{warning_emoji} set_model_hparams is not implemented for {self.name}')
 
     def show_forecasts(self,
                        node_idx:    Union[List[int], int]           = 1,
@@ -68,7 +75,7 @@ class BaseModel:
                        plot_type:   Literal['line', 'map']          = 'line',
                        horizon:     int                             = 0,
                        transformed: bool                            = False,
-                       ):
+                       ) -> Figure:
         
         predictioncollection = self.predictions.get_preds(dataset)
         weeks_ahead          = int(self.dataloadermanager.dataorchestrator.config.horizon_leadtime + horizon)
@@ -144,25 +151,50 @@ class BaseModel:
         id = MODELSREGISTRY.get(self.model_class, 0)    # 0 as fallback 
         return MODELSCOLORPALETTE[id]
 
-    def _return_model_print(self) -> str:
-        """prints the model name for logs"""
-        total_width     = 50
+    def _print_status_update(self, status: str) -> str:
+
+        statement = ""
         title           = f"{self.name}"
+        total_width     = 50
         side_padding    = (total_width - 4 - len(title)) // 2  # 4 for "==  =="
-        extra_space     = (total_width - 4 - len(title)) % 2
-        statement       = "\n".join([
-                                "",
-                                "=" * total_width,
-                                "==" + " " * side_padding + title + " " * (side_padding + extra_space) + "==",
-                                "=" * total_width
-                            ])
-        return statement
+        extra_space     = (total_width - 4 - len(title)) % 2    
+
+        if status == 'model_initialized':
+                    
+                
+                if self.verbose >= 1:
+
+                    statement      += "\n".join([
+                                            "",
+                                            "=" * total_width,
+                                            "==" + " " * side_padding + title + " " * (side_padding + extra_space) + "==",
+                                            "=" * total_width
+                                        ])
+                    
+                else:
+                    statement += "==" + " " * side_padding + title + " " * (side_padding + extra_space) + "=="
+
+        else:
+            statement += f"{status} {checkmark}"
+
+        print(statement)
+        
+    def _update_status(self, status: Literal['model_initialized','model_hparams_set','global_hparams_set','trained','forecasted']):
+        self._state[status] = True 
+
+        print_decisions = {
+            'model_initialized':  self.verbose >= 0,
+            'model_hparams_set':  self.verbose >= 1,
+            'global_hparams_set': self.verbose >= 1,
+            'trained':            self.verbose >= 1,
+            'forecasted':         self.verbose >= 1
+        }
+
+        if print_decisions.get(status, False):
+            self._print_status_update(status)
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(name={self.name!r})"    
     
-    @property
-    def clean_name(self) -> str:
-        if self.name is None:
-            return 'unnamed'
-        return self.name.lower().replace(' ', '_')
+    def _clean_name(self, name: str) -> str:
+        return name.lower().replace(' ', '_')

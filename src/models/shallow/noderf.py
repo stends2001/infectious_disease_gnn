@@ -26,18 +26,15 @@ class NodeRFModel(BaseModel):
 
     def __init__(self, 
                  dataloadermanager: ShallowDataLoaderManager, 
-                 name:              Optional[str] = None):
+                 name:              Optional[str] = None,
+                 verbose:           Literal[-1, 0, 1, 2] = -1):
         
-        super().__init__(dataloadermanager, name)
-        
-        if not self.name:
-            self.name = f'NodeRFModel'
-        
-        self._state = {
-            'model_initialized' : False,
-            'trained'           : False,
-            'forecasted'        : False,
-        }
+        if not name:
+            name = f'NodeRFModel'       
+
+        super().__init__(dataloadermanager, name, verbose)
+
+        self.dataloadermanager: ShallowDataLoaderManager= dataloadermanager
         
         self.train_losses           = []
         self.val_losses             = []
@@ -75,7 +72,7 @@ class NodeRFModel(BaseModel):
         }
 
         self.config_info['model_hparams']    = self.model_hparams
-        self._state['model_initialized']    = True
+        self._update_status('model_hparams_set')
 
         # Initialize models per horizon
         self.models: Dict[str, RandomForestRegressor] = {}
@@ -101,9 +98,9 @@ class NodeRFModel(BaseModel):
         self.loss       = loss
 
         self.config_info['global_hparams'] = self.global_hparams
-        self._state['global_hparams_set']  = True
+        self._update_status('global_hparams_set')
 
-    def train(self, verbose=2, show_loss: bool = True):
+    def train(self):
         """
         Train and validate models for each horizon.
         """
@@ -132,10 +129,10 @@ class NodeRFModel(BaseModel):
             train_mae   = mean_absolute_error(y_train, y_train_pred)            
             val_rmse    = np.sqrt(mean_squared_error(y_val, y_val_pred))
             val_mae     = mean_absolute_error(y_val, y_val_pred)
-
-            if verbose > 0:
-                print(f"Training loss for horizon {hh}: RMSE = {train_rmse:.4f}, MAE = {train_mae:.4f}")
-                print(f"Validation loss for horizon {hh}: RMSE = {val_rmse:.4f}, MAE = {val_mae:.4f}")  
+        self._update_status('trained')
+        if self.verbose>1:
+            print(f"Training loss for horizon {hh}: RMSE = {train_rmse:.4f}, MAE = {train_mae:.4f}")
+            print(f"Validation loss for horizon {hh}: RMSE = {val_rmse:.4f}, MAE = {val_mae:.4f}")  
    
     def forecast(self, dataset: Literal['train','val','test'] = 'test'):
         """
@@ -169,7 +166,7 @@ class NodeRFModel(BaseModel):
 
             self.predictions.add_horizon_predictions(dataset, evaluation_df, hh)
 
-        self._state['forecasted'] = True
+        self._update_status('forecasted')    
         return self  
 
     def __str__(self):

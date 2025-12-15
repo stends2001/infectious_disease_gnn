@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch_geometric.nn import GATv2Conv
 from torch_geometric_temporal.nn.recurrent import A3TGCN
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Literal
 from torch_geometric.utils import add_self_loops
 
 from .strategies import Strategy, RecurrentStrategy
@@ -54,11 +54,13 @@ class NodeLSTMModel(GraphNeuralNetwork):
     """
     def __init__(self, 
                  dataloadermanager: GraphDataLoaderManager, 
-                 name: Optional[str] = None):
-        super().__init__(dataloadermanager, name=name)
+                 name: Optional[str] = None,
+                 verbose:           Literal[-1, 0, 1, 2] = -1):        
         
-        if not self.name:
-            self.name = 'LSTM_Baseline'
+        if not name:
+            name = 'LSTM_Baseline'
+        
+        super().__init__(dataloadermanager, name=name, verbose=verbose)
         
         self.dataloadermanager = dataloadermanager
         self._set_strategy(RecurrentStrategy())  # Same strategy as GATv2
@@ -83,6 +85,5 @@ class NodeLSTMModel(GraphNeuralNetwork):
         }
         
         self.config_info['model_hparams'] = model_hparams_config
-        self._state['model_initialized'] = True
-        
+        self._update_status('model_hparams_set')
         return self

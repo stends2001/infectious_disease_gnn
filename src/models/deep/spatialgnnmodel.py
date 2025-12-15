@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from torch_geometric.nn import GCNConv
 import pandas as pd
 import numpy as np
-from typing import Optional
+from typing import Optional,Literal
 
 from .strategies import StandardStrategy
 
@@ -101,14 +101,16 @@ class SpatialGNNModel(GraphNeuralNetwork):
     Simple spatial GCN model without temporal components.
     """
     def __init__(self, 
-                 dataloader: GraphDataLoaderManager, 
-                 name: Optional[str] = None):
-        super().__init__(dataloader, name=name)
+                 dataloadermanager: GraphDataLoaderManager, 
+                 name: Optional[str] = None,
+                 verbose:           Literal[-1, 0, 1, 2] = -1):
         
-        if not self.name:
-            self.name = 'SpatialGNN'
+        if not name:
+            name = 'SpatialGNN'        
 
-        self.dataloader = dataloader
+        super().__init__(dataloadermanager, name=name, verbose=verbose)                 
+
+        self.dataloader = dataloadermanager
         self._set_strategy(StandardStrategy())
 
     def set_model_hparams(self, 
@@ -131,6 +133,5 @@ class SpatialGNNModel(GraphNeuralNetwork):
         }
 
         self.config_info['model_hparams'] = model_hparams_config
-        self._state['model_initialized'] = True
-
+        self._update_status('model_hparams_set')
         return self

@@ -20,21 +20,18 @@ class ClimateologyModel(BaseModel):
 
     def __init__(self, 
                  dataloadermanager: ShallowDataLoaderManager, 
-                 name:              Optional[str] = None):
-        
-        super().__init__(dataloadermanager, name)
-        
-        if not self.name:
-            self.name = f'Climateology Model'
-        
-        self._state = {
-            'model_initialized' : False,
-            'trained'           : False,
-            'forecasted'        : False,
-        }
+                 name:              Optional[str] = None,
+                 verbose:           Literal[-1, 0, 1, 2] = -1
+                 ):
+
+        if not name:
+            name = f'Climateology Model'        
+
+        super().__init__(dataloadermanager, name, verbose)
         
         self.train_losses           = []
         self.val_losses             = []
+
 
     def train(self):
         print("This naive model doesn't train")
@@ -68,7 +65,7 @@ class ClimateologyModel(BaseModel):
             evaluation_df['week_number']= evaluation_df['timestamp'].dt.isocalendar().week
             evaluation_df               = pd.merge(evaluation_df, weekly_averages, on = ['node','week_number']).drop(columns = ['week_number'])
             self.predictions.add_horizon_predictions(dataset, evaluation_df, hh)
-        self._state['forecasted'] = True
+        self._update_status('forecasted')
         return self
 
     def _get_weekly_averages(self, dataloader_main: pd.DataFrame) -> pd.DataFrame:

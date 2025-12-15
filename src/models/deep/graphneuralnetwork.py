@@ -36,9 +36,10 @@ class GraphNeuralNetwork(BaseModel, ABC):
     
     def __init__(self, 
                  dataloadermanager:    GraphDataLoaderManager, 
-                 name:          Optional[str] = None):
+                 name:          Optional[str] = None,
+                 verbose:           Literal[-1, 0, 1, 2] = -1):
         
-        super().__init__(dataloadermanager, name)
+        super().__init__(dataloadermanager, name, verbose)
         
         self.dataloadermanager = dataloadermanager
         self.device            = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -53,13 +54,7 @@ class GraphNeuralNetwork(BaseModel, ABC):
         self.strategy: Strategy                             = StandardStrategy()    # classic strategy (no hidden state or cell state)
 
         self.config_info['child']   = 'GraphNeuralNetwork'
-        
-        self._state = {
-            'model_initialized' : False,
-            'global_hparams_set': False,
-            'trained'           : False,
-            'forecasted'        : False,
-        }
+
         self.monitoring_metrics = None
         self.evaluation_datasets= {}
 
@@ -79,7 +74,7 @@ class GraphNeuralNetwork(BaseModel, ABC):
 
     def _get_optimizer(self, optimizer_name: str, lr: float, optimizer_kwargs: Dict[str, Any]) -> Optimizer:
         """Factory method to create and return optimizer"""
-        self._check_state(['model_initialized'])
+        self._check_state(['model_hparams_set'])
 
         if self.model is None:
             raise ValueError('Please initiate a model')        
@@ -103,7 +98,7 @@ class GraphNeuralNetwork(BaseModel, ABC):
     def _get_scheduler(self, scheduler_name: str, optimizer: Optimizer, scheduler_kwargs: Dict[str, Any]) -> _LRScheduler:
         """Factory method to create and return scheduler"""
         
-        self._check_state(['model_initialized'])
+        self._check_state(['model_hparams_set'])
         
         scheduler_map = {
             'step':        torch.optim.lr_scheduler.StepLR,
@@ -140,7 +135,7 @@ class GraphNeuralNetwork(BaseModel, ABC):
                             loss_kwargs: Optional[Dict[str, Any]] = None                            
                             ):
         """Prepares model for training using global hyperparameters."""
-        self._check_state(['model_initialized'])
+        self._check_state(['model_hparams_set'])
 
         global_params_config = {
             'lr'                : lr,
@@ -181,7 +176,7 @@ class GraphNeuralNetwork(BaseModel, ABC):
             self.scheduler = None
 
         self.config_info['global_hparams']  = global_params_config
-        self._state['global_hparams_set']   = True
+        self._update_status('global_hparams_set')
         return self
 
     def show_monitoring_metrics(self) -> Tuple[Figure, Axes]:
@@ -395,10 +390,7 @@ class GraphNeuralNetwork(BaseModel, ABC):
         
         return '\n'.join(lines)
 
-    def train(self,
-              verbose:  Literal[0,1,2]  = 1,
-              dataloader_snapshot: bool = True,
-              show_loss: bool           = True):
+    def train(self):
         """
         Unified training loop that works for both standard and recurrent models.
         
@@ -426,9 +418,9 @@ class GraphNeuralNetwork(BaseModel, ABC):
         if self.scheduler is None:
             raise ValueError('no valid scheduler found')
         
-        self._check_state(['model_initialized', 'global_hparams_set'])
+        self._check_state(['model_hparams_set', 'global_hparams_set'])
 
-        print(self._return_model_print())
+
 
         dataloader_collection = self.dataloadermanager.dataloader_collection
 
@@ -436,22 +428,24 @@ class GraphNeuralNetwork(BaseModel, ABC):
         val_loader   = dataloader_collection.val
 
         # print dataloader snapshot
-        if dataloader_snapshot:
+        if self.verbose>=2:
             print(f'Dataloader Snapshot: {train_loader[0]}')        
 
         # determine verbose - loops (which loops to return evaluation metric)
-        if verbose == 1:
+        if self.verbose >= 1:
             verbose_loops   = list(np.arange(1, self.n_epochs + 1, step=10))
             epoch_iter      = range(self.n_epochs)
 
-        elif verbose == 2:
+        elif self.verbose >= 2:
             verbose_loops   = list(np.arange(1, self.n_epochs + 1))
             epoch_iter      = range(self.n_epochs)
 
+        elif self.verbose < 0:
+            verbose_loops   = []
+            epoch_iter      = range(self.n_epochs)
         else:
             verbose_loops   = []
             epoch_iter      = tqdm(range(self.n_epochs), desc="Training epochs") # if no verbose, just a tqdm
-
         self.model.train()
         best_val_loss       = float('inf')
         patience_counter    = 0
@@ -560,7 +554,7 @@ class GraphNeuralNetwork(BaseModel, ABC):
 
             new_lr = self.optimizer.param_groups[0]['lr']
 
-            if current_lr != new_lr and verbose != 0:
+            if current_lr != new_lr and self.verbose >=1:
                 if not isinstance(self.scheduler, torch.optim.lr_scheduler.CosineAnnealingWarmRestarts) and not isinstance(self.scheduler, torch.optim.lr_scheduler.CosineAnnealingLR):
                     print(f'lr has been updated from {current_lr:.2e} to {new_lr:.2e}')        
             
@@ -571,7 +565,9 @@ class GraphNeuralNetwork(BaseModel, ABC):
         self.monitoring_metrics['epoch'] = self.monitoring_metrics['epoch'] + 1
         self._state['trained'] = True
         
-        if show_loss:
+        if self.verbose>=0:
+            print(self._return_model_trained_print())
+        if self.verbose >=1:
             self.show_monitoring_metrics()
 
     def forecast(self, dataset: Literal['train','val','test'] = 'test'):
@@ -583,7 +579,7 @@ class GraphNeuralNetwork(BaseModel, ABC):
         Strategies => src.models.deep.strategies
         basemodel._denorm_predictions()
         """
-        self._check_state(['model_initialized', 'global_hparams_set', 'trained'])
+        self._check_state(['model_hparams_set', 'global_hparams_set', 'trained'])
 
         if self.model is None:
             raise ValueError('Please initiate a model')
@@ -612,9 +608,11 @@ class GraphNeuralNetwork(BaseModel, ABC):
         # Reset state before forecasting
         self.strategy.reset_state()
         
+        iterator = tqdm(dataloader, desc=f"Forecasting {dataset}") if self.verbose >= 0 else dataloader
+
         loss = 0
         with torch.no_grad():
-            for snapshot in tqdm(dataloader, desc=f"Forecasting {dataset}"):
+            for snapshot in iterator:
                 snapshot = snapshot.to(self.device)
 
                 y_hat, loss_val = self.strategy.forecast_step(
@@ -630,7 +628,7 @@ class GraphNeuralNetwork(BaseModel, ABC):
                 predictions.append(y_hat)
 
         loss = loss / len(dataloader)
-        print(f"{dataset.capitalize()} loss: {loss:.4f}")
+
         setattr(self, f'{dataset}_loss', loss)
 
         # ======================== FORMAT PREDICTIONS ========================
@@ -691,5 +689,9 @@ class GraphNeuralNetwork(BaseModel, ABC):
             else:
                 self.predictions.add_horizon_predictions(dataset, horizon_data, hh)
         
+        if self.verbose>=0:
+            print(self._return_model_predicted_print())        
+            print(f"{dataset.capitalize()} loss: {loss:.4f}")
+
         self._state['forecasted'] = True
         return self  

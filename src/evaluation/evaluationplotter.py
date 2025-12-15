@@ -35,14 +35,14 @@ class EvaluationPlotter:
 
         # get model colors and linestyles
         models_to_plot          = self.evaluator.evaluated_models
-        models_plotting_info    = {model.clean_name : {"color": model.model_color} for model in models_to_plot.values()}
+        models_plotting_info    = {model.name : {"color": model.model_color} for model in models_to_plot.values()}
 
         # Iterate through models and assign linestyles based on color duplication
         for model in models_to_plot.values():
             if any(info["color"] == model.model_color for info in models_plotting_info.values()):
-                models_plotting_info[model.clean_name]['linestyle'] = '--'  # Example: dashed line for duplicate color
+                models_plotting_info[model.name]['linestyle'] = '--'  # Example: dashed line for duplicate color
             else:
-                models_plotting_info[model.clean_name]['linestyle'] = '-'  # Example: solid line for unique color
+                models_plotting_info[model.name]['linestyle'] = '-'  # Example: solid line for unique color
 
         compilation_predictions = self.evaluator.prediction_compilations.get_compilation('horizon_0','test')
 
@@ -86,7 +86,7 @@ class EvaluationPlotter:
         """       
         # Get colors
         model_class_colors = {ml.model_class: ml.model_color for ml in self.evaluator.evaluated_models.values()}
-        model_name_colors  = {ml.clean_name: ml.model_color  for ml in self.evaluator.evaluated_models.values()}
+        model_name_colors  = {ml.name: ml.model_color  for ml in self.evaluator.evaluated_models.values()}
         
         # Prepare data
         metric_df = self.evaluator.metric_compilations.get_metric(horizon, dataset, metric)
@@ -237,7 +237,7 @@ class EvaluationPlotter:
             If provided, highlights this specific node across all plots
         """
         # Get colors
-        model_name_colors = {ml.clean_name: ml.model_color for ml in self.evaluator.evaluated_models.values()}
+        model_name_colors = {ml.name: ml.model_color for ml in self.evaluator.evaluated_models.values()}
         model_class_colors = {ml.model_class: ml.model_color for ml in self.evaluator.evaluated_models.values()}
         
         horizons_str = [f'horizon_{h}' for h in horizons]
