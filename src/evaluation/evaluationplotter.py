@@ -8,7 +8,10 @@ from ..plotting.format import calculate_subplot_layout
 import geopandas as gpd
 import matplotlib.patches as mpatches
 import matplotlib.dates as mdates
+from matplotlib.figure import Figure
+
 from ..utils import testcolor
+from ..plotting import returns_fig, Fig
 
 if TYPE_CHECKING:
     from .evaluator import Evaluator  # Only imported for type checking, not at runtime
@@ -19,8 +22,10 @@ class EvaluationPlotter:
     def __init__(self, evaluator: 'Evaluator'):
         self.evaluator = evaluator
 
-    def plot_timeseries(self, nodes: Union[int, str, List[int], List[str]], horizon: str = 'horizon_0', dataset: Literal['train','val','test'] = 'test'):
 
+    def plot_timeseries(self, nodes: Union[int, str, List[int], List[str]], horizon: int = 0, dataset: Literal['train','val','test'] = 'test') -> Figure:
+
+        horizon = f'horizon_{horizon}'
         # get nodes in right format
         if isinstance(nodes, int):
             nodes = [nodes]
@@ -31,7 +36,10 @@ class EvaluationPlotter:
 
         nrows, ncols, figsize = calculate_subplot_layout(len(nodes), target_width=9, target_height=6)
         fig, axes = plt.subplots(nrows, ncols, figsize=figsize)
-        axes = axes.flatten()
+        if len(nodes) > 1:
+            axes = axes.flatten()
+        else:
+            axes = [axes]
 
         # get model colors and linestyles
         models_to_plot          = self.evaluator.evaluated_models
@@ -44,7 +52,7 @@ class EvaluationPlotter:
             else:
                 models_plotting_info[model.name]['linestyle'] = '-'  # Example: solid line for unique color
 
-        compilation_predictions = self.evaluator.prediction_compilations.get_compilation('horizon_0','test')
+        compilation_predictions = self.evaluator.prediction_compilations.get_compilation(horizon, dataset)
 
         for idx, node_id in enumerate(nodes):  
             node_data = compilation_predictions[compilation_predictions['node'] == node_id]
@@ -62,14 +70,16 @@ class EvaluationPlotter:
             ax.xaxis.set_major_formatter(mdates.DateFormatter('%b %Y'))        
 
         plt.tight_layout()
+        plt.close()
+        return fig
 
-
+    @returns_fig
     def plot_metric(self, 
                     metric:         str, 
-                    horizon:        str,
+                    horizon:        int,
                     dataset:        str = 'test',
                     plot_type:      Literal['violin', 'box', 'map'] = 'violin', 
-                    highlight_node: Optional[float] = None):
+                    highlight_node: Optional[float] = None) -> Fig:
         """
         Plot specified metric across models.
         
@@ -84,6 +94,8 @@ class EvaluationPlotter:
         highlight_value : Optional[float]
             If provided, a red dot will be placed at this value on each distribution.
         """       
+        horizon = f'horizon_{horizon}'
+
         # Get colors
         model_class_colors = {ml.model_class: ml.model_color for ml in self.evaluator.evaluated_models.values()}
         model_name_colors  = {ml.name: ml.model_color  for ml in self.evaluator.evaluated_models.values()}
@@ -99,19 +111,22 @@ class EvaluationPlotter:
         )
         
         if plot_type in ['violin', 'box']:
-            self._plot_distribution(
+            fig = self._plot_distribution(
                 metric_df_long, metric, plot_type, 
                 model_name_colors, model_class_colors,
                 highlight_node
             )
         elif plot_type == 'map':
-            self._plot_map(metric_df_long, metric, model_name_colors)
+            fig = self._plot_map(metric_df_long, metric, model_name_colors)
         else:
             raise ValueError("plot_type must be 'violin', 'box', or 'map'")
+        
+        plt.close()
+        return fig
 
     def _plot_distribution(self, df: pd.DataFrame, metric: str, plot_type: str,
                           model_name_colors: dict, model_class_colors: dict,
-                          node: Optional[int]):
+                          node: Optional[int]) -> Figure:
         """Plot violin or box plot and optionally add a red dot for the specified node."""
         fig, ax = plt.subplots(1, 1, figsize=(12, 5))
         
@@ -154,6 +169,8 @@ class EvaluationPlotter:
         ax.legend(handles, model_class_colors.keys(), title='Model Class', loc='best')
         
         plt.tight_layout()
+        plt.close()
+        return fig
 
     def _plot_map(self, metric_df: pd.DataFrame, metric: str, model_name_colors: dict):
         """Plot spatial map of metric values."""

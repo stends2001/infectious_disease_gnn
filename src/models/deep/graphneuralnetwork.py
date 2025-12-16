@@ -32,6 +32,8 @@ from matplotlib.axes import Axes
 
 from tqdm import tqdm
 
+from .modelmanager import ModelManager
+
 class GraphNeuralNetwork(BaseModel, ABC):
     
     def __init__(self, 
@@ -50,11 +52,10 @@ class GraphNeuralNetwork(BaseModel, ABC):
         self.model:     Optional[torch.nn.Module]           = None                  # to be initiated by childclass
         self.optimizer: Optional[optim.optimizer.Optimizer] = None                  # to be initiated by _get_optimizer
         self.scheduler: Optional[_LRScheduler]              = None                  # to be initiated by _get_scheduler
-        self.weights_manager                                = ModelWeightsManager()
         self.strategy: Strategy                             = StandardStrategy()    # classic strategy (no hidden state or cell state)
 
         self.config_info['child']   = 'GraphNeuralNetwork'
-
+        self.model_manager = ModelManager()
         self.monitoring_metrics = None
         self.evaluation_datasets= {}
 
@@ -225,170 +226,6 @@ class GraphNeuralNetwork(BaseModel, ABC):
         axes[2].set_yscale('log')
 
         return (fig, axes)
-    
-    # def run_snapshot(self, index: int = 0, debug: bool = False):
-    #     """
-    #     Run a single snapshot through the model and print output for validation/debugging.
-    #     """
-    #     if self.model is None:
-    #         raise ValueError('Please initiate a model')
-
-    #     self.model.eval()  # Set model to eval mode
-
-    #     # Get snapshot from dataloader
-    #     snapshot = self.train_loader[index]
-    #     snapshot = snapshot.to(self.device)
-
-    #     with torch.no_grad():
-    #         # Forward pass
-    #         y_hat = self.model(snapshot.x, snapshot.edge_index, snapshot.edge_weight, debug=debug)
-
-    #     # Ground truth
-    #     y_true = snapshot.y.to(self.device)
-
-    #     # Compute error
-    #     loss = F.mse_loss(y_hat, y_true).item()
-
-    #     # Print summary
-    #     if debug:
-    #         print(f"\n🧪 Snapshot {index} validation summary:")
-    #         print(f"➡️  Predicted shape: {y_hat.shape}")
-    #         print(f"➡️  Ground truth shape: {y_true.shape}")
-
-    #     print(f"✅ Snapshot ran successfully")
-
-    #     return y_hat, y_true
-
-    # def save_weights(self,
-    #                  filename: Optional[str] = None,
-    #                  save_optimizer: bool = True,
-    #                  save_scheduler: bool = True,
-    #                  metadata: Optional[Dict] = None) -> str:
-    #     """
-    #     Save model weights only (not configuration).
-        
-    #     For saving configuration, use the parent's save_model() method.
-        
-    #     Parameters:
-    #     ----------
-    #     filename : Optional[str]
-    #         Custom filename (without extension)
-    #     save_optimizer : bool
-    #         Save optimizer state for training resumption
-    #     save_scheduler : bool
-    #         Save scheduler state for training resumption
-    #     metadata : Optional[Dict]
-    #         Additional metadata to store
-            
-    #     Returns:
-    #     -------
-    #     str : Path to saved weights file
-        
-    #     Example:
-    #     -------
-    #     >>> # Save config once (in BaseModel)
-    #     >>> model.save_model()  # Saves config to YAML
-    #     >>> 
-    #     >>> # Save weights multiple times during training
-    #     >>> model.save_weights(filename='epoch_50')
-    #     >>> model.save_weights(filename='epoch_100')
-    #     >>> model.save_weights(filename='best_model', save_optimizer=False)
-    #     """
-    #     if self.model is None:
-    #         raise ValueError('No model to save')
-        
-    #     weights_path = self.weights_manager.save_weights(
-    #         model=self,
-    #         filename=filename,
-    #         save_optimizer=save_optimizer,
-    #         save_scheduler=save_scheduler,
-    #         metadata=metadata
-    #     )
-        
-    #     return weights_path
-    
-    # def _load_weights(self,
-    #                  model_number: int) -> 'DeepModel':
-    #     """
-    #     Load model weights.
-    #     Model architecture should already be initialized via set_model_hparams().
-        
-    #     Parameters:
-    #     ----------
-    #     weights_path : str
-    #         Path to the weights file
-    #     load_optimizer : bool
-    #         Load optimizer state
-    #     load_scheduler : bool
-    #         Load scheduler state
-    #     strict : bool
-    #         Strictly enforce key matching
-            
-    #     Returns:
-    #     -------
-    #     self : For method chaining
-    #     """
-    #     metadata = self.weights_manager.load_weights(
-    #         model=self,
-    #         model_number=model_number
-    #     )
-        
-    #     # Update config_info with loaded metadata
-    #     if metadata.get('config_id'):
-    #         self.config_info['id'] = metadata['config_id']
-        
-    #     return self
-    
-    # def load_config(self, model_name: str):
-
-    #     cfg      = self.config_manager.load_entry(entry_name = model_name)
-    #     entry_id = cfg['id']
-
-    #     if self.__class__.__name__.lower() != cfg['model']:
-    #         raise ValueError(f'The config loaded is one of a {cfg["model"]} which does not work for {self.name}, given it is a {self.__class__.__name__}')
-
-    #     self.set_model_hparams(**cfg['model_hparams'])
-    #     self.set_global_hparams(**cfg['global_hparams'])
-    #     self._load_weights(model_number= entry_id)
-    #     print(f"✓ Model loaded")
-
-    def __str__(self):
-        # Calculate width
-        all_keys = (
-            ['model name', 'model class'] +
-            list(self._state.keys()) +
-            list(self.config_info.get('model_hparams', {}).keys()) +
-            list(self.config_info.get('global_hparams', {}).keys())
-        )
-        width = max(len(k) for k in all_keys) if all_keys else 20
-        
-        # Build output
-        lines = ['<DeepModel(']
-        lines.append(align('model name', self.name, width))
-        lines.append(align('model class', self.model_class, width))
-        lines.append('')
-        
-        # Status section
-        status_items = {k: "✓" if v else "✗" for k, v in self._state.items()}
-        lines.extend(section('status', status_items, width))
-        lines.append('')
-        
-        # Forecasts section
-        lines.extend(section('forecasts', {'forecasted': list(self.evaluation_datasets.keys())}, width))
-        lines.append('')
-        
-        # Model hparams
-        model_hparams = dict(self.config_info.get('model_hparams', {}))
-        model_hparams['strategy'] = self.strategy
-        lines.extend(section('model hparams', model_hparams, width))
-        lines.append('')
-        
-        # Global hparams
-        lines.extend(section('global hparams', self.config_info.get('global_hparams', {}), width))
-        
-        lines.append(')>')
-        
-        return '\n'.join(lines)
 
     def train(self):
         """
@@ -691,3 +528,86 @@ class GraphNeuralNetwork(BaseModel, ABC):
         
         self._update_status('forecasted')
         return self  
+        
+    def save(self, filename: Optional[str] = None) -> str:
+        """
+        Save the trained model.
+        
+        Parameters
+        ----------
+        filename : Optional[str]
+            Custom filename. If None, auto-generates one.
+            
+        Returns
+        -------
+        str : Path where model was saved
+        
+        Example
+        -------
+        >>> model.train()
+        >>> model.save('my_best_model')
+        """
+        return self.model_manager.save(self, filename)
+    
+    @classmethod
+    def load(cls, filepath: str) -> 'GraphNeuralNetwork':
+        """
+        Load a trained model.
+        
+        Parameters
+        ----------
+        filepath : str
+            Path to the saved model file
+            
+        Returns
+        -------
+        GraphNeuralNetwork : The loaded model
+        
+        Example
+        -------
+        >>> model = MyGNN.load('saved_models/my_best_model.pt')
+        >>> model.forecast('test')
+        """
+        manager = ModelManager()
+        return manager.load(filepath, cls)
+
+
+
+
+    def __str__(self):
+        # Calculate width
+        all_keys = (
+            ['model name', 'model class'] +
+            list(self._state.keys()) +
+            list(self.config_info.get('model_hparams', {}).keys()) +
+            list(self.config_info.get('global_hparams', {}).keys())
+        )
+        width = max(len(k) for k in all_keys) if all_keys else 20
+        
+        # Build output
+        lines = ['<DeepModel(']
+        lines.append(align('model name', self.name, width))
+        lines.append(align('model class', self.model_class, width))
+        lines.append('')
+        
+        # Status section
+        status_items = {k: "✓" if v else "✗" for k, v in self._state.items()}
+        lines.extend(section('status', status_items, width))
+        lines.append('')
+        
+        # Forecasts section
+        lines.extend(section('forecasts', {'forecasted': list(self.evaluation_datasets.keys())}, width))
+        lines.append('')
+        
+        # Model hparams
+        model_hparams = dict(self.config_info.get('model_hparams', {}))
+        model_hparams['strategy'] = self.strategy
+        lines.extend(section('model hparams', model_hparams, width))
+        lines.append('')
+        
+        # Global hparams
+        lines.extend(section('global hparams', self.config_info.get('global_hparams', {}), width))
+        
+        lines.append(')>')
+        
+        return '\n'.join(lines)

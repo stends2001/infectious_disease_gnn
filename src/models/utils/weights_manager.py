@@ -7,7 +7,7 @@ import torch
 
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
-    from ..deep.deepmodel import DeepModel
+    from ..deep.graphneuralnetwork import GraphNeuralNetwork
 
 from ...utils.helpers import to_underscore_string
 
@@ -22,7 +22,7 @@ class ModelWeightsManager:
         self.base_dir.mkdir(parents=True, exist_ok=True)
     
     def save_weights(self,
-                     model: 'DeepModel',
+                     model: 'GraphNeuralNetwork',
                      filename: Optional[str] = None,
                      save_optimizer: bool = True,
                      save_scheduler: bool = True,
@@ -32,7 +32,7 @@ class ModelWeightsManager:
         
         Parameters:
         ----------
-        model : DeepModel
+        model : GraphNeuralNetwork
             The model to save
         filename : Optional[str]
             Custom filename (without extension)

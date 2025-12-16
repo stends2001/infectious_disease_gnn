@@ -2,6 +2,9 @@ import seaborn as sns
 from typing import Optional, List, Literal, Any, Union
 import matplotlib.pyplot as plt
 import matplotlib.figure as Figure
+
+from ...plotting import Fig, returns_fig
+
 from .predictions_manager import PredictionManager
 
 from ..registry import MODELSREGISTRY
@@ -69,13 +72,14 @@ class BaseModel:
     def set_model_hparams(self, **kwargs):
         print(f'{warning_emoji} set_model_hparams is not implemented for {self.name}')
 
+    @returns_fig
     def show_forecasts(self,
                        node_idx:    Union[List[int], int]           = 1,
                        dataset:     Literal['train','val','test']   = 'test',
                        plot_type:   Literal['line', 'map']          = 'line',
                        horizon:     int                             = 0,
                        transformed: bool                            = False,
-                       ) -> Figure:
+                       ) -> Fig:
         
         predictioncollection = self.predictions.get_preds(dataset)
         weeks_ahead          = int(self.dataloadermanager.dataorchestrator.config.horizon_leadtime + horizon)
@@ -124,8 +128,8 @@ class BaseModel:
                 title += ' [transformed]'        
             
             plt.suptitle(title)
-            # plt.tight_layout()
-            return fig, axes
+            plt.close()
+            return fig
         
         else:
             raise ValueError('currently no other plots than lineplots supported')

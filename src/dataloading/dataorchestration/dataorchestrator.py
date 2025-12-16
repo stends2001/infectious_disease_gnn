@@ -5,6 +5,8 @@ import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
 
+from ...plotting import returns_fig, Fig
+
 from ...utils.textformatting import warning_emoji, checkmark
 from ...utils.constants import berlin_district_ids, berlin_id
 from .normalization import apply_minmax_scaling, apply_zscore_scaling, pipeline_minmax_normalization, pipeline_zscore_normalization
@@ -347,59 +349,7 @@ class NUTSHarmonizer:
         if self.config.verbose > 1:
             print(f'{checkmark} GISD data tokenized')
         
-        return gisd_tokenized
-
-    # def _tokenize_data(self, dfs: Dict[str, Union[pd.DataFrame, gpd.GeoDataFrame]]) -> Tuple[Dict[str, Union[pd.DataFrame, gpd.GeoDataFrame]], Dict[str, Dict[Union[int,str],Union[int,str]]]]:
-    #     """
-    #     Tokenize nuts-levels into 'node' column.
-    #     """
-    #     unique_ids = sorted(dfs['epipopdata'][f'{self.config.nuts_level}_key'].unique())
-    #     id_idx     = {} # nuts  : int
-    #     idx_id     = {} # int   : nuts
-
-    #     for idx, id in enumerate(unique_ids):
-    #         id_idx[id] = idx                  # id (nuts1, nuts2 or nuts3) : node_id (zero based)
-    #         idx_id[idx] = str(id)             # node_id (zero based): id (nuts1, nuts2 or nuts3)
-
-    #     tokenization_map = {"id_idx": id_idx, "idx_id": idx_id} 
-    #     df_dict = {}
-
-    #     for dfname, df in dfs.items():
-    #         dfc         = df.copy()
-    #         print(dfname)
-    #         dfc['node'] = dfc[f'{self.config.nuts_level}_key']
-    #         dfc['node'] = dfc[f'{self.config.nuts_level}_key'].map(id_idx)  
-
-    #         # get nuts-levels for rows to be dropped
-    #         rows_to_drop        = dfc[dfc['node'].isna()]
-    #         dropped_nuts_values = rows_to_drop[f'{self.config.nuts_level}_key'].unique()
-                    
-    #         # drop rows
-    #         dfr         = dfc.copy().dropna(subset=['node'])
-    #         dfr['node'] = dfr['node'].astype(int)
-
-    #         number_dropped_rows = len(rows_to_drop)
-
-    #         if number_dropped_rows > 0:
-                
-    #             # Define exception conditions for dropped rows. 
-    #             # If nodes are droppped and neither of these conditions 
-    #             # are satisfied, then there's an issue.
-    #             exception_conditions = [
-    #                 # only Berlin city is droppped
-    #                 (number_dropped_rows == 1 and '11000' in dropped_nuts_values and self.config.split_berlin),
-    #                 # only Berlin districts are dropped
-    #                 (number_dropped_rows == len(berlin_district_ids) and set(berlin_district_ids).issubset(dropped_nuts_values) and not self.config.split_berlin)
-    #             ]
-                
-    #             if not any(exception_conditions):
-    #                 print(f'{warning_emoji}dropping non-tokenized nodes in {dfname}: dropped {number_dropped_rows} nodes')
-
-    #         df_dict[dfname] = dfr
-     
-    #     if self.config.verbose > 1:
-    #         print(f'{checkmark} nodes tokenized')       
-    #     return df_dict, tokenization_map       
+        return gisd_tokenized 
 
     def orchestrate(self, rawdata: 'RawEpiData') -> Tuple['HarmonizedData', 'ContextData']:
         """
@@ -1277,7 +1227,8 @@ class DataOrchestrator:
             .finalize()
         )
     
-    def preview(self, node_idx: int, status = Literal['processed']): 
+    @returns_fig
+    def preview(self, node_idx: int, status = Literal['processed']) -> Fig: 
         """preview dataloader"""
         if status == 'processed':
             fig, ax = plt.subplots(1,1, figsize = (14,4))
@@ -1288,9 +1239,10 @@ class DataOrchestrator:
         else:
             raise ValueError(f'currently no other data stage than "processed" implemented for the previewer.')
                  
-
         ax.set_title(f"processed {self.config.target_column} in node {node_idx}") 
         plt.tight_layout()  
+        plt.close()
+        return fig
 
     def __repr__(self):
         stages = []
