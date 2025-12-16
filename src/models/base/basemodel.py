@@ -104,7 +104,7 @@ class BaseModel:
             for counter, id in enumerate(node_idx):
                 ax = axes[counter]
                 nutscode = self.tokenization_map['idx_id'][id]
-                nodename = self.nutsnames[self.nutsnames[self.nutslevel] == nutscode][f'{self.nutslevel}_name'].iloc[0]
+                nodename = self.nutsnames[self.nutsnames[f'{self.nutslevel}_key'] == nutscode][f'{self.nutslevel}_name'].iloc[0]
 
                 evaluation_df_node  = evaluation_df[evaluation_df['node'] == id]
 

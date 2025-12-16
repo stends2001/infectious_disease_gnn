@@ -35,6 +35,7 @@ class EpiConfig:
     
     # ============= FEATURES =============
     include_population:     bool = False
+    include_gisd:           bool = False    
     lag_column              str  = 'incidence
     time_index:             bool = True
     log_transform:          Optional[List[str]] = None
@@ -100,6 +101,7 @@ class EpiConfig:
     
     # ============= FEATURES =============
     include_population:     bool = False
+    include_gisd:           bool = False
     time_index:             bool = True
     lag_column:             str  = 'incidence'
     log_transform:          Optional[List[str]] = None
@@ -167,7 +169,6 @@ class EpiConfig:
             ("Disease data",            self.get_disease_path),
             ("Population data",         self.get_population_path),
             ("Shape data",              self.get_shapefile_path),
-            ("Harmonization data",      self.get_harmonization_path),
             ("Nuts names",              self.get_nuts_names_path),
             ("Berlin population data",  self.get_population_berlin_districts_path),
         ]
@@ -240,13 +241,13 @@ class EpiConfig:
         """Path to shapefile."""
         return self.data_path / f'processed/germany/geospatial/shapefiles/shape_{self.nuts_level}.shp'
     
-    def get_harmonization_path(self) -> Path:
-        """Path to NUTS harmonization file."""
-        return self.data_path / 'processed/germany/geospatial/harmonization/german_nuts_harmonization.tsv'
-    
     def get_nuts_names_path(self) -> Path:
         """Path to NUTS names file."""
-        return self.data_path / 'processed/germany/geospatial/harmonization/nuts_names.tsv'
+        return self.data_path / 'processed/germany/geospatial/harmonization/nuts.tsv'
+    
+    def get_gisd_path(self) -> Path:
+        """Path to gisd data names file."""
+        return self.data_path / f'processed/germany/sociodemography/gisd_{self.nuts_level}.csv'        
     
     # ============= SUMMARY METHODS =============
     

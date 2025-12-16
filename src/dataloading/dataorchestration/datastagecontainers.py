@@ -1,7 +1,7 @@
 import pandas as pd 
 import geopandas as gpd
 from dataclasses import dataclass
-from typing import Literal, Dict, Union, Optional
+from typing import Literal, Dict, Union, Optional, List
 
 from ...utils.textformatting import checkmark
 
@@ -32,9 +32,9 @@ class RawEpiData:
     disease:        pd.DataFrame
     population:     pd.DataFrame
     shapedata:      gpd.GeoDataFrame
-    harmonization:  pd.DataFrame
     nuts_names:     pd.DataFrame    
     population_berlin : Optional[pd.DataFrame] = None
+    gisd:           Optional[pd.DataFrame] = None
 
     
     def __repr__(self):
@@ -65,10 +65,13 @@ class ContextData:
 class HarmonizedData:
     """Container for nuts-harmonized data."""
     data:     pd.DataFrame
+    gisd:     Optional[pd.DataFrame] = None  # Add this
 
     def __repr__(self):
-        return (f"<HarmonizedData(data)>")        
-
+        repr_str = "<HarmonizedData(data"
+        if self.gisd is not None:
+            repr_str += ", gisd"
+        return repr_str + ")>"
 
 @dataclass
 class ProcessedEpiData:

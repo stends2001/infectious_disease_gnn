@@ -52,7 +52,7 @@ class EpiDataReader:
             filepath,
             parse_dates=['timestamp'],
             dtype={'kz_kreis': str, 'cases':int}
-        ).rename(columns={'kz_kreis': 'nuts3'})
+        ).rename(columns={'kz_kreis': 'nuts3_key'})
         
         if self.config.verbose > 1:
             print(f"{checkmark} Loaded raw disease data")
@@ -72,7 +72,7 @@ class EpiDataReader:
         df = pd.read_csv(
             filepath,
             dtype={'nuts3': str}
-        )
+        ).rename(columns = {'nuts3':'nuts3_key'})
         
         if self.config.verbose > 1:
             print(f"{checkmark} Loaded raw population data")
@@ -91,7 +91,7 @@ class EpiDataReader:
         
         df = pd.read_csv(
             filepath,
-            dtype={'nuts3': str})
+            dtype={'nuts3': str}).rename(columns = {'nuts3':'nuts3_key'})
         
         if self.config.verbose > 1:
             print(f"{checkmark} Loaded raw berlin districts population data")
@@ -115,22 +115,9 @@ class EpiDataReader:
         
         return gdf
     
-    def _load_harmonization_data(self) -> pd.DataFrame:
-        """Load NUTS harmonization mapping"""
-        filepath = self.config.get_harmonization_path()
-               
-        df = pd.read_csv(filepath, sep='\t', dtype=str)
-        
-        if self.config.verbose > 1:
-            print(f"{checkmark} Loaded raw harmonization data")
-        
-        return df
-    
     def _load_nuts_names(self) -> pd.DataFrame:
         """
-        this datafile has been inspired by the SurvNet database, 
-        though not all kreisen are in it, so I've made some additions.
-        Look at DataCleaning in survnet Environment
+        ...
         """
         # main file, additions-file
         filepath = self.config.get_nuts_names_path()   
@@ -142,6 +129,26 @@ class EpiDataReader:
         
         return df
     
+    def _load_gisd_data(self) -> pd.DataFrame:
+        """
+        loads and returns gisd data for set nuts level
+        """
+
+        if self.config.nuts_level == 'nuts1':
+            raise ValueError('currently no gisd data for nuts1 exists')
+        if self.config.nuts_level == 'nuts3' and self.config.split_berlin:
+            raise ValueError('no gisd data for berlin districts exists. please remove gisd data or merge berlin')
+
+        # main file, additions-file
+        filepath = self.config.get_gisd_path()   
+        
+        df = pd.read_csv(filepath,sep="," , dtype={f'{self.config.nuts_level}_key':str})
+        
+        if self.config.verbose > 1:
+            print(f"{checkmark} Loaded raw gisd data")
+        
+        return df
+
     def orchestrate(self) -> RawEpiData:
         """
         Load all required data files
@@ -154,9 +161,9 @@ class EpiDataReader:
             disease             = self._load_disease_data(),
             population          = self._load_population_data(),
             shapedata           = self._load_shapedata(),
-            harmonization       = self._load_harmonization_data(),
             nuts_names          = self._load_nuts_names(),
-            population_berlin   = self._load_population_data_berlin_districts() if self.config.split_berlin else None
+            population_berlin   = self._load_population_data_berlin_districts() if self.config.split_berlin else None,
+            gisd                = self._load_gisd_data() if self.config.include_gisd else None,            
         )
 
         if self.config.verbose:
@@ -224,7 +231,7 @@ class NUTSHarmonizer:
         When berlin not to be split -> mutate all nuts3 values of the districts into
         berlin ones (11000) for the subsequent aggregation onto nuts3/nuts2/nuts1 levels.
         """
-        epidemiology_df.loc[epidemiology_df['nuts3'].isin(berlin_district_ids), 'nuts3'] = '11000'
+        epidemiology_df.loc[epidemiology_df['nuts3_key'].isin(berlin_district_ids), 'nuts3_key'] = '11000'
         
         if self.config.verbose > 1:
             print(f'{checkmark} berlin districts renamed into berlin city')  
@@ -233,8 +240,8 @@ class NUTSHarmonizer:
 
     def _aggregate_by_nuts(self, epidemiology_df: pd.DataFrame, population_df: pd.DataFrame) -> Tuple[pd.DataFrame,pd.DataFrame]:
         """aggregates epidemiology and population data per nuts level"""
-        epidemiology_df_aggr = epidemiology_df.groupby(['timestamp', self.config.nuts_level]).aggregate({'cases':'sum'}).reset_index()     
-        population_df_aggr   = population_df.groupby(['year', self.config.nuts_level]).aggregate({'population_size':'sum'}).reset_index() 
+        epidemiology_df_aggr = epidemiology_df.groupby(['timestamp', f'{self.config.nuts_level}_key']).aggregate({'cases':'sum'}).reset_index()     
+        population_df_aggr   = population_df.groupby(['year', f'{self.config.nuts_level}_key']).aggregate({'population_size':'sum'}).reset_index() 
 
         if self.config.verbose > 1:
             print(f'{checkmark} epidemiology and population data aggregated on nuts')          
@@ -263,7 +270,7 @@ class NUTSHarmonizer:
         if self.config.verbose > 1:
             print(f'{checkmark} epidemiological- and population data merged')  
 
-        return pd.merge(epidemiology_df, population_df, on = [self.config.nuts_level,'year'])
+        return pd.merge(epidemiology_df, population_df, on = [f'{self.config.nuts_level}_key','year'])
 
     def _get_nuts_data(self, raw_nuts_names: pd.DataFrame) -> pd.DataFrame:
         """
@@ -273,77 +280,137 @@ class NUTSHarmonizer:
         """
         columns     = [f'{self.config.nuts_level}_key',f'{self.config.nuts_level}_name']
         unique_nuts = raw_nuts_names[columns].drop_duplicates().reset_index(drop=True)
-        unique_nuts.rename(columns = {f'{self.config.nuts_level}_key':self.config.nuts_level}, inplace=True)
 
         if self.config.verbose > 1:
             print(f'{checkmark} nuts levels extracted')  
 
         return unique_nuts
 
-    def _tokenize_data(self, dfs: Dict[str, Union[pd.DataFrame, gpd.GeoDataFrame]]) -> Tuple[Dict[str, Union[pd.DataFrame, gpd.GeoDataFrame]], Dict[str, Dict[Union[int,str],Union[int,str]]]]:
-        """
-        Tokenize nuts-levels into 'node' column.
-        """
-        unique_ids = sorted(dfs['epipopdata'][f'{self.config.nuts_level}'].unique())
+    def _get_tokenization_map(self, df: pd.DataFrame) -> Dict[str,Dict[str, str]]:
+        """df should be epipopdata"""
+        unique_ids = sorted(df[f'{self.config.nuts_level}_key'].unique())
         id_idx     = {} # nuts  : int
-        idx_id     = {} # int   : nuts
+        idx_id     = {} # int   : nuts      
 
         for idx, id in enumerate(unique_ids):
             id_idx[id] = idx                  # id (nuts1, nuts2 or nuts3) : node_id (zero based)
-            idx_id[idx] = str(id)             # node_id (zero based): id (nuts1, nuts2 or nuts3)
+            idx_id[idx] = str(id)             # node_id (zero based): id (nuts1, nuts2 or nuts3)          
 
         tokenization_map = {"id_idx": id_idx, "idx_id": idx_id} 
-        df_dict = {}
-
-        for dfname, df in dfs.items():
-            dfc         = df.copy()
-
-            dfc['node'] = dfc[self.config.nuts_level]
-            dfc['node'] = dfc[f'{self.config.nuts_level}'].map(id_idx)  
-
-            # get nuts-levels for rows to be dropped
-            rows_to_drop        = dfc[dfc['node'].isna()]
-            dropped_nuts_values = rows_to_drop[self.config.nuts_level].unique()
-                    
-            # drop rows
-            dfr         = dfc.copy().dropna(subset=['node'])
-            dfr['node'] = dfr['node'].astype(int)
-
-            number_dropped_rows = len(rows_to_drop)
-
-            if number_dropped_rows > 0:
-                
-                # Define exception conditions for dropped rows. 
-                # If nodes are droppped and neither of these conditions 
-                # are satisfied, then there's an issue.
-                exception_conditions = [
-                    # only Berlin city is droppped
-                    (number_dropped_rows == 1 and '11000' in dropped_nuts_values and self.config.split_berlin),
-                    # only Berlin districts are dropped
-                    (number_dropped_rows == len(berlin_district_ids) and set(berlin_district_ids).issubset(dropped_nuts_values) and not self.config.split_berlin)
-                ]
-                
-                if not any(exception_conditions):
-                    print(f'{warning_emoji}dropping non-tokenized nodes in {dfname}: dropped {number_dropped_rows} nodes')
-
-            df_dict[dfname] = dfr
-     
         if self.config.verbose > 1:
-            print(f'{checkmark} nodes tokenized')       
-        return df_dict, tokenization_map       
+            print(f'{checkmark} tokenization_map developed')    
+        return tokenization_map
+
+    def _tokenize_df(self, df: pd.DataFrame, tokenization_map, drop_key: bool = True) -> pd.DataFrame:
+        df['node'] = df[f'{self.config.nuts_level}_key']
+        df['node'] = df[f'{self.config.nuts_level}_key'].map(tokenization_map['id_idx'])  
+
+        # get nuts-levels for rows to be dropped
+        rows_to_drop        = df[df['node'].isna()]
+        dropped_nuts_values = rows_to_drop[f'{self.config.nuts_level}_key'].unique()
+                
+        # drop rows
+        dfr         = df.copy().dropna(subset=['node'])
+        dfr['node'] = dfr['node'].astype(int)
+
+        # Drop the nuts_key column after tokenization - it's now redundant
+        nuts_key_col = f'{self.config.nuts_level}_key'
+        if drop_key:
+            if nuts_key_col in dfr.columns:
+                dfr = dfr.drop(columns=[nuts_key_col])        
+
+        number_dropped_rows = len(rows_to_drop)
+
+        if number_dropped_rows > 0:
+            
+            # Define exception conditions for dropped rows. 
+            # If nodes are droppped and neither of these conditions 
+            # are satisfied, then there's an issue.
+            exception_conditions = [
+                # only Berlin city is droppped
+                (number_dropped_rows == 1 and '11000' in dropped_nuts_values and self.config.split_berlin),
+                # only Berlin districts are dropped
+                (number_dropped_rows == len(berlin_district_ids) and set(berlin_district_ids).issubset(dropped_nuts_values) and not self.config.split_berlin)
+            ]
+            
+            if not any(exception_conditions):
+                print(f'{warning_emoji}dropping non-tokenized nodes in {df.head()}: dropped {number_dropped_rows} nodes: {rows_to_drop}')    
+        return dfr  
+
+    def _prepare_gisd(self, raw_gisd: pd.DataFrame, tokenization_map: Dict) -> pd.DataFrame:
+        """
+        Tokenize GISD data and prepare for merging.
+        GISD has columns: nuts{X}_key, year, and various GISD indicators
+        """
+        gisd_tokenized = self._tokenize_df(raw_gisd, tokenization_map)
+        
+        if self.config.verbose > 1:
+            print(f'{checkmark} GISD data tokenized')
+        
+        return gisd_tokenized
+
+    # def _tokenize_data(self, dfs: Dict[str, Union[pd.DataFrame, gpd.GeoDataFrame]]) -> Tuple[Dict[str, Union[pd.DataFrame, gpd.GeoDataFrame]], Dict[str, Dict[Union[int,str],Union[int,str]]]]:
+    #     """
+    #     Tokenize nuts-levels into 'node' column.
+    #     """
+    #     unique_ids = sorted(dfs['epipopdata'][f'{self.config.nuts_level}_key'].unique())
+    #     id_idx     = {} # nuts  : int
+    #     idx_id     = {} # int   : nuts
+
+    #     for idx, id in enumerate(unique_ids):
+    #         id_idx[id] = idx                  # id (nuts1, nuts2 or nuts3) : node_id (zero based)
+    #         idx_id[idx] = str(id)             # node_id (zero based): id (nuts1, nuts2 or nuts3)
+
+    #     tokenization_map = {"id_idx": id_idx, "idx_id": idx_id} 
+    #     df_dict = {}
+
+    #     for dfname, df in dfs.items():
+    #         dfc         = df.copy()
+    #         print(dfname)
+    #         dfc['node'] = dfc[f'{self.config.nuts_level}_key']
+    #         dfc['node'] = dfc[f'{self.config.nuts_level}_key'].map(id_idx)  
+
+    #         # get nuts-levels for rows to be dropped
+    #         rows_to_drop        = dfc[dfc['node'].isna()]
+    #         dropped_nuts_values = rows_to_drop[f'{self.config.nuts_level}_key'].unique()
+                    
+    #         # drop rows
+    #         dfr         = dfc.copy().dropna(subset=['node'])
+    #         dfr['node'] = dfr['node'].astype(int)
+
+    #         number_dropped_rows = len(rows_to_drop)
+
+    #         if number_dropped_rows > 0:
+                
+    #             # Define exception conditions for dropped rows. 
+    #             # If nodes are droppped and neither of these conditions 
+    #             # are satisfied, then there's an issue.
+    #             exception_conditions = [
+    #                 # only Berlin city is droppped
+    #                 (number_dropped_rows == 1 and '11000' in dropped_nuts_values and self.config.split_berlin),
+    #                 # only Berlin districts are dropped
+    #                 (number_dropped_rows == len(berlin_district_ids) and set(berlin_district_ids).issubset(dropped_nuts_values) and not self.config.split_berlin)
+    #             ]
+                
+    #             if not any(exception_conditions):
+    #                 print(f'{warning_emoji}dropping non-tokenized nodes in {dfname}: dropped {number_dropped_rows} nodes')
+
+    #         df_dict[dfname] = dfr
+     
+    #     if self.config.verbose > 1:
+    #         print(f'{checkmark} nodes tokenized')       
+    #     return df_dict, tokenization_map       
 
     def orchestrate(self, rawdata: 'RawEpiData') -> Tuple['HarmonizedData', 'ContextData']:
         """
         The function that orchestrates all others
         """
         if self.config.split_berlin:
-            
             if rawdata.population_berlin is None:
                 raise AttributeError("'population_berlin' attribute is not found in rawdata")
             
             population_data = self._add_berlin_districts(rawdata.population, rawdata.population_berlin)
             raw_epidata     = rawdata.disease
-            
         else:
             raw_epidata     = self._mutate_berlin_district_ids(rawdata.disease)
             population_data = rawdata.population
@@ -352,18 +419,29 @@ class NUTSHarmonizer:
         population_data     = self._add_nuts_column(population_data)
         aggregated_dfs      = self._aggregate_by_nuts(epidemiology_data, population_data)
         epipopdata          = self._merge_epipopdata(aggregated_dfs[0], aggregated_dfs[1])
-        nutsnames           = self._get_nuts_data(rawdata.nuts_names)
+        nutsnames      = self._get_nuts_data(rawdata.nuts_names)
 
-        tokenized_datasets, tokenization_map = self._tokenize_data(dfs = {'epipopdata': epipopdata, 'shapedata': rawdata.shapedata, 'nutsnames': nutsnames})
+        tokenization_map    = self._get_tokenization_map(epipopdata)
+
+        epipopdata          = self._tokenize_df(epipopdata, tokenization_map)
+        shapedata           = self._tokenize_df(rawdata.shapedata, tokenization_map)
+        nutsnames           = self._tokenize_df(nutsnames, tokenization_map, drop_key = False)     
+        
+        # Prepare GISD if provided
+        gisd_harmonized = None
+        if rawdata.gisd is not None:
+            gisd_harmonized = self._prepare_gisd(rawdata.gisd, tokenization_map)
 
         harmdata = HarmonizedData(
-            data          = tokenized_datasets['epipopdata'],
+            data = epipopdata,
+            gisd = gisd_harmonized  # Add this
         )
+        
         ctxdata = ContextData(
             nuts_level          = self.config.nuts_level,
             num_nodes           = len(tokenization_map['id_idx']),
-            shapedata           = gpd.GeoDataFrame(tokenized_datasets['shapedata']),
-            nuts_names          = tokenized_datasets['nutsnames'],
+            shapedata           = shapedata,
+            nuts_names          = nutsnames,
             tokenization_map    = tokenization_map            
         )
 
@@ -417,11 +495,17 @@ class EpiDataProcessor:
        
     def _drop_cols(self, epipopdata: pd.DataFrame) -> pd.DataFrame:
         """drop redundant columns"""
-
+        cols_to_drop = []
+        
+        # Only need to drop year now (nuts_key already dropped during tokenization)
+        if 'year' in epipopdata.columns:
+            cols_to_drop.append('year')
+        
         if self.config.verbose > 1:
-            print(f'{checkmark} nuts- and year- columns removed')    
-
-        return epipopdata.drop(columns = [self.config.nuts_level, 'year'])
+            dropped_msg = f'{checkmark} year column removed' if cols_to_drop else f'{checkmark} no redundant columns to remove'
+            print(dropped_msg)
+        
+        return epipopdata.drop(columns=cols_to_drop, errors='ignore')
 
     def _filter_mindate(self, df, min_date: pd.Timestamp) -> pd.DataFrame:
         if self.config.verbose:
@@ -439,25 +523,74 @@ class EpiDataProcessor:
 
         return df.loc[df['timestamp'] < max_date].reset_index(drop = True)       
 
+    def _merge_gisd(self, epipopdata: pd.DataFrame, gisd: pd.DataFrame) -> pd.DataFrame:
+        """
+        Merge GISD data with epidemiology data by node and year.
+        
+        Parameters
+        ----------
+        epipopdata : pd.DataFrame
+            Main data with columns including 'node' and 'timestamp'
+        gisd : pd.DataFrame
+            GISD data with columns including 'node', 'year', and GISD indicators
+        
+        Returns
+        -------
+        pd.DataFrame
+            Merged dataframe with GISD features
+        """
+        # Extract year from timestamp if not already present
+        if 'year' not in epipopdata.columns:
+            epipopdata = epipopdata.copy()
+            epipopdata['year'] = epipopdata[self.config.temporal_column].dt.year
+        
+        # Merge on node and year
+        merged = pd.merge(
+            epipopdata,
+            gisd,
+            on=['node', 'year'],
+            how='left',
+            suffixes=('', '_gisd')
+        )
+        
+        # Drop the year column if it was added temporarily
+        if 'year' in merged.columns:
+            merged = merged.drop(columns=['year'])
+        
+        if self.config.verbose > 1:
+            print(f'{checkmark} GISD data merged')
+        
+        return merged
+
     def orchestrate(self, harmonizeddata: 'HarmonizedData') -> 'ProcessedEpiData':
         """
         The function that orchestrates all others
         """
-        epipopdata      = self._add_incidence_column(harmonizeddata.data)
+        epipopdata = self._add_incidence_column(harmonizeddata.data)
 
         if self.config.target_column != 'cases':
-            epipopdata      = self._drop_cases_column(epipopdata)        
+            epipopdata = self._drop_cases_column(epipopdata)        
 
-        epipopdata      = self._filter_maxdate(epipopdata, self.config.max_date)
-        epipopdata      = self._filter_mindate(epipopdata, self.config.min_date_extended)     
-        epipopdata      = self._drop_cols(epipopdata)
+        epipopdata = self._filter_maxdate(epipopdata, self.config.max_date)
+        epipopdata = self._filter_mindate(epipopdata, self.config.min_date_extended)
+        
+        # Merge GISD data BEFORE dropping year column (it needs year for merging)
+        if harmonizeddata.gisd is not None:
+            # Add year temporarily if not present
+            if 'year' not in epipopdata.columns:
+                epipopdata['year'] = epipopdata[self.config.temporal_column].dt.year
+            
+            epipopdata = self._merge_gisd(epipopdata, harmonizeddata.gisd)
+        
+        # Now drop redundant columns (including year and any nuts_key columns)
+        epipopdata = self._drop_cols(epipopdata)
 
         if self.config.verbose:
             print(f'{checkmark}{checkmark} All data preprocessed')   
         if self.config.verbose > 1:
             print("")
 
-        return ProcessedEpiData(data = epipopdata)
+        return ProcessedEpiData(data=epipopdata)
 
 # ============= FEATURE CLASS =============            
 class EpiFeatureBuilder:
@@ -659,12 +792,25 @@ class EpiFeatureBuilder:
                 transformation_group=None  # Independent normalization
             )              
         
+        # GISD FEATURES
+        if self.config.include_gisd:
+            self.column_registration.add_column(
+                    'gisd',
+                    'feature',
+                    needs_normalization=False,
+                    transformation_group=None  # Independent normalization for each GISD feature
+                )
+            
+            if self.config.verbose > 1:
+                print(f'{checkmark} GISD features registered in column registry')
+
         if self.config.verbose > 1:
             print(f'{checkmark} column_registry updated')  
 
     def orchestrate(self, processed_data: 'ProcessedEpiData') -> 'FeatureEpiData':
         """orchestrates entire feature addition"""
         feature_data = processed_data.data
+        self.data = feature_data  # Store reference for GISD column detection
 
         # Feature: population_size => colregistry done in update the registry function
         if self.config.include_population:
