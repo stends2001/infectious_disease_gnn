@@ -58,10 +58,12 @@ class PersistenceModel(BaseModel):
                 raise ValueError('please provide a valid dataset: "train"/"val"/"test"')             
 
             Xy_main      = dataloader_collection.main.copy()
-            Xy_dataset   = Xy_main[Xy_main[dataset]].reset_index(drop=True)
-            evaluation_df= Xy_dataset
-
-            evaluation_df['pred'] = evaluation_df.groupby(self.dataloadermanager.dataorchestrator.config.id_column)['target'].shift(timeshift_num)                            
+            Xy_main['pred'] = Xy_main.groupby(
+                self.dataloadermanager.dataorchestrator.config.id_column
+            )['target'].shift(timeshift_num)
+            
+            # Then filter to get the evaluation dataset
+            evaluation_df = Xy_main[Xy_main[dataset]].reset_index(drop=True)                          
 
 
             # Get the n largest timestamps

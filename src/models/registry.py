@@ -8,5 +8,5 @@ MODELSREGISTRY = {
         'GATv2Model'            : 7,
         'NodeLSTMModel'         : 8,
         'NodeBiLSTMModel'       : 9,
-        'NodeGRUModel'          : 10,
+        'NodeGRUModel'          : 10
     }    

@@ -4,7 +4,7 @@ from typing import Optional, List, Union, Dict, Any, Literal
 
 from ..base import BaseModel, PredictionCollection
 from ...utils.textformatting import warning_emoji, section, align, checkmark
-from ..utils.weights_manager import ModelWeightsManager
+# from ..utils.weights_manager import ModelWeightsManager
 from .strategies import Strategy, StandardStrategy
 from ...dataloading import GraphDataLoaderManager
 from ..utils.loss.losshandler import LossHandler

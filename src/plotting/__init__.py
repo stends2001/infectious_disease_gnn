@@ -1,2 +1,2 @@
-from .fig import returns_fig, Fig
+from .fig import ManagedFigure, convert_managedfigure, ManagedFigureGrid
 from .format import calculate_subplot_layout

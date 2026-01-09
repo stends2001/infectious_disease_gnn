@@ -3,7 +3,7 @@ from typing import Optional, List, Literal, Any, Union
 import matplotlib.pyplot as plt
 import matplotlib.figure as Figure
 
-from ...plotting import Fig, returns_fig
+from ...plotting import convert_managedfigure, ManagedFigure
 
 from .predictions_manager import PredictionManager
 
@@ -72,14 +72,14 @@ class BaseModel:
     def set_model_hparams(self, **kwargs):
         print(f'{warning_emoji} set_model_hparams is not implemented for {self.name}')
 
-    @returns_fig
+    @convert_managedfigure
     def show_forecasts(self,
                        node_idx:    Union[List[int], int]           = 1,
                        dataset:     Literal['train','val','test']   = 'test',
                        plot_type:   Literal['line', 'map']          = 'line',
                        horizon:     int                             = 0,
                        transformed: bool                            = False,
-                       ) -> Fig:
+                       ) -> ManagedFigure:
         
         predictioncollection = self.predictions.get_preds(dataset)
         weeks_ahead          = int(self.dataloadermanager.dataorchestrator.config.horizon_leadtime + horizon)
@@ -112,8 +112,8 @@ class BaseModel:
 
                 evaluation_df_node  = evaluation_df[evaluation_df['node'] == id]
 
-                sns.lineplot(data   = evaluation_df_node, x = 'timestamp', y = 'target',    color = testcolor,          marker = 'o',   label = 'Ground truth', ax = ax, linewidth = 2)
-                sns.lineplot(data   = evaluation_df_node, x = 'timestamp', y = 'pred',      color = self.model_color,   marker = 'h',   label = 'Predictions',    ax = ax, linewidth = 2)
+                sns.lineplot(data   = evaluation_df_node, x = 'timestamp', y = 'target',    color = testcolor,          marker = 'o',   label = 'ground truth', ax = ax, linewidth = 2)
+                sns.lineplot(data   = evaluation_df_node, x = 'timestamp', y = 'pred',      color = self.model_color,   marker = 'h',   label = f'predictions {self.name}',    ax = ax, linewidth = 2)
 
                 ax.set_title(f'{nodename} [node: {id}]')
                 ax.set_xlabel("")            

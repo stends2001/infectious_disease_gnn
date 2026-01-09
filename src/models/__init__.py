@@ -23,5 +23,5 @@ MODELSREGISTRY = {
         'ClimateologyModel'     : ClimateologyModel,
         'NodeLSTMModel'         : NodeLSTMModel,
         'NodeBiLSTMModel'       : NodeBiLSTMModel,
-        'NodeGRUModel'          : NodeGRUModel,
+        'NodeGRUModel'          : NodeGRUModel
     }   

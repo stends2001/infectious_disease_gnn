@@ -5,8 +5,8 @@ import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
 
-from ...plotting import returns_fig, Fig
-
+from ...plotting import  ManagedFigure, convert_managedfigure
+from ...utils.colors import traincolor, valcolor, testcolor
 from ...utils.textformatting import warning_emoji, checkmark
 from ...utils.constants import berlin_district_ids, berlin_id
 from .normalization import apply_minmax_scaling, apply_zscore_scaling, pipeline_minmax_normalization, pipeline_zscore_normalization
@@ -1227,13 +1227,21 @@ class DataOrchestrator:
             .finalize()
         )
     
-    @returns_fig
-    def preview(self, node_idx: int, status = Literal['processed']) -> Fig: 
+    @convert_managedfigure
+    def preview(self, node_idx: int, status = Literal['processed']) -> ManagedFigure: 
         """preview dataloader"""
         if status == 'processed':
             fig, ax = plt.subplots(1,1, figsize = (14,4))
             data = self.data_processed.data
-            sns.lineplot(data[data['node'] == node_idx], x = 'timestamp', y=f'{self.config.target_column}')
+
+            data_train  = data[data['timestamp'] <= self.config.split_trainval].reset_index(drop = True)
+            data_valtest= data[data['timestamp'] >  self.config.split_trainval].reset_index(drop = True)
+            data_val    = data_valtest[data_valtest['timestamp'] <= self.config.split_valtest].reset_index(drop = True)
+            data_test   = data_valtest[data_valtest['timestamp'] >  self.config.split_valtest].reset_index(drop = True)         
+
+            sns.lineplot(data_train[data_train['node'] == node_idx],    x = 'timestamp', color = traincolor, label = 'train', y=f'{self.config.target_column}')
+            sns.lineplot(data_val[data_val['node'] == node_idx],        x = 'timestamp', color = valcolor  , label = 'val',y=f'{self.config.target_column}')
+            sns.lineplot(data_test[data_test['node'] == node_idx],      x = 'timestamp', color = testcolor , label = 'test',y=f'{self.config.target_column}')                        
             ax.grid()
             ax.set_xlabel("")
         else:

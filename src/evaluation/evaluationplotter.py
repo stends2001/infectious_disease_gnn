@@ -11,7 +11,7 @@ import matplotlib.dates as mdates
 from matplotlib.figure import Figure
 
 from ..utils import testcolor
-from ..plotting import returns_fig, Fig
+from ..plotting import convert_managedfigure, ManagedFigure
 
 if TYPE_CHECKING:
     from .evaluator import Evaluator  # Only imported for type checking, not at runtime
@@ -73,13 +73,13 @@ class EvaluationPlotter:
         plt.close()
         return fig
 
-    @returns_fig
+    @convert_managedfigure
     def plot_metric(self, 
                     metric:         str, 
                     horizon:        int,
                     dataset:        str = 'test',
                     plot_type:      Literal['violin', 'box', 'map'] = 'violin', 
-                    highlight_node: Optional[float] = None) -> Fig:
+                    highlight_node: Optional[float] = None) -> ManagedFigure:
         """
         Plot specified metric across models.
         
@@ -229,6 +229,7 @@ class EvaluationPlotter:
         cbar.set_ticklabels([f'{t:.1f}' for t in ticks])
         
         plt.suptitle(f'{metric}')
+        return fig
 
     def plot_metric_horizons_separate(self,
                                     metric: str,
