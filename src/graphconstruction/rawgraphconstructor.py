@@ -119,7 +119,9 @@ class RawGraphConstructor:
         population_data             = population_data.sort_values(self.id_col).reset_index(drop=True)
 
         dfc_centroids               = dfc.copy() 
-        dfc_centroids['geometry']   = dfc.geometry.centroid
+        dfc_projected               = dfc.to_crs('EPSG:3857') 
+        dfc_centroids['geometry']   = dfc_projected.geometry.centroid
+        dfc_centroids               = dfc_centroids.to_crs(dfc.crs)
         coords                      = np.column_stack([dfc_centroids.geometry.x, dfc_centroids.geometry.y])
 
         # Compute Euclidean distances between all pairs

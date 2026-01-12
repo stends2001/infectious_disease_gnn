@@ -1,20 +1,20 @@
 import matplotlib.pyplot as plt 
 import seaborn as sns
-from typing import Literal, Optional, List, Union, TYPE_CHECKING
+from typing import Literal, Optional, List, Union, TYPE_CHECKING, Tuple
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-from ..plotting.format import calculate_subplot_layout
 import geopandas as gpd
 import matplotlib.patches as mpatches
 import matplotlib.dates as mdates
 from matplotlib.figure import Figure
+from matplotlib.axes import Axes
 
-from ..utils import testcolor
-from ..plotting import convert_managedfigure, ManagedFigure
+from src.utils import testcolor
+from src.plotting import convert_managedfigure, ManagedFigure, calculate_subplot_layout
 
 if TYPE_CHECKING:
-    from .evaluator import Evaluator  # Only imported for type checking, not at runtime
+    from src.evluation.evaluator import Evaluator  # Only imported for type checking, not at runtime
 
 
 class EvaluationPlotter:
@@ -22,8 +22,8 @@ class EvaluationPlotter:
     def __init__(self, evaluator: 'Evaluator'):
         self.evaluator = evaluator
 
-
-    def plot_timeseries(self, nodes: Union[int, str, List[int], List[str]], horizon: int = 0, dataset: Literal['train','val','test'] = 'test') -> Figure:
+    @convert_managedfigure
+    def plot_timeseries(self, nodes: Union[int, str, List[int], List[str]], horizon: int = 0, dataset: Literal['train','val','test'] = 'test') -> ManagedFigure:
 
         horizon = f'horizon_{horizon}'
         # get nodes in right format
@@ -74,7 +74,55 @@ class EvaluationPlotter:
         return fig
 
     @convert_managedfigure
-    def plot_metric(self, 
+    def plot_metric_compilation(self, dataset: Literal['train','val','test'] = 'test', horizon: int = 0, metrics: List[str] = ['pearson_corr','spearman_corr','ccc','rmse'], plot_types: List[str]=['box','box','violin','box'], subfig_size: Tuple[float,float] = (8,6)) -> ManagedFigure:
+        """
+        Create a compilation of multiple metrics in subplots.
+        """
+        horizon_name = f'horizon_{horizon}'
+        n_subfigures = len(metrics)
+
+        nrow, ncol, figsize = calculate_subplot_layout(n_subfigures, subfig_size[0], subfig_size[1])
+        fig, axes = plt.subplots(nrows=nrow, ncols=ncol, figsize=figsize)
+        axes = axes.flatten()
+
+        # Get colors
+        model_class_colors = {ml.model_class: ml.model_color for ml in self.evaluator.evaluated_models.values()}
+        model_name_colors  = {ml.name: ml.model_color  for ml in self.evaluator.evaluated_models.values()}
+        
+        for ii, metric in enumerate(metrics):
+            ax          = axes[ii]
+            plot_type   = plot_types[ii]
+
+            # Prepare data
+            metric_df = self.evaluator.metric_compilations.get_metric(horizon_name, dataset, metric)
+            metric_df_long = pd.melt(
+                metric_df, 
+                id_vars='node', 
+                value_vars=list(model_name_colors.keys()),
+                var_name='model', 
+                value_name='value'
+            )
+        
+            if plot_type in ['violin', 'box']:
+                self._plot_distribution_on_ax(
+                    ax, metric_df_long, metric, plot_type, 
+                    model_name_colors, model_class_colors,
+                    highlight_node=None,
+                    add_legend=(ii == 0)  # Only add legend to first subplot
+                )
+            else:
+                raise ValueError("plot_type must be 'violin' or 'box'")
+        
+        # Hide extra subplots
+        for jj in range(len(metrics), len(axes)):
+            axes[jj].axis('off')
+        
+        plt.tight_layout()
+        plt.close()
+        return fig
+
+    @convert_managedfigure
+    def plot_single_metric(self, 
                     metric:         str, 
                     horizon:        int,
                     dataset:        str = 'test',
@@ -91,7 +139,7 @@ class EvaluationPlotter:
             Which horizon to plot
         plot_type : str
             Type of plot (violin, box, map)
-        highlight_value : Optional[float]
+        highlight_node : Optional[float]
             If provided, a red dot will be placed at this value on each distribution.
         """       
         horizon = f'horizon_{horizon}'
@@ -111,11 +159,13 @@ class EvaluationPlotter:
         )
         
         if plot_type in ['violin', 'box']:
-            fig = self._plot_distribution(
-                metric_df_long, metric, plot_type, 
+            fig, ax = plt.subplots(1, 1, figsize=(12, 5))
+            self._plot_distribution_on_ax(
+                ax, metric_df_long, metric, plot_type, 
                 model_name_colors, model_class_colors,
-                highlight_node
+                highlight_node, add_legend=True
             )
+            plt.tight_layout()
         elif plot_type == 'map':
             fig = self._plot_map(metric_df_long, metric, model_name_colors)
         else:
@@ -124,12 +174,32 @@ class EvaluationPlotter:
         plt.close()
         return fig
 
-    def _plot_distribution(self, df: pd.DataFrame, metric: str, plot_type: str,
+    def _plot_distribution_on_ax(self, ax: Axes, df: pd.DataFrame, metric: str, plot_type: str,
                           model_name_colors: dict, model_class_colors: dict,
-                          node: Optional[int]) -> Figure:
-        """Plot violin or box plot and optionally add a red dot for the specified node."""
-        fig, ax = plt.subplots(1, 1, figsize=(12, 5))
+                          highlight_node: Optional[int] = None,
+                          add_legend: bool = True) -> None:
+        """
+        Plot violin or box plot on a given axes object.
         
+        Parameters
+        ----------
+        ax : Axes
+            Matplotlib axes to plot on
+        df : pd.DataFrame
+            Long-format dataframe with columns: node, model, value
+        metric : str
+            Name of the metric being plotted
+        plot_type : str
+            'violin' or 'box'
+        model_name_colors : dict
+            Mapping of model names to colors
+        model_class_colors : dict
+            Mapping of model classes to colors
+        highlight_node : Optional[int]
+            If provided, highlights this specific node
+        add_legend : bool
+            Whether to add legend to this plot
+        """
         plot_func = sns.violinplot if plot_type == 'violin' else sns.boxplot
         plot_func(
             data=df, x='model', y='value', hue='model',
@@ -138,36 +208,49 @@ class EvaluationPlotter:
             legend=False
         )
         
-        ax.set_title(f'Model Evaluation: {metric.upper()}')
+        ax.set_title(f'{metric.upper()}')
         ax.set_ylabel(metric.upper())
         ax.set_xlabel('Model')
         ax.grid(alpha=0.3)
         ax.set_xticklabels(ax.get_xticklabels(), rotation=30, ha='center', fontsize=8)
 
-        if node:
-        
+        if highlight_node:
             # Plot red dot for the specified node for all models
-            node_values = df[df['node'] == node]  # Get values for the specified node
+            node_values = df[df['node'] == highlight_node]  # Get values for the specified node
             
             # Loop over each model and plot a red dot for the specified node
             for i, model in enumerate(model_name_colors.keys()):
                 # Find the corresponding value for the node for each model
-                node_value = node_values[node_values['model'] == model]['value'].values[0]
-                
-                # Plot red dot at the value of the node for the current model
-                ax.scatter(
-                    x=i,  # i is the x-position of the model in the distribution
-                    y=node_value,  # the y-position is the value for the specified node
-                    color='red', 
-                    zorder=10, 
-                    s=100, 
-                    label=f'Node {node}: {node_value}' if i == 0 else ""  # Label only the first red dot for clarity
-                )
+                node_value = node_values[node_values['model'] == model]['value'].values
+                if len(node_value) > 0:
+                    # Plot red dot at the value of the node for the current model
+                    ax.scatter(
+                        x=i,  # i is the x-position of the model in the distribution
+                        y=node_value[0],  # the y-position is the value for the specified node
+                        color='red', 
+                        zorder=10, 
+                        s=100, 
+                        label=f'Node {highlight_node}' if i == 0 else ""
+                    )
 
         # Legend
-        handles = [mpatches.Patch(color=c) for c in model_class_colors.values()]
-        ax.legend(handles, model_class_colors.keys(), title='Model Class', loc='best')
-        
+        if add_legend:
+            handles = [mpatches.Patch(color=c) for c in model_class_colors.values()]
+            ax.legend(handles, model_class_colors.keys(), title='Model Class', loc='best')
+
+    def _plot_distribution(self, df: pd.DataFrame, metric: str, plot_type: str,
+                          model_name_colors: dict, model_class_colors: dict,
+                          node: Optional[int]) -> Figure:
+        """
+        Plot violin or box plot (legacy wrapper for backward compatibility).
+        Creates a new figure and calls _plot_distribution_on_ax.
+        """
+        fig, ax = plt.subplots(1, 1, figsize=(12, 5))
+        self._plot_distribution_on_ax(
+            ax, df, metric, plot_type, 
+            model_name_colors, model_class_colors,
+            node, add_legend=True
+        )
         plt.tight_layout()
         plt.close()
         return fig
@@ -284,17 +367,12 @@ class EvaluationPlotter:
                 value_name='value'
             )
             
-            # Create plot
-            plot_func = sns.violinplot if plot_type == 'violin' else sns.boxplot
-            plot_func(
-                data=metric_df_long,
-                x='model',
-                y='value',
-                hue='model',
-                ax=ax,
-                palette=model_name_colors,
-                **(dict(cut=0) if plot_type == 'violin' else {}),
-                legend=False
+            # Use the new axes-based plotting function
+            self._plot_distribution_on_ax(
+                ax, metric_df_long, metric, plot_type,
+                model_name_colors, model_class_colors,
+                highlight_node=highlight_node,
+                add_legend=False  # We'll add a single legend for the whole figure
             )
             
             # Styling
@@ -304,31 +382,12 @@ class EvaluationPlotter:
                 ax.set_ylabel(metric.upper(), fontsize=10)
             else:
                 ax.set_ylabel('')
-            ax.grid(alpha=0.3, axis='y')
-            ax.set_xticklabels(ax.get_xticklabels(), rotation=30, ha='right', fontsize=8)
             
-            # Highlight specific node if requested
-            if highlight_node is not None:
-                node_values = metric_df_long[metric_df_long['node'] == highlight_node]
-                
-                for model_idx, model in enumerate(model_name_colors.keys()):
-                    node_value = node_values[node_values['model'] == model]['value']
-                    
-                    if not node_value.empty:
-                        ax.scatter(
-                            x=model_idx,
-                            y=node_value.values[0],
-                            color='red',
-                            s=100,
-                            zorder=10,
-                            edgecolors='darkred',
-                            linewidths=2,
-                            marker='D',
-                            label=f'Node {highlight_node}' if model_idx == 0 else ""
-                        )
-                
-                if highlight_node is not None and idx == 0:
-                    ax.legend(loc='best', frameon=True, fontsize=8)
+            # Add node-specific legend only to first subplot if node is highlighted
+            if highlight_node is not None and idx == 0:
+                # Add a small legend for the highlighted node
+                node_patch = mpatches.Patch(color='red', label=f'Node {highlight_node}')
+                ax.legend(handles=[node_patch], loc='upper right', frameon=True, fontsize=8)
         
         # Add main title
         fig.suptitle(f'Model Evaluation Across Horizons: {metric.upper()}', 
@@ -341,3 +400,4 @@ class EvaluationPlotter:
                 bbox_to_anchor=(0.99, 0.98), frameon=True)
         
         plt.tight_layout()
+        return fig

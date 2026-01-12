@@ -83,7 +83,7 @@ class DynamicGraphStructure:
         try:
             idx = times.index(t)
         except ValueError:
-            raise KeyError(f"Timestamp {t} not found in DynamicGraphStructure")
+            raise KeyError(f"Timestamp {t} not found in DynamicGraphStructure. Valid values are: {times}")
 
         return self.graphstructures[idx]
     

@@ -439,9 +439,9 @@ class DynamicGraphOrchestrator(BaseGraphOrchestrator):
         graphstats              = self._generate_graphstats(dynamicgraphstructure, time_axis_str)
         graphconfig             = DynamicGraphConfig(method, time_axis, frequency, 
                                         self_connection, normalization, kwargs)
-
+        
         self.graph_registry.add_entry(graphname, 
-                                     GraphEntry(dynamicgraphstructure, graphstats, graphconfig, 'dynamic'))
+                                     GraphEntry(dynamicgraphstructure, graphstats, graphconfig, 'dynamic'))                                    
 
     def preview_graphstructure(self,
                                graphname: Optional[str] = None,
@@ -492,7 +492,8 @@ class DynamicGraphOrchestrator(BaseGraphOrchestrator):
         edge_weight_max_list = []
         
         for t_idx in range(len(graph_structure)):
-            snapshot = graph_structure.get_snapshot(t_idx)
+            t = graph_structure.timestamps[t_idx]
+            snapshot = graph_structure.get_snapshot(t)
             edge_index = snapshot.edge_index
             edge_weight = snapshot.edge_weight
             
