@@ -32,6 +32,7 @@ class EpiConfig:
     horizon_leadtime:       int = 1
     sequence_length:        int = 1
     lag_num:                int = 1
+    prediction_mode: Literal['regression','classification'] = 'regression'
     
     # ============= FEATURES =============
     include_population:     bool = False
@@ -98,6 +99,7 @@ class EpiConfig:
     horizon_leadtime:       int = 1
     sequence_length:        int = 1
     lag_num:                int = 1
+    prediction_mode:        Literal['regression','classification'] = 'regression'
     
     # ============= FEATURES =============
     include_population:     bool = False
@@ -109,7 +111,6 @@ class EpiConfig:
     
     # ============= NORMALIZATION =============
     normalization_method:   Literal['minmax', 'zscore', 'none'] = 'zscore'
-
     
     # ============= SPLITTING =============
     split_trainval:         str = '2018-06-01'
@@ -125,7 +126,6 @@ class EpiConfig:
     # ============= OTHER =============
     incidence_scalar:       int = 10_000    
     verbose:                Literal[0,1,2] = 0
-
 
     def __post_init__(self):
         """Validate configuration after initialization."""
@@ -154,6 +154,10 @@ class EpiConfig:
         if self.lag_num < 1:
             raise ValueError(f"number of lags must be >= 1, got {self.lag_num}")            
         
+        # validate task
+        if self.target_column == 'incidence' and self.prediction_mode == 'classification':
+            raise ValueError(f'Invalid combination of target as incidence and prediction mode as classification. Please adjust')
+
         # Validate input
         self._validate_datapaths()
         self._validate_current_limitations()
