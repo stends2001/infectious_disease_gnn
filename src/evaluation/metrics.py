@@ -6,18 +6,24 @@ from scipy.stats import spearmanr, pearsonr
 from tqdm import tqdm
 from pandas._libs.missing import NAType
 
-class Metrics:
+import warnings 
+from sklearn.exceptions import UndefinedMetricWarning
+
+from sklearn.metrics import (
+    accuracy_score, precision_score, recall_score, f1_score,
+    roc_auc_score, average_precision_score, confusion_matrix
+)
+
+class RegressionMetrics:
     """
     compute metrics for dataframe    
     """
 
     def __init__(self, 
-                 target_col: str = 'incidence', 
-                 pred_col: str = 'pred', 
-                 id_col: str = 'node', 
-                 temporal_col: str = 'timestamp',
-                 edge_index: Optional[torch.Tensor] = None, 
-                 edge_weight: Optional[torch.Tensor] = None):
+                 target_col: str    = 'incidence', 
+                 pred_col: str      = 'pred', 
+                 id_col: str        = 'node', 
+                 temporal_col: str  = 'timestamp'):
         """
         Initialize metrics calculator (configuration only, not data).
         
@@ -30,12 +36,11 @@ class Metrics:
         edge_weight : torch.Tensor, optional
             Edge weights [num_edges]
         """
-        self.target_col = target_col
-        self.pred_col = pred_col
-        self.id_col = id_col
-        self.temporal_col = temporal_col
-        self.edge_index = edge_index
-        self.edge_weight = edge_weight
+        self.target_col     = target_col
+        self.pred_col       = pred_col
+        self.id_col         = id_col
+        self.temporal_col   = temporal_col
+        self.supported_metrics = ['mse','rmse','pearson_corr','spearman_corr','ccc','node_smape']
 
     # =============== Node-level metrics =============== #
     def mse(self, df: pd.DataFrame) -> float:
@@ -91,7 +96,6 @@ class Metrics:
         else:
             return cast(float, numerator / denominator)
 
-
     def node_smape(self, df, epsilon=1e-6):
         # Mask rows where both true and predicted values are zero
         true_col = self.target_col
@@ -116,86 +120,101 @@ class Metrics:
         smape = (numerator / denominator).mean() * 100
         return smape
 
+class ClassificationMetrics:
+    """
 
-    # =============== Neighborhood-level metrics ============ #        
-    def neighborhood_ccc(self, node_df: pd.DataFrame, wide_df: pd.DataFrame, pred_col: Optional[str] = None, self_loops: bool = False) -> Union[float, NAType]:
+    """
+    def __init__(self, 
+                 target_col: str = 'target', 
+                 pred_col: str = 'pred',  # probabilities
+                 pred_binary_col: Optional[str] = None,  # optional binary predictions
+                 id_col: str = 'node', 
+                 temporal_col: str = 'timestamp'):
         """
-        Correlation between node's predictions and weighted average of neighbors.
-        
-        Parameters
-        -----------
-        node_df : pd.DataFrame
-            Time series for single node (columns: timestamp, node, pred, incidence)
-        wide_df : pd.DataFrame
-            Wide format with all nodes (columns: timestamp, node1, node2, ...)
-        self_loops: bool = True
-            Whether to include self-loops
-        
-        Returns
-        --------
-        float : Correlation coefficient, or None if insufficient data
+        pred_col : str
+            Column with probability predictions (0-1)
+        pred_binary_col : str, optional
+            Column with binary predictions (0 or 1). If None, will be computed from pred_col
         """
-        if self.edge_index is None:
-            return pd.NA
-        
-        if pred_col:
-            prediction_column = pred_col
+        self.target_col = target_col
+        self.pred_col = pred_col
+        self.pred_binary_col = pred_binary_col
+        self.id_col = id_col
+        self.temporal_col = temporal_col
+        self.supported_metrics = ['roc_auc','accuracy','precision','recall','f1','fpr','fnr']
+
+    def _get_binary_predictions(self, df: pd.DataFrame, threshold: float = 0.5) -> pd.Series:
+        """"""
+        if self.pred_binary_col and self.pred_binary_col in df.columns:
+            return df[self.pred_binary_col]
         else:
-            prediction_column = self.pred_col
+            return (df[self.pred_col] > threshold).astype(int)
 
-        node_id             = int(node_df[self.id_col].iloc[0])
-        neighbors, weights  = self._get_neighborhood(node_id)
+    # =============== Threshold-dependent metrics ===============
+    def accuracy(self, df: pd.DataFrame, threshold: float = 0.5) -> float:
+        """"""
+        y_pred = self._get_binary_predictions(df, threshold)
+        return float(accuracy_score(df[self.target_col], y_pred))
+
+    def precision(self, df: pd.DataFrame, threshold: float = 0.5) -> float:
+        """"""
+        y_pred = self._get_binary_predictions(df, threshold)
+        return float(precision_score(df[self.target_col], y_pred, zero_division=0))
+
+    def recall(self, df: pd.DataFrame, threshold: float = 0.5) -> float:
+        """"""
+        y_pred = self._get_binary_predictions(df, threshold)
+        return float(recall_score(df[self.target_col], y_pred, zero_division=0))
+
+    def f1(self, df: pd.DataFrame, threshold: float = 0.5) -> float:
+        """"""
+        y_pred = self._get_binary_predictions(df, threshold)
+        return float(f1_score(df[self.target_col], y_pred, zero_division=0))
+
+    def fpr(self, df: pd.DataFrame, threshold: float = 0.5) -> float:
+        """"""
+        y_pred = self._get_binary_predictions(df, threshold)
+        cm = confusion_matrix(
+            df[self.target_col], y_pred, labels=[0, 1]
+        )  # always 2x2
+        tn, fp, fn, tp = cm.ravel()
+        return float(fp / (fp + tn)) if (fp + tn) > 0 else float('nan')
+
+    def fnr(self, df: pd.DataFrame, threshold: float = 0.5) -> float:
+        """"""
+        y_pred = self._get_binary_predictions(df, threshold)
+        cm = confusion_matrix(
+            df[self.target_col], y_pred, labels=[0, 1]
+        )
+        tn, fp, fn, tp = cm.ravel()
+        return float(fn / (fn + tp)) if (fn + tp) > 0 else float('nan')
+
+    def conf_matrix(self, df: pd.DataFrame, threshold: float = 0.5) -> np.ndarray:
+        """"""
+        y_pred = self._get_binary_predictions(df, threshold)
+        return confusion_matrix(df[self.target_col], y_pred, labels=[0, 1])
+
+    # =============== Threshold-independent metrics ===============
+    def roc_auc(self, df: pd.DataFrame) -> float:
+        """
+        note that for some groups there's only a single class!
+        """
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                category=UndefinedMetricWarning
+            )
+            try:
+                return float(
+                    roc_auc_score(df[self.target_col], df[self.pred_col])
+                )
+            except ValueError:
+                # Single-class ground truth
+                return float('nan')
         
-        neighbor_cols       = [n for n in neighbors if n in wide_df.columns]
-
-        # Merge node data with neighbor data on timestamp
-        neighbors_data      = wide_df[[self.temporal_col] + neighbor_cols]
-        neighborhood_data   = pd.merge(node_df, neighbors_data, on=self.temporal_col)    
-
-        weighted_ccc_values = []
-        total_weight        = 0
-
-        for neighbor_id in neighbor_cols:
-            
-            if neighbor_id == node_id and not self_loops:
-                neighbor_weight = 0.0            
-            
-            else:
-                neighbor_weight = weights[neighbors.index(neighbor_id)]
-
-
-            # Create temporary df with node's pred and neighbor's values
-            temp_df = pd.DataFrame({
-                self.target_col: neighborhood_data[prediction_column],    # Compare predictions
-                prediction_column:   neighborhood_data[neighbor_id]       # to neighbor's predictions
-            })
-            
-            ccc_value = self.ccc(temp_df)
-
-            if ccc_value is not None:
-                weighted_ccc_values.append(ccc_value * neighbor_weight)
-                total_weight += neighbor_weight
-        
-        if total_weight == 0:
-            return pd.NA
-        
-        neighborhood_ccc =  sum(weighted_ccc_values) / total_weight        
-        return neighborhood_ccc
-
-    def _get_neighborhood(self, node_id: int) -> Tuple[List[int], List[float]]:
-        """Get neighbor node IDs from edge_index."""
-        if self.edge_index is None:
-            raise ValueError('edge index not found')
-        
-        if self.edge_weight is None:
-            raise ValueError('edge weight not found')        
-        
-        neighborhood_edges      = self.edge_index[0] == node_id
-        
-        neighbors               = self.edge_index[1][neighborhood_edges].cpu().numpy()
-        neighbors_list          = [int(nn) for nn in neighbors]
-
-        neighbors_weights       = self.edge_weight[neighborhood_edges].cpu().numpy()
-        neighbors_weights_list  = [float(ww) for ww in neighbors_weights]        
-
-        return neighbors_list, neighbors_weights_list
+    def average_precision(self, df: pd.DataFrame) -> float:
+        """"""
+        try:
+            return float(average_precision_score(df[self.target_col], df[self.pred_col]))
+        except ValueError:
+            return float('nan')

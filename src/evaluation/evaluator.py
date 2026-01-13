@@ -2,7 +2,7 @@ from typing import Union, List, Literal, Union, Optional, Dict
 import pandas as pd
 from tqdm import tqdm 
 
-from .metrics import Metrics
+from .metrics import ClassificationMetrics, RegressionMetrics
 from ..utils.textformatting import align, warning_emoji
 from ..models.base.basemodel import BaseModel
 from .evaluationplotter import EvaluationPlotter
@@ -11,23 +11,12 @@ from .containers import PredictionCompilation, MetricCompilation
 class Evaluator:
 
     """
-    Evaluates models on spatiotemporal epidemioligal predictions
-
-    Examples
-    --------
-    >>> evaluator = Evaluator([ml1, ml2])
-    >>> evaluator.add_evaluation()
-    >>> evaluator.plotter.plot_metric("ccc", plot_type = "map")
-
-    See Also
-    --------
-    EvaluationPlotter
-    Metrics
     """
 
     def __init__(self, models: Union[BaseModel, List[BaseModel]]):
         models_list             = models if isinstance(models, list) else [models]
         self.evaluated_models   = {ml.name: ml for ml in models_list}
+        self._validate_prediction_modes()
         
         # Column names
         self.target_col     = 'target'
@@ -37,14 +26,22 @@ class Evaluator:
         
         # Storage
         self.evaluation_entries: Dict[str, pd.DataFrame]         = {}
-        self.metrics = ['mse','rmse','spearman_corr', 'pearson_corr' ,'ccc','node_smape']
+        # self.metrics = ['mse','rmse','spearman_corr', 'pearson_corr' ,'ccc','node_smape']
 
 
         self.plotter = EvaluationPlotter(self)
 
         self.prediction_compilations = PredictionCompilation()
         self.metric_compilations     = MetricCompilation()
-            
+        self._setup_metric_calculator()
+  
+    def _setup_metric_calculator(self):
+        """iniates self.metric_calculator attribute"""
+        if self.prediction_mode == 'classification':
+            self.metric_calculator = ClassificationMetrics(self.target_col, self.pred_col, None, self.id_col, self.temporal_col)
+        elif self.prediction_mode == 'regression':
+            self.metric_calculator = RegressionMetrics(self.target_col, self.pred_col, self.id_col, self.temporal_col)
+
     def add_evaluation(self, 
                        horizon:     int  = 0,
                        dataset:     Literal['train', 'val', 'test'] = 'test') -> 'Evaluator':
@@ -58,10 +55,13 @@ class Evaluator:
         dataset : str
             Which dataset to evaluate
         """
+        # in case prediction compilation already established
         if dataset in self.prediction_compilations.compilations:
             if f'horizon_{horizon}' in self.prediction_compilations.compilations[dataset]:
                 print(f'{warning_emoji} horizon_{horizon} already exists for {dataset}')
                 return self 
+            
+        # if prediction compilation doesn't exist yet
         else:
             compilation_preds   = self._compile_predictions(horizon, dataset)
             self.prediction_compilations.add_horizon(compilation_preds, f'horizon_{horizon}', dataset)
@@ -71,23 +71,10 @@ class Evaluator:
             self.metric_compilations.add_horizon(compilation_metrics, f'horizon_{horizon}', dataset)
         return self
 
-    def _get_metrics_calculator(self, model: BaseModel) -> Metrics:
-        """Create metrics calculator with model's graph structure."""
-        edge_index  = getattr(model.dataloadermanager, 'edge_index', None)
-        edge_weight = getattr(model.dataloadermanager, 'edge_weight', None)
-        
-        return Metrics(
-            target_col  = self.target_col,
-            pred_col    = self.pred_col,
-            id_col      = self.id_col,
-            temporal_col= self.temporal_col,
-            edge_index  = edge_index,
-            edge_weight = edge_weight
-        )
-
     def _compile_metrics(self, horizon, dataset) -> dict:
         metrics_dict = {}
-        for metric_name in tqdm(self.metrics, desc = 'computing metrics'):
+        for metric_name in tqdm(self.metric_calculator.supported_metrics, desc = 'computing metrics'):
+            
             metric_df = self._compute_all_models_metric(
                 metric_name, horizon, dataset
             )
@@ -113,8 +100,7 @@ class Evaluator:
                                  metric_name: str, 
                                  model: BaseModel) -> pd.DataFrame:
         """Compute standard metric per node using groupby."""
-        calculator  = self._get_metrics_calculator(model)
-        metric_func = getattr(calculator, metric_name)
+        metric_func = getattr(self.metric_calculator, metric_name)
         
         # Drop id_col before groupby to avoid the warning
         df_for_grouping = df.drop(columns=[self.id_col])
@@ -136,8 +122,6 @@ class Evaluator:
         
         for name, model in self.evaluated_models.items():
             model_predictions = model.predictions.get_preds(dataset).get_original(horizon)
-
-            # Route to appropriate computation method
             result = self._compute_standard_metric(model_predictions, metric_name, model)
 
             result.columns.values[-1] = name
@@ -151,3 +135,15 @@ class Evaluator:
             raise ValueError('No metric dataframe found. Something is wrong in the evaluation datasets')
                 
         return metric_df
+    
+    def _validate_prediction_modes(self):
+        """cross checks all prediction modes"""
+        self.prediction_mode = None
+        for mlname, ml in self.evaluated_models.items():
+            if self.prediction_mode is None:
+                self.prediction_mode = ml.prediction_mode
+            else:
+                if self.prediction_mode != ml.prediction_mode:
+                    raise ValueError('incompatible prediction modes accross models found!')
+
+            

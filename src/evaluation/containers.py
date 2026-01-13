@@ -1,4 +1,4 @@
-from typing import Literal, Dict
+from typing import Literal, Dict, List
 import pandas as pd
 from dataclasses import dataclass, field
 
@@ -32,11 +32,7 @@ class PredictionCompilation:
         if dataset not in ['train','val','test']:
             raise ValueError(f'{dataset} not valid. Please supply train, val or test')
           
-        
-from dataclasses import dataclass, field
-from typing import Dict, List
-import pandas as pd
-
+    
 
 @dataclass
 class MetricCompilation:
