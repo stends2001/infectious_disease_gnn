@@ -1,5 +1,6 @@
 from .baselines.persistence import PersistenceModel
 from .baselines.climateology import ClimateologyModel
+from .baselines.zeroes import ZeroModel
 from .shallow.noderf import NodeRFModel
 from .deep.gatv2model import GATv2Model
 from .deep.nodelstm import NodeLSTMModel
@@ -11,6 +12,7 @@ from .deep.nodegru import NodeGRUModel
 
 MODELSREGISTRY = {
         'unknown'               : 0,                    # all unknowns will be shown in black
+        'ZeroModel'             : ZeroModel,
         'PersistenceModel'      : PersistenceModel,
         'NaiveLinearModel'      : 2,
         'SpatioTemporalXGBModel': 3,

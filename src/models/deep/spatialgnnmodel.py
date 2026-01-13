@@ -44,7 +44,8 @@ class SimpleGCNModule(nn.Module):
             nn.Linear(hidden_size, hidden_size // 2),
             nn.ReLU(),
             nn.Dropout(dropout),
-            nn.Linear(hidden_size // 2, horizon_size)
+            nn.Linear(hidden_size // 2, horizon_size),
+            # nn.Sigmoid()  # outputs probability [0, 1]
         )
 
         self.dropout = nn.Dropout(dropout)

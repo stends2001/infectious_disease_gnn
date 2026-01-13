@@ -10,13 +10,12 @@ from ...dataloading import GraphDataLoaderManager
 from ..utils.loss.losshandler import LossHandler
 from ...utils import traincolor, valcolor, testcolor
 
+from ...plotting import ManagedFigure, convert_managedfigure
+
 import matplotlib.pyplot as plt
 import torch
 import torch.nn.functional as F
-from torch_geometric.data import Data
-import torch.nn as nn
-from torch_geometric.nn import GCNConv, GATConv, ChebConv, GINConv
-from torch_geometric_temporal.nn.recurrent import DCRNN, TGCN, A3TGCN
+
 import pandas as pd
 import numpy as np
 from typing import Optional, Tuple, cast
@@ -180,7 +179,8 @@ class GraphNeuralNetwork(BaseModel, ABC):
         self._update_status('global_hparams_set')
         return self
 
-    def show_monitoring_metrics(self) -> Tuple[Figure, Axes]:
+    @convert_managedfigure
+    def show_monitoring_metrics(self) -> ManagedFigure:
         """Returns plot of trainloss, valloss, patience and learning rate per epoch."""
         if self.model is None:
             raise ValueError('Please initiate a model')
@@ -225,7 +225,7 @@ class GraphNeuralNetwork(BaseModel, ABC):
         axes[2].set_ylabel('Learning Rate')
         axes[2].set_yscale('log')
 
-        return (fig, axes)
+        return fig
 
     def train(self):
         """
@@ -570,9 +570,6 @@ class GraphNeuralNetwork(BaseModel, ABC):
         """
         manager = ModelManager()
         return manager.load(filepath, cls)
-
-
-
 
     def __str__(self):
         # Calculate width

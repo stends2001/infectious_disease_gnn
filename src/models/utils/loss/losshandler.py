@@ -4,26 +4,28 @@ import torch
 from .standard_losses import MSELoss, MAELoss, HuberLoss, SmoothL1Loss, ExponentialDecayLoss, PolynomialDecayLoss, WeightedMSELoss
 from .outbreak_losses import FocalLoss, OutbreakWeightedLoss
 from .poissonloss import PoissonLoss, NegativeBinomialLoss,ZeroInflatedPoissonLoss, OutbreakAwarePoissonLoss
-
+from .classification import BCELoss, BCELogitLoss
 from .asymmetricmse import AsymmetricMSELoss
 from .quantile import QuantileLoss
 
 LOSS_REGISTRY: Dict[str, type] = {
-    'mse': MSELoss,
-    'mae': MAELoss,
-    'huber': HuberLoss,
-    'smooth_l1': SmoothL1Loss,
-    'exp_decay': ExponentialDecayLoss,
-    'poly_decay': PolynomialDecayLoss,
-    'asymmetric_mse': AsymmetricMSELoss,
-    'quantile' : QuantileLoss    ,
-    'weighted_mse' : WeightedMSELoss,
-    'focal' : FocalLoss,
+    'mse':              MSELoss,
+    'mae':              MAELoss,
+    'huber':            HuberLoss,
+    'smooth_l1':        SmoothL1Loss,
+    'exp_decay':        ExponentialDecayLoss,
+    'poly_decay':       PolynomialDecayLoss,
+    'asymmetric_mse':   AsymmetricMSELoss,
+    'quantile' :        QuantileLoss    ,
+    'weighted_mse' :    WeightedMSELoss,
+    'focal' :           FocalLoss,
     'outbreakweighted': OutbreakWeightedLoss,
-    'poisson': PoissonLoss,
-    'binomial': NegativeBinomialLoss,
-    'poisson3':ZeroInflatedPoissonLoss,
-    'outbreakpoisson': OutbreakAwarePoissonLoss,
+    'poisson':          PoissonLoss,
+    'binomial':         NegativeBinomialLoss,
+    'poisson3':         ZeroInflatedPoissonLoss,
+    'outbreakpoisson':  OutbreakAwarePoissonLoss,
+    'bce':              BCELoss,    
+    'bcelogit':         BCELogitLoss
 }
 
 
