@@ -1,7 +1,8 @@
 from ..base import BaseModel, PredictionCollection
 from typing import Optional, Union, List, Dict, Literal
 from ...dataloading import ShallowDataLoaderManager
-from sklearn.ensemble import RandomForestRegressor
+from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
+from sklearn.metrics import mean_absolute_error, mean_squared_error, accuracy_score, precision_score, recall_score, f1_score
 
 from ...utils.textformatting import section, align
 
@@ -55,6 +56,7 @@ class NodeRFModel(BaseModel):
                           bootstrap: bool = True,
                           n_estimators: int = 100,
                           random_state: int = 42,
+                          class_weight: Optional[Union[str, dict]] = None,
                           **kwargs):
         """
 
@@ -71,21 +73,27 @@ class NodeRFModel(BaseModel):
             'random_state':         random_state,
         }
 
+        # Add class_weight only for classification
+        if self.prediction_mode == 'classification' and class_weight is not None:
+            self.model_hparams['class_weight'] = class_weight        
+
         self.config_info['model_hparams']    = self.model_hparams
         self._update_status('model_hparams_set')
 
         # Initialize models per horizon
-        self.models: Dict[str, RandomForestRegressor] = {}
+        self.models: Dict[str, Union[RandomForestRegressor, RandomForestClassifier]] = {}
 
         for hh in range(self.dataloadermanager.dataorchestrator.config.horizon_size):
-           
-            model = RandomForestRegressor(n_estimators=n_estimators, random_state=random_state, n_jobs=-1) # Initialize a model for each horizon
+            if self.prediction_mode == 'regression':
+                model = RandomForestRegressor(n_estimators=n_estimators, random_state=random_state, n_jobs=-1) # Initialize a model for each horizon
+            if self.prediction_mode == 'classification':
+                model = RandomForestClassifier(n_estimators=n_estimators, random_state=random_state, n_jobs=-1) # Initialize a model for each horizon                
             model.set_params(**self.model_hparams)  # Update with all hyperparameters like max_depth, subsample, etc.
         
             self.models[f"horizon_{hh}"] = model
 
     def set_global_hparams(self, 
-                           loss: Literal['rmse'] = 'rmse'):
+                           loss: Literal['rmse','accuracy','f1'] = 'rmse'):
         """
         Set global training hyperparameters (used across models).
         """
@@ -124,15 +132,28 @@ class NodeRFModel(BaseModel):
             y_train_pred    = model.predict(X_train)
             y_val_pred      = model.predict(X_val)
 
-            # Compute training and validation loss (e.g., RMSE, MAE)
-            train_rmse  = np.sqrt(mean_squared_error(y_train, y_train_pred))
-            train_mae   = mean_absolute_error(y_train, y_train_pred)            
-            val_rmse    = np.sqrt(mean_squared_error(y_val, y_val_pred))
-            val_mae     = mean_absolute_error(y_val, y_val_pred)
+            # Compute metrics based on task type
+            if self.prediction_mode == 'classification':
+                train_acc = accuracy_score(y_train, y_train_pred)
+                train_f1 = f1_score(y_train, y_train_pred, zero_division=0)
+                val_acc = accuracy_score(y_val, y_val_pred)
+                val_f1 = f1_score(y_val, y_val_pred, zero_division=0)
+                
+                if self.verbose > 1:
+                    print(f"Training metrics for horizon {hh}: Accuracy = {train_acc:.4f}, F1 = {train_f1:.4f}")
+                    print(f"Validation metrics for horizon {hh}: Accuracy = {val_acc:.4f}, F1 = {val_f1:.4f}")
+            else:
+                train_rmse = np.sqrt(mean_squared_error(y_train, y_train_pred))
+                train_mae = mean_absolute_error(y_train, y_train_pred)
+                val_rmse = np.sqrt(mean_squared_error(y_val, y_val_pred))
+                val_mae = mean_absolute_error(y_val, y_val_pred)
+                
+                if self.verbose > 1:
+                    print(f"Training loss for horizon {hh}: RMSE = {train_rmse:.4f}, MAE = {train_mae:.4f}")
+                    print(f"Validation loss for horizon {hh}: RMSE = {val_rmse:.4f}, MAE = {val_mae:.4f}")
+        
         self._update_status('trained')
-        if self.verbose>1:
-            print(f"Training loss for horizon {hh}: RMSE = {train_rmse:.4f}, MAE = {train_mae:.4f}")
-            print(f"Validation loss for horizon {hh}: RMSE = {val_rmse:.4f}, MAE = {val_mae:.4f}")  
+
    
     def forecast(self, dataset: Literal['train','val','test'] = 'test'):
         """
@@ -160,14 +181,25 @@ class NodeRFModel(BaseModel):
             evaluation_df= Xy_dataset
 
             model = self.models[horizon_name]
-            preds = model.predict(X)
-            evaluation_df                     = Xy_dataset.copy().rename(columns = {f'incidence_ahead{timesteps_ahead}':'target'})
-            evaluation_df['pred']             = preds                  
+
+            # NEW: Handle classification differently
+            if self.prediction_mode == 'classification':
+                # Get probability predictions for the positive class
+                preds_proba = model.predict_proba(X)[:, 1]  # P(class=1)
+                # preds = (preds_proba > self.classification_threshold).astype(int)  # Binary predictions
+                
+                evaluation_df = Xy_dataset.copy().rename(columns={f'incidence_ahead{timesteps_ahead}': 'target'})
+                evaluation_df['pred'] = preds_proba
+                # evaluation_df['pred_proba'] = preds_proba  # Store probabilities too
+            else:
+                preds = model.predict(X)
+                evaluation_df = Xy_dataset.copy().rename(columns={f'incidence_ahead{timesteps_ahead}': 'target'})
+                evaluation_df['pred'] = preds
 
             self.predictions.add_horizon_predictions(dataset, evaluation_df, hh)
 
         self._update_status('forecasted')    
-        return self  
+        return self
 
     def __str__(self):
         # Calculate width

@@ -37,6 +37,7 @@ class BaseModel:
         self.model_class                = self.__class__.__name__
         self.model_color                = self.get_model_color()
         self.predictions                = PredictionManager(self.dataloadermanager.dataorchestrator.config, self.column_registration)
+        self.prediction_mode            = self.dataloadermanager.dataorchestrator.config.prediction_mode
 
         # Config
         self.config_info['name']        = name
