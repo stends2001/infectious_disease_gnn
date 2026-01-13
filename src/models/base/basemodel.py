@@ -36,7 +36,6 @@ class BaseModel:
         self.config_info                = {}
         self.model_class                = self.__class__.__name__
         self.model_color                = self.get_model_color()
-
         self.predictions                = PredictionManager(self.dataloadermanager.dataorchestrator.config, self.column_registration)
 
         # Config
@@ -83,6 +82,9 @@ class BaseModel:
         
         predictioncollection = self.predictions.get_preds(dataset)
         weeks_ahead          = int(self.dataloadermanager.dataorchestrator.config.horizon_leadtime + horizon)
+
+        if self.dataloadermanager.dataorchestrator.config.prediction_mode == 'classification':
+            raise ValueError('currently no forecast for classifications supported')
 
         if not transformed:
             evaluation_df = predictioncollection.get_original(horizon)
@@ -132,7 +134,7 @@ class BaseModel:
             return fig
         
         else:
-            raise ValueError('currently no other plots than lineplots supported')
+            raise ValueError('currently no other plots than lineplots supported') 
 
     def save_model(self):
         """

@@ -1049,6 +1049,20 @@ class EpiDataFinalizer:
 
         return df
 
+    def _set_targettype_class(self, df:pd.DataFrame) -> pd.DataFrame:
+        """
+        return df with columns of which name includes 'target' as binary
+        Required when target is casenumber and prediction_mode is classification
+        """
+        for col in df.columns:
+            if 'target' in col:
+                df.loc[df[col] > 0, col] = 1
+       
+        if self.config.verbose > 1:
+            print(f"{checkmark} target columns set as class")
+
+        return df
+
     def orchestrate(self, normalized_data: NormalizedEpiData) -> 'FinalizedEpiData':
         """runs entire finalization"""
         dfc = normalized_data.data
@@ -1074,7 +1088,10 @@ class EpiDataFinalizer:
 
         # if target == 'cases' => target columns should be integers
         if self.config.target_column == 'cases':
-            dfc_nanfree = self._set_targettype_integer(dfc_nanfree)
+            if self.config.prediction_mode == 'regression':
+                dfc_nanfree = self._set_targettype_integer(dfc_nanfree)
+            elif self.config.prediction_mode == 'classification':
+                dfc_nanfree = self._set_targettype_class(dfc_nanfree)                
 
         # Groundtruth uses the first target horizon
         groundtruth_df = dfc_nanfree.copy()[['timestamp', 'node', f'target_lead{base_lead}']]
