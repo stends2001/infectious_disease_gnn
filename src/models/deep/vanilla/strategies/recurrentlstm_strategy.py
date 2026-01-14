@@ -1,4 +1,4 @@
-from .base import Strategy
+from ...basestrategy import Strategy
 
 from typing import Tuple 
 import torch
@@ -12,16 +12,15 @@ class RecurrentLSTMStrategy(Strategy):
         if state is None:
             return None
         return state.detach().to(device)
-    
+
     def training_step(self, model, snapshot, optimizer, loss_fn) -> float:
         optimizer.zero_grad()
-        y_hat, h, c = model(
-            snapshot.x,
-            snapshot.edge_index,
-            snapshot.edge_weight,
-            self.hidden_state,
-            self.cell_state
-        )
+        
+        # Pass hidden state as tuple or None
+        hidden = (self.hidden_state, self.cell_state) if self.hidden_state is not None else None
+        
+        y_hat, h, c = model(snapshot.x, hidden)
+        
         self.hidden_state = self._detach_and_move(h, snapshot.x.device)
         self.cell_state = self._detach_and_move(c, snapshot.x.device)
 
@@ -31,13 +30,12 @@ class RecurrentLSTMStrategy(Strategy):
         return loss.item()
     
     def validation_step(self, model, snapshot, loss_fn) -> float:
-        y_hat, h, c = model(
-            snapshot.x,
-            snapshot.edge_index,
-            snapshot.edge_weight,
-            self.hidden_state,
-            self.cell_state
-        )
+
+        # Pass hidden state as tuple or None
+        hidden = (self.hidden_state, self.cell_state) if self.hidden_state is not None else None
+        
+        y_hat, h, c = model(snapshot.x, hidden)        
+
         self.hidden_state = self._detach_and_move(h, snapshot.x.device)
         self.cell_state = self._detach_and_move(c, snapshot.x.device)
 
@@ -45,13 +43,12 @@ class RecurrentLSTMStrategy(Strategy):
         return loss.item()
 
     def forecast_step(self, model, snapshot, loss_fn) -> Tuple[torch.Tensor, float]:
-        y_hat, h, c = model(
-            snapshot.x,
-            snapshot.edge_index,
-            snapshot.edge_weight,
-            self.hidden_state,
-            self.cell_state
-        )
+
+        # Pass hidden state as tuple or None
+        hidden = (self.hidden_state, self.cell_state) if self.hidden_state is not None else None
+        
+        y_hat, h, c = model(snapshot.x, hidden)     
+
         self.hidden_state = self._detach_and_move(h, snapshot.x.device)
         self.cell_state = self._detach_and_move(c, snapshot.x.device)
 

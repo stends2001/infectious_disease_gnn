@@ -5,7 +5,7 @@ from typing import Optional, List, Union, Dict, Any, Literal
 from ..base import BaseModel, PredictionCollection
 from ...utils.textformatting import warning_emoji, section, align, checkmark
 # from ..utils.weights_manager import ModelWeightsManager
-from .strategies import Strategy, StandardStrategy
+from .basestrategy import Strategy
 from ...dataloading import GraphDataLoaderManager
 from ..utils.loss.losshandler import LossHandler
 from ...utils import traincolor, valcolor, testcolor
@@ -36,9 +36,10 @@ from .modelmanager import ModelManager
 class DeepModel(BaseModel, ABC):
     
     def __init__(self, 
-                 dataloadermanager:    GraphDataLoaderManager, 
-                 name:          Optional[str] = None,
-                 verbose:           Literal[-1, 0, 1, 2] = -1):
+                 dataloadermanager:     GraphDataLoaderManager, 
+                 strategy,
+                 name:                  Optional[str] = None,
+                 verbose:               Literal[-1, 0, 1, 2] = -1):
         
         super().__init__(dataloadermanager, name, verbose)
         
@@ -51,7 +52,7 @@ class DeepModel(BaseModel, ABC):
         self.model:     Optional[torch.nn.Module]           = None                  # to be initiated by childclass
         self.optimizer: Optional[optim.optimizer.Optimizer] = None                  # to be initiated by _get_optimizer
         self.scheduler: Optional[_LRScheduler]              = None                  # to be initiated by _get_scheduler
-        self.strategy: Strategy                             = StandardStrategy()    # classic strategy (no hidden state or cell state)
+        self._set_strategy(strategy)
 
         self.config_info['child']   = 'GraphNeuralNetwork'
         self.model_manager = ModelManager()

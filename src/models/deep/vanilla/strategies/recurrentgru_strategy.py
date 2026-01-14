@@ -1,4 +1,4 @@
-from .base import Strategy
+from ...basestrategy import Strategy
 from typing import Tuple
 import torch
 
@@ -18,8 +18,6 @@ class RecurrentGRUStrategy(Strategy):
 
         y_hat, h = model(
             snapshot.x,
-            snapshot.edge_index,
-            snapshot.edge_weight,
             self.hidden_state
         )
 
@@ -33,8 +31,6 @@ class RecurrentGRUStrategy(Strategy):
     def validation_step(self, model, snapshot, loss_fn) -> float:
         y_hat, h = model(
             snapshot.x,
-            snapshot.edge_index,
-            snapshot.edge_weight,
             self.hidden_state
         )
 
@@ -45,8 +41,6 @@ class RecurrentGRUStrategy(Strategy):
     def forecast_step(self, model, snapshot, loss_fn) -> Tuple[torch.Tensor, float]:
         y_hat, h = model(
             snapshot.x,
-            snapshot.edge_index,
-            snapshot.edge_weight,
             self.hidden_state
         )
 

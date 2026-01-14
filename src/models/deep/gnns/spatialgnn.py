@@ -6,12 +6,12 @@ import pandas as pd
 import numpy as np
 from typing import Optional,Literal
 
-from .strategies import StandardStrategy
+from .strategies import StandardGNNStrategy
 
-from .deepmodel import DeepModel
-from ...dataloading import GraphDataLoaderManager
+from ..deepmodel import DeepModel
+from ....dataloading import GraphDataLoaderManager
 
-from ...utils.textformatting import warning_emoji
+from ....utils.textformatting import warning_emoji
 
 class SimpleGCNModule(nn.Module):
     """
@@ -109,10 +109,7 @@ class SpatialGNNModel(DeepModel):
         if not name:
             name = 'SpatialGNN'        
 
-        super().__init__(dataloadermanager, name=name, verbose=verbose)                 
-
-        self.dataloader = dataloadermanager
-        self._set_strategy(StandardStrategy())
+        super().__init__(dataloadermanager, name=name, verbose=verbose, strategy=StandardGNNStrategy())                 
 
     def set_model_hparams(self, 
                           hidden_size: int = 64, 

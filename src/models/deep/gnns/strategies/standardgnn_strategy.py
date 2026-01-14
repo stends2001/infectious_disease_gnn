@@ -1,9 +1,9 @@
-from .base import Strategy
+from ...basestrategy import Strategy
 
 from typing import Tuple 
 import torch
 
-class StandardStrategy(Strategy):
+class StandardGNNStrategy(Strategy):
     """Standard (non-recurrent) strategy - no hidden state management"""
     
     def training_step(self, model, snapshot, optimizer, loss_fn) -> float:

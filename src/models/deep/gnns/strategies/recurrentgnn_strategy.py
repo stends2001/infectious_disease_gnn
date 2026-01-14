@@ -1,10 +1,10 @@
-from .base import Strategy
+from ...basestrategy import Strategy
 
 from typing import Tuple 
 import torch
 
 
-class RecurrentStrategy(Strategy):
+class RecurrentGNNStrategy(Strategy):
     """Recurrent strategy - manages hidden state across all operations"""
     
     def __init__(self):

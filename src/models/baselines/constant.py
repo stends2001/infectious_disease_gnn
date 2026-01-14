@@ -4,27 +4,21 @@ from ...utils.textformatting import section, align
 from ..base import BaseModel, PredictionCollection
 from ...dataloading import ShallowDataLoaderManager
 
-class ZeroModel(BaseModel):
+class ConstantModel(BaseModel):
 
     """
-    zero model predicts zeroes
-
-    Training is therefore not necessary
-
-    Examples
-    --------
-    >>> zeroes = ZeroModel(shallowdata)
-    >>> zeroes.forecast('test')    
-    >>> zeroes.show_forecast('test', 26) 
     """
 
     def __init__(self, 
                  dataloadermanager: ShallowDataLoaderManager, 
                  name:              Optional[str] = None,
+                 value:             float   = 0,
                  verbose:           Literal[-1, 0, 1, 2] = -1):
         
         if not name:
-            name = f'ZeroModel'
+            name = f'ConstantModel'
+
+        self.constant_value = value
 
         super().__init__(dataloadermanager, name, verbose)
         
@@ -59,7 +53,7 @@ class ZeroModel(BaseModel):
             
             # Then filter to get the evaluation dataset
             evaluation_df = dataloader_collection.main[dataloader_collection.main[dataset]].reset_index(drop=True)                          
-            evaluation_df['pred'] = 0
+            evaluation_df['pred'] = self.constant_value
             evaluation_df = evaluation_df[['node','timestamp','target','pred']]
 
             # Get the n largest timestamps
@@ -80,7 +74,7 @@ class ZeroModel(BaseModel):
         width = max(len(k) for k in all_keys)
         
         # Build output
-        lines = ['<ZeroModel(']
+        lines = [f'<ConstantModel({self.constant_value}']
         lines.append(align('model name', self.name, width))
         lines.append(align('model class', self.model_class, width))
         lines.append(align('prediction column', self.prediction_col, width))

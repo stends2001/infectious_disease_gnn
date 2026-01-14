@@ -5,10 +5,9 @@ from torch_geometric.nn import GATv2Conv
 from typing import Optional, Tuple, Literal
 from torch_geometric.utils import add_self_loops
 
-from .strategies import RecurrentStrategy
-
-from .deepmodel import DeepModel
-from ...dataloading import GraphDataLoaderManager
+from .strategies import RecurrentGNNStrategy
+from ..deepmodel import DeepModel
+from ....dataloading import GraphDataLoaderManager
 
 
 class GATv2Module(nn.Module):
@@ -120,11 +119,7 @@ class GATv2Model(DeepModel):
         if not name:
             name = 'GATv2model'
 
-        super().__init__(dataloadermanager, name=name, verbose=verbose)
-
-        self.dataloadermanager = dataloadermanager
-        
-        self._set_strategy(RecurrentStrategy())
+        super().__init__(dataloadermanager, name=name, verbose=verbose, strategy=RecurrentGNNStrategy())
 
     def set_model_hparams(self, 
                           hidden_size: int = 128, 
