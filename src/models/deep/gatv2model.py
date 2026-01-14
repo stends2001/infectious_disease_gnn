@@ -7,7 +7,7 @@ from torch_geometric.utils import add_self_loops
 
 from .strategies import RecurrentStrategy
 
-from .graphneuralnetwork import GraphNeuralNetwork
+from .deepmodel import DeepModel
 from ...dataloading import GraphDataLoaderManager
 
 
@@ -107,7 +107,7 @@ class GATv2Module(nn.Module):
 
         return output, new_hidden
 
-class GATv2Model(GraphNeuralNetwork):
+class GATv2Model(DeepModel):
     """
     Purely spatial GCN model that does not use temporal axis.
     Useful to validate the use of graph-structure

@@ -6,7 +6,7 @@ from torch_geometric.utils import add_self_loops
 
 from .strategies import Strategy, RecurrentGRUStrategy
 
-from .graphneuralnetwork import GraphNeuralNetwork
+from .deepmodel import DeepModel
 from ...dataloading import GraphDataLoaderManager
 
 class NodewiseGRUModule(nn.Module):
@@ -41,7 +41,7 @@ class NodewiseGRUModule(nn.Module):
 
         return output, new_hidden
 
-class NodeGRUModel(GraphNeuralNetwork):
+class NodeGRUModel(DeepModel):
     """
     Pure temporal GRU baseline (no spatial structure).
     Each node processes independently.

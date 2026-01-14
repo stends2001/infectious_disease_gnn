@@ -8,7 +8,7 @@ from typing import Optional,Literal
 
 from .strategies import StandardStrategy
 
-from .graphneuralnetwork import GraphNeuralNetwork
+from .deepmodel import DeepModel
 from ...dataloading import GraphDataLoaderManager
 
 from ...utils.textformatting import warning_emoji
@@ -97,7 +97,7 @@ class SimpleGCNModule(nn.Module):
 
         return output
 
-class SpatialGNNModel(GraphNeuralNetwork):
+class SpatialGNNModel(DeepModel):
     """
     Simple spatial GCN model without temporal components.
     """

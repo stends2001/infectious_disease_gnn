@@ -5,7 +5,7 @@ from typing import Optional, TYPE_CHECKING
 from datetime import datetime
 
 if TYPE_CHECKING:
-    from .graphneuralnetwork import GraphNeuralNetwork
+    from .deepmodel import DeepModel
 
 class ModelManager:
     """Simple manager for saving and loading trained models."""
@@ -14,13 +14,13 @@ class ModelManager:
         self.base_dir = Path(base_dir)
         self.base_dir.mkdir(parents=True, exist_ok=True)
     
-    def save(self, model: 'GraphNeuralNetwork', filename: Optional[str] = None) -> str:
+    def save(self, model: 'DeepModel', filename: Optional[str] = None) -> str:
         """
         Save a trained model.
         
         Parameters
         ----------
-        model : GraphNeuralNetwork
+        model : DeepModel
             The trained model to save
         filename : Optional[str]
             Custom filename (without extension). If None, auto-generates one.
@@ -56,7 +56,7 @@ class ModelManager:
         print(f"✓ Model saved: {filepath}")
         return str(filepath)
     
-    def load(self, filepath: str, model_class: type) -> 'GraphNeuralNetwork':
+    def load(self, filepath: str, model_class: type) -> 'DeepModel':
         """
         Load a trained model.
         
@@ -69,7 +69,7 @@ class ModelManager:
             
         Returns
         -------
-        GraphNeuralNetwork : The loaded model
+        DeepModel : The loaded model
         """
         if not Path(filepath).exists():
             raise FileNotFoundError(f"Model not found: {filepath}")

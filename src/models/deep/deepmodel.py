@@ -33,7 +33,7 @@ from tqdm import tqdm
 
 from .modelmanager import ModelManager
 
-class GraphNeuralNetwork(BaseModel, ABC):
+class DeepModel(BaseModel, ABC):
     
     def __init__(self, 
                  dataloadermanager:    GraphDataLoaderManager, 
@@ -550,7 +550,7 @@ class GraphNeuralNetwork(BaseModel, ABC):
         return self.model_manager.save(self, filename)
     
     @classmethod
-    def load(cls, filepath: str) -> 'GraphNeuralNetwork':
+    def load(cls, filepath: str) -> 'DeepModel':
         """
         Load a trained model.
         

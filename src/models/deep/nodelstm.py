@@ -6,7 +6,7 @@ from torch_geometric.utils import add_self_loops
 
 from .strategies import Strategy, RecurrentStrategy
 
-from .graphneuralnetwork import GraphNeuralNetwork
+from .deepmodel import DeepModel
 from ...dataloading import GraphDataLoaderManager
 
 class NodewiseLSTMModule(nn.Module):
@@ -45,7 +45,7 @@ class NodewiseLSTMModule(nn.Module):
         
         return output, new_hidden
 
-class NodeLSTMModel(GraphNeuralNetwork):
+class NodeLSTMModel(DeepModel):
     """
     Pure temporal LSTM baseline (no spatial structure).
     Each node processes independently.
