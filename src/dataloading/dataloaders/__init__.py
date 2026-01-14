@@ -1,2 +1,2 @@
 from .shallowloader.shallowdataloadermanager import ShallowDataLoaderManager
-from .deeploader.graphdataloadermanager import GraphDataLoaderManager
+from .graphloader.graphdataloadermanager import GraphDataLoaderManager

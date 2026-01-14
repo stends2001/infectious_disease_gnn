@@ -9,7 +9,7 @@ from typing import Optional,Literal
 from .strategies import StandardStrategy
 
 from .graphneuralnetwork import GraphNeuralNetwork
-from ...dataloading.dataloaders.deeploader.graphdataloadermanager import GraphDataLoaderManager
+from ...dataloading import GraphDataLoaderManager
 
 from ...utils.textformatting import warning_emoji
 
