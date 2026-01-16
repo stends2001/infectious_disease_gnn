@@ -12,6 +12,7 @@ import numpy as np
 from tqdm import tqdm
 
 import matplotlib.pyplot as plt
+# from matplotlib.figure.Figure import Figure
 import seaborn as sns
 
 from .modelmanager import ModelManager
@@ -187,8 +188,8 @@ class DeepModel(BaseModel, ABC):
         self._update_status('global_hparams_set')
         return self
 
-    @convert_managedfigure
-    def show_monitoring_metrics(self) -> ManagedFigure:
+    # @convert_managedfigure
+    def show_monitoring_metrics(self):
         """Returns plot of trainloss, valloss, patience and learning rate per epoch."""
         if self.model is None:
             raise ValueError('Please initiate a model')
@@ -233,6 +234,7 @@ class DeepModel(BaseModel, ABC):
         axes[2].set_ylabel('Learning Rate')
         axes[2].set_yscale('log')
 
+        fig.show()
         return fig
 
     def train(self):
@@ -413,6 +415,7 @@ class DeepModel(BaseModel, ABC):
 
         if self.verbose >=1:
             self.show_monitoring_metrics()
+
         self._update_status('trained')
 
     def forecast(self, dataset: Literal['train','val','test'] = 'test'):
