@@ -165,6 +165,17 @@ class LabelManager:
     def set_tag(self, tag: str, x: Optional[float] = -0.05, y: Optional[float] = 1.15, fontsize: Optional[float] = 14, fontweight: Optional[str] = 'bold', va: Optional[str] = 'top', ha: Optional[str] = 'left', ax = None) -> 'ManagedFigure':
         ax.text(x, y, tag, transform = ax.transAxes, fontsize = fontsize, fontweight = fontweight, va = va, ha = ha)
 
+    @for_axes
+    def change_legend_title(self, title: str, fontsize: Optional[int] = None, fontweight: Optional[str] = None, ax=None) -> 'ManagedFigure':
+        """Change the legend title with optional fontsize and fontweight"""
+        legend = ax.get_legend()
+        if legend is not None:
+            legend.set_title(title)
+            if fontsize is not None or fontweight is not None:
+                legend.get_title().set_fontsize(fontsize)
+                legend.get_title().set_fontweight(fontweight)
+
+
 class LegendManager:
 
     def __init__(self, managedfigure: 'ManagedFigure'):

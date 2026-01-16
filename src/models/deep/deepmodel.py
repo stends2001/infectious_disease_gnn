@@ -270,17 +270,18 @@ class DeepModel(BaseModel, ABC):
             print(f'Dataloader Snapshot: {train_loader[0]}')        
 
         # determine verbose - loops (which loops to return evaluation metric)
-        if self.verbose >= 1:
-            verbose_loops   = list(np.arange(1, self.n_epochs + 1, step=10))
+        if self.verbose >= 2:
+            verbose_loops   = list(np.arange(1, self.n_epochs + 1))
             epoch_iter      = range(self.n_epochs)
 
-        elif self.verbose >= 2:
-            verbose_loops   = list(np.arange(1, self.n_epochs + 1))
+        elif self.verbose >= 1:
+            verbose_loops   = list(np.arange(1, self.n_epochs + 1, step=10))
             epoch_iter      = range(self.n_epochs)
 
         elif self.verbose < 0:
             verbose_loops   = []
             epoch_iter      = range(self.n_epochs)
+
         else:
             verbose_loops   = []
             epoch_iter      = tqdm(range(self.n_epochs), desc="Training epochs") # if no verbose, just a tqdm
@@ -351,7 +352,8 @@ class DeepModel(BaseModel, ABC):
             list_lr.append(current_lr)
             
             self.model.train()
-            verbose_statement_basis = f"Epoch {epoch} train loss: {train_loss:.4f}, val loss: {val_loss:.4f}"
+            # gives three digits as print no matter what
+            verbose_statement_basis = f"Epoch {epoch:03d}  train loss: {train_loss:.4f}, val loss: {val_loss:.4f}"
             
             # Check if validation loss improved
             val_improved = val_loss < (best_val_loss - self.min_delta)

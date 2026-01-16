@@ -15,7 +15,9 @@ paired_colors       = sns.color_palette("Paired")
 
 # models_cmap = mypalette = ["#5ab1e0",'#1f78b4','#1b9e77','#33a02c','#2a7d32',"#9154ac",'#6a3d9a','#ffb84d','#a6761d','#b15928','#8b3d3d','#666666',"#b1adad",'#000000']
 
-models_cmap = mypalette = ['#1f78b4','#B87200','#1b9e77','#33a02c','#2a7d32',"#9154ac",'#6a3d9a','#ffb84d','#a6761d','#b15928','#8b3d3d','#666666',"#b1adad","#5ab1e0",'#000000']
+models_cmap = mypalette = ['#1f78b4','#B87200','#1b9e77','#cab2d6','#33a02c','#2a7d32',"#9154ac",'#cab2d6','#ffb84d','#a6761d','#b15928','#8b3d3d','#666666',"#b1adad","#5ab1e0",'#000000']
+
+cmap_5 = ['#1f78b4','#B87200','#1b9e77','#cab2d6']
 
 def inspect_colorpalette(palette_name: Optional[str] = None, n_colors: Optional[int] = 10, palette_list: Optional[List[str]]=None, get_colors: bool = True):
     """

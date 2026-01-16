@@ -278,7 +278,7 @@ class GraphDataLoaderManager:
 
             # # convert to numeric
             pivoted = pivoted.apply(pd.to_numeric, errors='coerce')
-            
+
             # # Convert to numpy float array, replace NaNs with 0
             arr = pivoted.values
             if str(dtype).startswith('int'):
