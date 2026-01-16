@@ -2,12 +2,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from typing import Optional, Tuple, Literal
-from torch_geometric.utils import add_self_loops
 
 from .strategies import RecurrentLSTMStrategy
 
 from ..deepmodel import DeepModel
-from ....dataloading import GraphDataLoaderManager
+from ....dataloading import DeepDataLoaderManager
 
 class NodewiseLSTMModule(nn.Module):
     def __init__(self, node_features, hidden_size, num_layers, dropout, prediction_horizon):
@@ -51,7 +50,7 @@ class NodeLSTMModel(DeepModel):
     Each node processes independently.
     """
     def __init__(self, 
-                 dataloadermanager: GraphDataLoaderManager, 
+                 dataloadermanager: DeepDataLoaderManager, 
                  name: Optional[str] = None,
                  verbose:           Literal[-1, 0, 1, 2] = -1):        
         

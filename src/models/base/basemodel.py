@@ -1,5 +1,6 @@
 import seaborn as sns
 from typing import Optional, List, Literal, Any, Union
+from abc import abstractmethod
 import matplotlib.pyplot as plt
 import matplotlib.figure as Figure
 
@@ -10,8 +11,7 @@ from .predictions_manager import PredictionManager
 from ..registry import MODELSREGISTRY
 from ..utils import MODELSCOLORPALETTE
 
-from ...dataloading import ShallowDataLoaderManager
-from ...dataloading import GraphDataLoaderManager
+from ...dataloading import ShallowDataLoaderManager, DeepDataLoaderManager, GraphDataLoaderManager
 from ...utils import testcolor
 from ...utils.textformatting import warning_emoji, error_emoji, checkmark
 from ...configmanagement.modelconfigmanager import ModelConfigManager
@@ -21,7 +21,7 @@ class BaseModel:
     """
 
     def __init__(self, 
-                 dataloadermanager: Union[ShallowDataLoaderManager, GraphDataLoaderManager], 
+                 dataloadermanager: Union[ShallowDataLoaderManager, DeepDataLoaderManager, GraphDataLoaderManager], 
                  name:              Optional[str]        = None,
                  verbose:           Literal[-1, 0, 1, 2] = -1):
         
@@ -62,15 +62,22 @@ class BaseModel:
 
         self._update_status('model_initialized')
 
-    def forecast(self):
-        """supposed to create the attribute `evaluation_df`"""
-        raise NotImplementedError(f"{error_emoji} Each model must implement its own forecast method.")
+    @abstractmethod
+    def train(self):
+        pass
 
+    @abstractmethod
+    def forecast(self):
+        """should create .evaluation_df"""
+        pass
+
+    @abstractmethod
     def set_global_hparams(self, **kwargs):
-        print(f'{warning_emoji} set_global_hparams is not implemented for {self.name}')
-    
+        pass
+
+    @abstractmethod
     def set_model_hparams(self, **kwargs):
-        print(f'{warning_emoji} set_model_hparams is not implemented for {self.name}')
+        pass    
 
     @convert_managedfigure
     def show_forecasts(self,

@@ -1,42 +1,37 @@
 from abc import ABC, abstractmethod
-
 from typing import Optional, List, Union, Dict, Any, Literal
 
-from ..base import BaseModel, PredictionCollection
-from ...utils.textformatting import warning_emoji, section, align, checkmark
-# from ..utils.weights_manager import ModelWeightsManager
-from .basestrategy import Strategy
-from ...dataloading import GraphDataLoaderManager
-from ..utils.loss.losshandler import LossHandler
-from ...utils import traincolor, valcolor, testcolor
-
-from ...plotting import ManagedFigure, convert_managedfigure
-
-import matplotlib.pyplot as plt
 import torch
-import torch.nn.functional as F
+import torch.optim as optim
+from torch.optim.optimizer import Optimizer
+from torch.optim.lr_scheduler import _LRScheduler
 
 import pandas as pd
 import numpy as np
-from typing import Optional, Tuple, cast
-import seaborn as sns
-
-import torch.optim as optim
-from torch.optim.optimizer import Optimizer
-
-from torch.optim.lr_scheduler import _LRScheduler
-from abc import ABC, abstractmethod
-from matplotlib.figure import Figure 
-from matplotlib.axes import Axes
 
 from tqdm import tqdm
 
+import matplotlib.pyplot as plt
+import seaborn as sns
+
 from .modelmanager import ModelManager
+from ..base import BaseModel
+from .basestrategy import Strategy
+from ..utils.loss.losshandler import LossHandler
+
+from ...utils.textformatting import warning_emoji, section, align, checkmark
+from ...utils.colors import traincolor, valcolor
+from ...dataloading import GraphDataLoaderManager,  DeepDataLoaderManager
+from ...plotting import ManagedFigure, convert_managedfigure
+
+class ConflictingDataLoaderManager(Exception):
+    def __init__(self, model_name: BaseModel, suggested_strategy: str, dataloadermanager: str):
+        super().__init__(f"Conflicting dataloader for {model_name}\nstrategy suggests {suggested_strategy} but dataloadermanager is of type {dataloadermanager}")
 
 class DeepModel(BaseModel, ABC):
     
     def __init__(self, 
-                 dataloadermanager:     GraphDataLoaderManager, 
+                 dataloadermanager:     Union[GraphDataLoaderManager, DeepDataLoaderManager], 
                  strategy,
                  name:                  Optional[str] = None,
                  verbose:               Literal[-1, 0, 1, 2] = -1):
@@ -53,11 +48,23 @@ class DeepModel(BaseModel, ABC):
         self.optimizer: Optional[optim.optimizer.Optimizer] = None                  # to be initiated by _get_optimizer
         self.scheduler: Optional[_LRScheduler]              = None                  # to be initiated by _get_scheduler
         self._set_strategy(strategy)
+        self._validate_dataloader_class()
 
         self.config_info['child']   = 'GraphNeuralNetwork'
         self.model_manager = ModelManager()
         self.monitoring_metrics = None
         self.evaluation_datasets= {}
+
+    def _validate_dataloader_class(self):
+        # if strategy suggests vanilla deepmodel:
+        if self.strategy.__class__.__name__ in ['RecurrentGRUStrategy','RecurrentLSTMStrategy']:
+            if self.dataloadermanager.__class__.__name__ != 'DeepDataLoaderManager':
+                raise ConflictingDataLoaderManager(self.name, 'deep-vanilla', self.dataloadermanager.__class__.__name__)
+        if self.strategy.__class__.__name__ in ['RecurrentGNNStrategy','StandardGNNStrategy']:
+            if self.dataloadermanager.__class__.__name__ != 'GraphDataLoaderManager':
+                raise ConflictingDataLoaderManager(self.name, 'deep-graph', self.dataloadermanager.__class__.__name__)            
+                
+
 
     def _check_state(self, required_states: List[str]) -> None:
         """Validate that required setup steps have been completed."""
@@ -70,7 +77,7 @@ class DeepModel(BaseModel, ABC):
 
   # model hparams method to be written per model
     @abstractmethod
-    def set_model_hparams(self) -> Any:
+    def set_model_hparams(self, **kwargs):
         pass
 
     def _get_optimizer(self, optimizer_name: str, lr: float, optimizer_kwargs: Dict[str, Any]) -> Optimizer:
@@ -353,7 +360,7 @@ class DeepModel(BaseModel, ABC):
             
             self.model.train()
             # gives three digits as print no matter what
-            verbose_statement_basis = f"Epoch {epoch:03d}  train loss: {train_loss:.4f}, val loss: {val_loss:.4f}"
+            verbose_statement_basis = f"Epoch {epoch:03d} train loss: {train_loss:.4f}, val loss: {val_loss:.4f}"
             
             # Check if validation loss improved
             val_improved = val_loss < (best_val_loss - self.min_delta)

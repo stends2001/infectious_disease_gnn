@@ -1,13 +1,12 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Optional, Tuple, Literal
-from torch_geometric.utils import add_self_loops
+from typing import Optional, Literal
 
 from .strategies import RecurrentLSTMStrategy
 
 from ..deepmodel import DeepModel
-from ....dataloading import GraphDataLoaderManager
+from ....dataloading import DeepDataLoaderManager
 
 class NodewiseBiLSTMModule(nn.Module):
     def __init__(self, node_features, hidden_size, num_layers, dropout, prediction_horizon):
@@ -44,11 +43,9 @@ class NodewiseBiLSTMModule(nn.Module):
 
 class NodeBiLSTMModel(DeepModel):
     """
-    Pure temporal bidirectional LSTM baseline (no spatial structure).
-    Each node processes independently.
     """
     def __init__(self,
-                 dataloadermanager: GraphDataLoaderManager,
+                 dataloadermanager: DeepDataLoaderManager,
                  name: Optional[str] = None,
                  verbose: Literal[-1, 0, 1, 2] = -1):
 

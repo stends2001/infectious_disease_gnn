@@ -12,13 +12,10 @@ class ConstantModel(BaseModel):
     def __init__(self, 
                  dataloadermanager: ShallowDataLoaderManager, 
                  name:              Optional[str] = None,
-                 value:             float   = 0,
                  verbose:           Literal[-1, 0, 1, 2] = -1):
         
         if not name:
             name = f'ConstantModel'
-
-        self.constant_value = value
 
         super().__init__(dataloadermanager, name, verbose)
         
@@ -27,6 +24,12 @@ class ConstantModel(BaseModel):
         
     def train(self):
         print("This naive model doesn't train")
+
+    def set_global_hparams(self):
+        print("This naive model doesn't require global hparams")
+
+    def set_model_hparams(self, constant_value: float):
+        self.constant_value = constant_value
 
     def forecast(self, dataset: Literal['train','val','test'] = 'test'):
         """

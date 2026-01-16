@@ -32,9 +32,14 @@ class ClimateologyModel(BaseModel):
         self.train_losses           = []
         self.val_losses             = []
 
-
     def train(self):
         print("This naive model doesn't train")
+
+    def set_global_hparams(self):
+        print("This naive model doesn't require global hparams")
+
+    def set_model_hparams(self):
+        print("This naive model doesn't require model hparams")        
 
     def forecast(self, dataset: Literal['train','val','test'] = 'test'):
         """
