@@ -27,7 +27,7 @@ class PersistenceModel(BaseModel):
         if not name:
             name = f'Persistence Model'
 
-        super().__init__(dataloadermanager, name, verbose)
+        super().__init__(dataloadermanager=dataloadermanager, name= name, model_color="#d8d8d8d5", verbose=verbose )
         
         self.train_losses           = []
         self.val_losses             = []

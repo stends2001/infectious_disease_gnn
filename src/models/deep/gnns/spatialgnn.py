@@ -109,7 +109,7 @@ class SpatialGNNModel(DeepModel):
         if not name:
             name = 'SpatialGNN'        
 
-        super().__init__(dataloadermanager, name=name, deepfamily='gnn' , verbose=verbose, strategy=StandardGNNStrategy())                 
+        super().__init__(dataloadermanager, name=name, deepfamily='gnn' , verbose=verbose, strategy=StandardGNNStrategy(), model_color='#B87200')                 
 
     def set_model_hparams(self, 
                           hidden_size: int = 64, 

@@ -23,6 +23,7 @@ class BaseModel:
     def __init__(self, 
                  dataloadermanager: Union[ShallowDataLoaderManager, DeepDataLoaderManager, GraphDataLoaderManager], 
                  name:              Optional[str]        = None,
+                 model_color:       Optional[str]        = None,
                  verbose:           Literal[-1, 0, 1, 2] = -1):
         
         if not name:
@@ -35,7 +36,6 @@ class BaseModel:
         self.verbose                    = verbose
         self.config_info                = {}
         self.model_class                = self.__class__.__name__
-        self.model_color                = self.get_model_color()
         self.predictions                = PredictionManager(self.dataloadermanager.dataorchestrator.config, self.column_registration)
         self.prediction_mode            = self.dataloadermanager.dataorchestrator.config.prediction_mode
 
@@ -59,6 +59,11 @@ class BaseModel:
             'trained'           : False,
             'forecasted'        : False,
         }
+
+        if model_color:
+            self.model_color = model_color 
+        else:
+            self.model_color = '#000000'
 
         self._update_status('model_initialized')
 
@@ -160,11 +165,6 @@ class BaseModel:
         model_id                = self.config_manager.register_entry(self.config_info)
         self.config_info['id']  = model_id
        
-    def get_model_color(self):
-        """returns color associated with model type"""
-        id = MODELSREGISTRY.get(self.model_class, 0)    # 0 as fallback 
-        return MODELSCOLORPALETTE[id]
-
     def _print_status_update(self, status: str) -> str:
 
         statement = ""

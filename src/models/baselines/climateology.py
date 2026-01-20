@@ -25,9 +25,9 @@ class ClimateologyModel(BaseModel):
                  ):
 
         if not name:
-            name = f'Climateology Model'        
+            name = f'Climateology Model'         
 
-        super().__init__(dataloadermanager, name, verbose)
+        super().__init__(dataloadermanager=dataloadermanager, name= name, model_color="#707070", verbose=verbose )
         
         self.train_losses           = []
         self.val_losses             = []

@@ -36,9 +36,10 @@ class DeepModel(BaseModel, ABC):
                  strategy,
                  deepfamily:            Literal['vanilla','gnn'],
                  name:                  str,
+                 model_color:           Optional[str] = None,                 
                  verbose:               Literal[-1, 0, 1, 2] = -1):
-        
-        super().__init__(dataloadermanager, name, verbose)
+
+        super().__init__(dataloadermanager=dataloadermanager, name=name, model_color = model_color, verbose = verbose)        
 
         self.deepfamily        = deepfamily        
         self.dataloadermanager = dataloadermanager

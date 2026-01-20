@@ -33,7 +33,7 @@ class NodeRFModel(BaseModel):
         if not name:
             name = f'NodeRFModel'       
 
-        super().__init__(dataloadermanager, name, verbose)
+        super().__init__(dataloadermanager, name, "#B985C6AC", verbose)
 
         self.dataloadermanager: ShallowDataLoaderManager= dataloadermanager
         

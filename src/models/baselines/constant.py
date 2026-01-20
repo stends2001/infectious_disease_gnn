@@ -17,7 +17,7 @@ class ConstantModel(BaseModel):
         if not name:
             name = f'ConstantModel'
 
-        super().__init__(dataloadermanager, name, verbose)
+        super().__init__(dataloadermanager=dataloadermanager, name= name, verbose=verbose )
         
         self.train_losses           = []
         self.val_losses             = []
