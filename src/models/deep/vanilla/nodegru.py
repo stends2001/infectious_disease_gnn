@@ -51,9 +51,9 @@ class NodeGRUModel(DeepModel):
                  verbose: Literal[-1, 0, 1, 2] = -1):
 
         if not name:
-            name = 'GRU'
+            name = 'NodeGRU'
 
-        super().__init__(dataloadermanager, name=name, verbose=verbose, strategy = RecurrentGRUStrategy())
+        super().__init__(dataloadermanager, name=name, deepfamily = 'vanilla', verbose=verbose, strategy = RecurrentGRUStrategy())
 
     def set_model_hparams(self,
                           hidden_size: int = 128,

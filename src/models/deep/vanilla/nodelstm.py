@@ -55,12 +55,11 @@ class NodeLSTMModel(DeepModel):
                  verbose:           Literal[-1, 0, 1, 2] = -1):        
         
         if not name:
-            name = 'LSTM_Baseline'
+            name = 'NodeLSTM'
         
-        super().__init__(dataloadermanager, name=name, verbose=verbose, strategy = RecurrentLSTMStrategy())
+        super().__init__(dataloadermanager, name=name, verbose=verbose, deepfamily = 'vanilla', strategy = RecurrentLSTMStrategy())
         
         self.dataloadermanager = dataloadermanager
-        # self._set_strategy(RecurrentLSTMStrategy())  # Same strategy as GATv2
 
     def set_model_hparams(self, 
                           hidden_size: int = 128, 

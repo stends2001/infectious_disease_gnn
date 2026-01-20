@@ -34,11 +34,13 @@ class DeepModel(BaseModel, ABC):
     def __init__(self, 
                  dataloadermanager:     Union[GraphDataLoaderManager, DeepDataLoaderManager], 
                  strategy,
-                 name:                  Optional[str] = None,
+                 deepfamily:            Literal['vanilla','gnn'],
+                 name:                  str,
                  verbose:               Literal[-1, 0, 1, 2] = -1):
         
         super().__init__(dataloadermanager, name, verbose)
-        
+
+        self.deepfamily        = deepfamily        
         self.dataloadermanager = dataloadermanager
         self.device            = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         
@@ -58,12 +60,14 @@ class DeepModel(BaseModel, ABC):
 
     def _validate_dataloader_class(self):
         # if strategy suggests vanilla deepmodel:
-        if self.strategy.__class__.__name__ in ['RecurrentGRUStrategy','RecurrentLSTMStrategy']:
+        if self.deepfamily == 'vanilla':
             if self.dataloadermanager.__class__.__name__ != 'DeepDataLoaderManager':
                 raise ConflictingDataLoaderManager(self.name, 'deep-vanilla', self.dataloadermanager.__class__.__name__)
-        if self.strategy.__class__.__name__ in ['RecurrentGNNStrategy','StandardGNNStrategy']:
+        elif self.deepfamily == 'gnn':
             if self.dataloadermanager.__class__.__name__ != 'GraphDataLoaderManager':
-                raise ConflictingDataLoaderManager(self.name, 'deep-graph', self.dataloadermanager.__class__.__name__)            
+                raise ConflictingDataLoaderManager(self.name, 'deep-graph', self.dataloadermanager.__class__.__name__)    
+        else:
+            raise ValueError(f'Invalid input for attribute deepfamily found. Should be "vanilla" or "gnn" but received: {self.deepfamily}')        
                 
 
 

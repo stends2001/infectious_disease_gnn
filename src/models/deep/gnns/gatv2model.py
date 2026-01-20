@@ -119,7 +119,7 @@ class GATv2Model(DeepModel):
         if not name:
             name = 'GATv2model'
 
-        super().__init__(dataloadermanager, name=name, verbose=verbose, strategy=RecurrentGNNStrategy())
+        super().__init__(dataloadermanager, name=name, deepfamily = 'gnn', verbose=verbose, strategy=RecurrentGNNStrategy())
 
     def set_model_hparams(self, 
                           hidden_size: int = 128, 

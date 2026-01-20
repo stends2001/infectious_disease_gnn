@@ -52,7 +52,7 @@ class NodeBiLSTMModel(DeepModel):
         if not name:
             name = 'BiLSTM'
 
-        super().__init__(dataloadermanager, name=name, verbose=verbose, strategy=RecurrentLSTMStrategy())
+        super().__init__(dataloadermanager, name=name, deepfamily = 'vanilla', verbose=verbose, strategy=RecurrentLSTMStrategy())
 
     def set_model_hparams(self,
                           hidden_size: int = 128,
