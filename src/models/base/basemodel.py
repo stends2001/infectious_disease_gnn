@@ -3,6 +3,7 @@ from typing import Optional, List, Literal, Any, Union
 from abc import abstractmethod
 import matplotlib.pyplot as plt
 import matplotlib.figure as Figure
+import matplotlib.patheffects as path_effects
 
 from ...plotting import convert_managedfigure, ManagedFigure
 
@@ -12,7 +13,7 @@ from ..registry import MODELSREGISTRY
 from ..utils import MODELSCOLORPALETTE
 
 from ...dataloading import ShallowDataLoaderManager, DeepDataLoaderManager, GraphDataLoaderManager
-from ...utils import testcolor
+from ...utils.colors import testcolor, color_is_light
 from ...utils.textformatting import warning_emoji, error_emoji, checkmark
 from ...configmanagement.modelconfigmanager import ModelConfigManager
 
@@ -128,8 +129,12 @@ class BaseModel:
                 evaluation_df_node  = evaluation_df[evaluation_df['node'] == id]
 
                 sns.lineplot(data   = evaluation_df_node, x = 'timestamp', y = 'target',    color = testcolor,          marker = 'o',   label = 'ground truth', ax = ax, linewidth = 2)
-                sns.lineplot(data   = evaluation_df_node, x = 'timestamp', y = 'pred',      color = self.model_color,   marker = 'h',   label = f'predictions {self.name}',    ax = ax, linewidth = 2)
 
+                # if the luminence of the color is too high for a white background we give a black outline of line and marker
+                if color_is_light(self.model_color):                  
+                    sns.lineplot(data   = evaluation_df_node, x = 'timestamp', y = 'pred',      color = self.model_color,   marker = 'o',   label = f'predictions {self.name}',    ax = ax, linewidth = 2, markeredgecolor = 'black', markeredgewidth=0.2)
+                else:
+                    sns.lineplot(data   = evaluation_df_node, x = 'timestamp', y = 'pred',      color = self.model_color,   marker = 'o',   label = f'predictions {self.name}',    ax = ax, linewidth = 2)
                 ax.set_title(f'{nodename} [node: {id}]')
                 ax.set_xlabel("")            
                 ax.grid()   

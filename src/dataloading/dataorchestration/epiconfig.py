@@ -17,11 +17,10 @@ class EpiConfig:
     # ============= REQUIRED =============
     disease:                str
     data_env_dir:           str
-
-    the rest is optional
     
     # ============= DATES =============
     date_range:             Tuple[str, str] = ('2001-01-01', '2025-01-01')
+    temporal_frequency:     Literal['w','d']= 'w'
     
     # ============= GEOGRAPHY =============
     nuts_level:             Literal['nuts1', 'nuts2', 'nuts3'] = 'nuts3'
@@ -89,6 +88,7 @@ class EpiConfig:
     
     # ============= DATES =============
     date_range:             Tuple[str, str] = ('2001-01-01', '2025-01-01')
+    temporal_frequency:     Literal['w','d']= 'w'
     
     # ============= GEOGRAPHY =============
     nuts_level:             Literal['nuts1', 'nuts2', 'nuts3'] = 'nuts3'
@@ -116,7 +116,6 @@ class EpiConfig:
     split_trainval:         str = '2018-06-01'
     split_valtest:          str = '2019-06-01'
         
-
     # ============= COLUMN NAMES =============
     temporal_column:        str = 'timestamp'
     target_column:          str = 'incidence'
@@ -130,6 +129,7 @@ class EpiConfig:
     def __post_init__(self):
         """Validate configuration after initialization."""
         # Convert dates to timestamps
+        self.temporal_frequency = self.temporal_frequency.lower()
         self._min_date          = pd.to_datetime(self.date_range[0])
         self._max_date          = pd.to_datetime(self.date_range[1])
         self._split_trainval    = pd.to_datetime(self.split_trainval)
@@ -184,7 +184,10 @@ class EpiConfig:
     def _validate_current_limitations(self):
         if self.sequence_length > 1:
             print(f'{warning_emoji} Currently no sequence length implemented for shallow nor deep models, nor their respective loaders\nsequence length is set to 1')  
-        self.sequence_length = 1    
+            self.sequence_length = 1    
+        if self.temporal_frequency not in ['w','d']:
+            print(f'{warning_emoji} Currently temporal frequency limited to ["w","d"]: {self.temporal_frequency} is invalid and will be reset to "w"')
+            self.temporal_frequency = "w"
 
     # ============= COMPUTED PROPERTIES =============
     @property
@@ -263,6 +266,7 @@ EpiConfig Summary:
 Disease:            {self.disease}
 NUTS Level:         {self.nuts_level}
 Date Range:         {self.min_date.date()} to {self.max_date.date()}
+Temporal frequency: {self.temporal_frequency}
 Extended Start:     {self.min_date_extended.date()} (lookback: {self.lookback_weeks} weeks)
 
 Task Configuration:

@@ -2,6 +2,7 @@ import seaborn as sns
 from typing import Optional, List
 import matplotlib.pyplot as plt
 import matplotlib
+from matplotlib.colors import to_rgb
 
 blackcolor = (0,0,0)
 traincolor = '#4a90d9'
@@ -18,6 +19,14 @@ paired_colors       = sns.color_palette("Paired")
 models_cmap = mypalette = ['#1f78b4','#B87200','#1b9e77','#cab2d6','#33a02c','#2a7d32',"#9154ac",'#cab2d6','#ffb84d','#a6761d','#b15928','#8b3d3d','#666666',"#b1adad","#5ab1e0",'#000000']
 
 cmap_5 = ['#1f78b4','#B87200','#1b9e77','#cab2d6']
+
+
+def color_is_light(color: str, threshold=0.6):
+    # perceived luminance (human-vision–weighted)
+    r, g, b = to_rgb(color)
+    luminance = 0.2126*r + 0.7152*g + 0.0722*b
+    return luminance > threshold
+
 
 def inspect_colorpalette(palette_name: Optional[str] = None, n_colors: Optional[int] = 10, palette_list: Optional[List[str]]=None, get_colors: bool = True):
     """
