@@ -95,7 +95,7 @@ class BaseModel:
                        ) -> ManagedFigure:
         
         predictioncollection = self.predictions.get_preds(dataset)
-        weeks_ahead          = int(self.dataloadermanager.dataorchestrator.config.horizon_leadtime + horizon)
+        timesteps_ahead          = int(self.dataloadermanager.dataorchestrator.config.horizon_leadtime + horizon)
 
         if self.dataloadermanager.dataorchestrator.config.prediction_mode == 'classification':
             raise ValueError('currently no forecast for classifications supported')
@@ -139,7 +139,7 @@ class BaseModel:
                 ax.set_xlabel("")            
                 ax.grid()   
 
-            title = f'{self.dataloadermanager.dataorchestrator.config.target_column} predictions by {self.name}, {weeks_ahead} weeks ahead' 
+            title = f'{self.dataloadermanager.dataorchestrator.config.target_column} predictions by {self.name}, {timesteps_ahead}{self.dataloadermanager.dataorchestrator.config.temporal_frequency} ahead' 
 
             if dataset != 'test':
                 title += f" [{dataset}]"

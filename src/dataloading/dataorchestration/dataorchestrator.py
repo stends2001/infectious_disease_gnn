@@ -151,6 +151,26 @@ class EpiDataReader:
         
         return df
 
+    def _validate_temporal_frequency(self, df: pd.DataFrame, expected_freq: str):
+        dfc  = df.copy()
+        
+        # disregard imperfections of NaNs
+        diffs = dfc['timestamp'].diff().dropna()
+        most_common_delta = diffs.mode()[0]
+
+        # map timedelta to 'd', 'w', 'm'
+        if most_common_delta < pd.Timedelta(days=1):
+            freq_guess = 'd'  # treat anything < 1 day as daily
+        elif pd.Timedelta(days=1) <= most_common_delta < pd.Timedelta(weeks=1):
+            freq_guess = 'd'
+        elif pd.Timedelta(weeks=1) <= most_common_delta < pd.Timedelta(days=30):
+            freq_guess = 'w'
+        else:
+            freq_guess = 'm'        
+
+        if freq_guess.lower() != expected_freq:
+            raise ValueError(f'unexpected temporal frequency found in disease data\nEpiconfig suggests "{expected_freq}" but disease data shows "{freq_guess}"')
+
     def orchestrate(self) -> RawEpiData:
         """
         Load all required data files
@@ -159,8 +179,11 @@ class EpiDataReader:
         --------
         RawEpiData : Container with all raw dataframes
         """
+        raw_disease_data = self._load_disease_data()
+        self._validate_temporal_frequency(raw_disease_data, self.config.temporal_frequency)
+
         rawdata = RawEpiData(
-            disease             = self._load_disease_data(),
+            disease             = raw_disease_data,
             population          = self._load_population_data(),
             shapedata           = self._load_shapedata(),
             nuts_names          = self._load_nuts_names(),

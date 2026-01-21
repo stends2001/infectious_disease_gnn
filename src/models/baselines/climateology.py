@@ -13,7 +13,7 @@ class ClimateologyModel(BaseModel):
 
     Examples
     --------
-    >>> seasonal_baseline = SeasonalModel(shallowdata)
+    >>> seasonal_baseline = ClimateologyModel(shallowdata)
     >>> seasonal_baseline.forecast('test')    
     >>> seasonal_baseline.show_forecast('test', 26) 
     """
@@ -48,7 +48,6 @@ class ClimateologyModel(BaseModel):
         
         for hh in range(self.dataloadermanager.dataorchestrator.config.horizon_size):
             horizon_name            = f'horizon_{hh}'
-            timeshift               = f"{int(hh + self.dataloadermanager.dataorchestrator.config.horizon_leadtime)}W"
             dataloader_collection   = self.dataloadermanager.dataloader_collections[horizon_name]
 
             dataloader_main_all     = dataloader_collection.main[['timestamp','node','target','train','val','test']]
@@ -63,20 +62,26 @@ class ClimateologyModel(BaseModel):
             else:
                 raise ValueError(f'dataset must be "train", "val" or "test"')             
 
-            weekly_averages = self._get_weekly_averages(main_dataloader).rename(columns = {'target':'pred'})
+            weekly_averages = self._get_temporal_averages(main_dataloader).rename(columns = {'target':'pred'})
 
             evaluation_df               = dataloader_main_all[dataloader_main_all[dataset]]
             evaluation_df               = evaluation_df[['node','timestamp','target']]
-            evaluation_df['week_number']= evaluation_df['timestamp'].dt.isocalendar().week
-            evaluation_df               = pd.merge(evaluation_df, weekly_averages, on = ['node','week_number']).drop(columns = ['week_number'])
+            if self.dataloadermanager.dataorchestrator.config.temporal_frequency == 'w':
+                evaluation_df['t_number']= evaluation_df['timestamp'].dt.isocalendar().week
+            elif self.dataloadermanager.dataorchestrator.config.temporal_frequency == 'd':   
+                evaluation_df['t_number']= evaluation_df['timestamp'].dt.isocalendar().day                             
+            evaluation_df               = pd.merge(evaluation_df, weekly_averages, on = ['node','t_number']).drop(columns = ['t_number'])
             self.predictions.add_horizon_predictions(dataset, evaluation_df, hh)
         self._update_status('forecasted')
         return self
 
-    def _get_weekly_averages(self, dataloader_main: pd.DataFrame) -> pd.DataFrame:
+    def _get_temporal_averages(self, dataloader_main: pd.DataFrame) -> pd.DataFrame:
         dl_main = dataloader_main.copy()
-        dl_main['week_number'] = dl_main['timestamp'].dt.isocalendar().week
-        return dl_main.groupby(['node','week_number'])['target'].mean().reset_index()
+        if self.dataloadermanager.dataorchestrator.config.temporal_frequency == 'w':
+            dl_main['t_number'] = dl_main['timestamp'].dt.isocalendar().week
+        elif self.dataloadermanager.dataorchestrator.config.temporal_frequency == 'd':
+            dl_main['t_number'] = dl_main['timestamp'].dt.isocalendar().day            
+        return dl_main.groupby(['node','t_number'])['target'].mean().reset_index()
         
     def __str__(self):
         # Calculate width
