@@ -4,7 +4,9 @@ from ...utils.textformatting import section, align
 from ..base import BaseModel, PredictionCollection
 from ...dataloading import ShallowDataLoaderManager
 
-class ConstantModel(BaseModel):
+from .baselinemodel import BaseLineModel 
+
+class ConstantModel(BaseLineModel):
 
     """
     """

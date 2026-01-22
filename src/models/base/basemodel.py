@@ -12,7 +12,7 @@ from .predictions_manager import PredictionManager
 from ..registry import MODELSREGISTRY
 from ..utils import MODELSCOLORPALETTE
 
-from ...dataloading import ShallowDataLoaderManager, DeepDataLoaderManager, GraphDataLoaderManager
+from ...dataloading import ShallowDataLoaderManager, DeepDataLoaderManager, GraphDataLoaderManager,BaseLineDataLoaderManager
 from ...utils.colors import testcolor, color_is_light
 from ...utils.textformatting import warning_emoji, error_emoji, checkmark
 from ...configmanagement.modelconfigmanager import ModelConfigManager
@@ -22,7 +22,7 @@ class BaseModel:
     """
 
     def __init__(self, 
-                 dataloadermanager: Union[ShallowDataLoaderManager, DeepDataLoaderManager, GraphDataLoaderManager], 
+                 dataloadermanager: Union[BaseLineDataLoaderManager,ShallowDataLoaderManager, DeepDataLoaderManager, GraphDataLoaderManager], 
                  name:              Optional[str]        = None,
                  model_color:       Optional[str]        = None,
                  verbose:           Literal[-1, 0, 1, 2] = -1):

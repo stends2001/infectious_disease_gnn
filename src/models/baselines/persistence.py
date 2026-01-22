@@ -1,45 +1,23 @@
-from typing import Literal, Union, Optional
-import pandas as pd
-from ...utils.textformatting import section, align
-from ..base import BaseModel, PredictionCollection
-from ...dataloading import ShallowDataLoaderManager
+from typing import TYPE_CHECKING, Optional, Literal
+import pandas as pd 
 
-class PersistenceModel(BaseModel):
+from ...utils.textformatting import align, section
+from ...dataloading import BaseLineDataLoaderManager 
+from .baselinemodel import BaseLineModel 
 
-    """
-    Persistence model predicts persistence: i.e. most recently 
-    observed value in the lagged features is predicted.
 
-    Training is therefore not necessary
 
-    Examples
-    --------
-    >>> persistence = PersistenceModel(shallowdata)
-    >>> persistence.forecast('test')    
-    >>> persistence.show_forecast('test', 26) 
-    """
+class PersistenceModel(BaseLineModel):
 
     def __init__(self, 
-                 dataloadermanager: ShallowDataLoaderManager, 
+                 dataloadermanager: BaseLineDataLoaderManager,                 
                  name:              Optional[str] = None,
                  verbose:           Literal[-1, 0, 1, 2] = -1):
         
         if not name:
             name = f'Persistence Model'
 
-        super().__init__(dataloadermanager=dataloadermanager, name= name, model_color="#d8d8d8d5", verbose=verbose )
-        
-        self.train_losses           = []
-        self.val_losses             = []
-        
-    def train(self):
-        print("This naive model doesn't train")
-
-    def set_global_hparams(self):
-        print("This naive model doesn't require global hparams")
-
-    def set_model_hparams(self):
-        print("This naive model doesn't require model hparams")     
+        super().__init__(dataloadermanager=dataloadermanager, name= name, model_color="#d8d8d8d5", verbose=verbose)
 
     def forecast(self, dataset: Literal['train','val','test'] = 'test'):
         """
@@ -49,48 +27,26 @@ class PersistenceModel(BaseModel):
         for hh in range(self.dataloadermanager.dataorchestrator.config.horizon_size):
             horizon_name            = f'horizon_{hh}'
             timeshift_num           = int(hh + self.dataloadermanager.dataorchestrator.config.horizon_leadtime)
-            dataloader_collection   = self.dataloadermanager.dataloader_collections[horizon_name]
+            evaluation_df           = self.dataloadermanager.dataloader_collections.copy()
+            evaluation_df['pred']   = evaluation_df.groupby(self.dataloadermanager.dataorchestrator.config.id_column)['target'].shift(timeshift_num).reset_index(drop = True)
+           
+            evaluation_dataset      = evaluation_df[evaluation_df[dataset]]
 
-            if dataset == 'train':
-                X, y = dataloader_collection.train.X, dataloader_collection.train.y
+            df_normalized = self._normalize(evaluation_dataset)                               
+            self.predictions.add_horizon_predictions(dataset, df_normalized, hh)
 
-            elif dataset == 'val':
-                X, y = dataloader_collection.val.X, dataloader_collection.val.y         
-
-            elif dataset == 'test':
-                X, y = dataloader_collection.test.X, dataloader_collection.test.y      
-            else:
-                raise ValueError('please provide a valid dataset: "train"/"val"/"test"')             
-
-            Xy_main      = dataloader_collection.main.copy()
-            Xy_main['pred'] = Xy_main.groupby(
-                self.dataloadermanager.dataorchestrator.config.id_column
-            )['target'].shift(timeshift_num)
-            
-            # Then filter to get the evaluation dataset
-            evaluation_df = Xy_main[Xy_main[dataset]].reset_index(drop=True)                          
-
-
-            # Get the n largest timestamps
-            if hh > 0:
-                largest_timestamps = list(evaluation_df['timestamp'].unique())[-hh:]
-            
-                # Filter out the rows that have these largest timestamps
-                evaluation_df = evaluation_df[~evaluation_df['timestamp'].isin(largest_timestamps)]   
-                         
-            self.predictions.add_horizon_predictions(dataset, evaluation_df, hh)
-            
         self._update_status('forecasted')   
         return self  
-        
+  
     def __str__(self):
         # Calculate width
-        all_keys = ['model name', 'forecasted']
+        all_keys = ['model name', 'model family', 'forecasted']
         width = max(len(k) for k in all_keys)
         
         # Build output
         lines = [f'<{self.model_class}(']
         lines.append(align('model name', self.name, width))
+        lines.append(align('model family', 'BaseLineModel', width))
         lines.append('')
         
         # Status section
@@ -98,4 +54,4 @@ class PersistenceModel(BaseModel):
         
         lines.append(')>')
         
-        return '\n'.join(lines)
+        return '\n'.join(lines)        
