@@ -1,2 +1,3 @@
 from .standardgnn_strategy import StandardGNNStrategy
 from .recurrentgnn_strategy import RecurrentGNNStrategy
+from .gatv2plus_strategy import GATv2PLUSStrategy

@@ -2,8 +2,11 @@ import pandas as pd
 import geopandas as gpd
 from dataclasses import dataclass
 from typing import Literal, Dict, Union, Optional, List
-
+from typing import TYPE_CHECKING
 from ...utils.textformatting import checkmark
+
+if TYPE_CHECKING:
+    from .epiconfig import EpiConfig
 
 # ============= DATA CONTAINERS =============
 
@@ -65,7 +68,7 @@ class ContextData:
 class HarmonizedData:
     """Container for nuts-harmonized data."""
     data:     pd.DataFrame
-    gisd:     Optional[pd.DataFrame] = None  # Add this
+    gisd:     Optional[pd.DataFrame] = None
 
     def __repr__(self):
         repr_str = "<HarmonizedData(data"
@@ -97,8 +100,8 @@ class NormalizedEpiData:
 @dataclass
 class FinalizedEpiData:
     data:        pd.DataFrame
-    config:      dict 
+    config:      'EpiConfig' 
     groundtruth: pd.DataFrame
 
     def __repr__(self):
-        return (f"FinalizedEpiData(data, config, groudntruth)>")          
+        return (f"FinalizedEpiData(data, config, groundtruth)>")          

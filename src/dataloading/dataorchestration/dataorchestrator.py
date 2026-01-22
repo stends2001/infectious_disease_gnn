@@ -1001,7 +1001,7 @@ class EpiNormalizer:
 
     def orchestrate(self, feature_data: 'FeatureEpiData') -> 'NormalizedEpiData':
         """runs all normalization functions"""
-        split_data      = self._set_splits(feature_data.data)
+        split_data      = self._set_splits(feature_data.data.copy())
         cols_to_log     = []
 
         if self.config.log_transform:

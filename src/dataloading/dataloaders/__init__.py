@@ -1,3 +1,4 @@
+from .baselineloader.baselinedataloadermanager import BaseLineDataLoaderManager
 from .shallowloader.shallowdataloadermanager import ShallowDataLoaderManager
 from .graphloader.graphdataloadermanager import GraphDataLoaderManager
 from .deeploader.deepdataloadermanager import DeepDataLoaderManager

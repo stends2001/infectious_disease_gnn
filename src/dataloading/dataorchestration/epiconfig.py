@@ -194,11 +194,6 @@ class EpiConfig:
                 raise FileNotFoundError(f"{name} not found: {path}")
             
     def _validate_current_limitations(self):
-        # sequence length
-        if self.sequence_length > 1:
-            print(f'{warning_emoji} Currently no sequence length implemented for shallow nor deep models, nor their respective loaders\nsequence length is set to 1')  
-            self.sequence_length = 1    
-
         # temporal frequency
         if self.temporal_frequency not in ['w','d']:
             print(f'{warning_emoji} Currently temporal frequency limited to ["w","d"]: {self.temporal_frequency} is invalid and will be reset to "w"')
@@ -300,7 +295,8 @@ Features:
 --------
 lag_num:            {self.lag_num}
 lag_column:         {self.lag_column}
-time index:         {self.time_index}
+weekly time index:  {self.weekly_time_index}
+daily time index:   {self.daily_time_index}
 population size:    {self.include_population}
 
 Splits:
