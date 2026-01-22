@@ -74,6 +74,7 @@ class PredictionManager:
         # validate columns
         df_validated    = self._validate_columns(df)
         timesteps_ahead = int(horizon + self.epiconfig.horizon_leadtime)
+        timesteps_unit  = self.epiconfig.temporal_frequency
         
         if dataset == 'train':
             prediction_collection = self.train 
@@ -87,7 +88,7 @@ class PredictionManager:
         else:
             raise ValueError(f'{dataset} invalid dataset. Supply "train", "val" or "test"')      
 
-        df = self._apply_prediction_timeshift(df_validated, f'{timesteps_ahead}W')
+        df = self._apply_prediction_timeshift(df_validated, f'{timesteps_ahead}{timesteps_unit}')
 
         if additional_transformation:
 

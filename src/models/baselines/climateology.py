@@ -7,15 +7,22 @@ from ...dataloading import ShallowDataLoaderManager
 class ClimateologyModel(BaseModel):
 
     """
-    Seasonal model predicts seasonal-persistence
+    Seasonal baseline model
 
-    Training is therefore not necessary
+    Predictions are made according to:
+    $$\hat{y}_{i}^{(t+h)} = \frac{1}{|\mathcal{T}_{\text{train}}(t_N)|} \sum_{t' \in \mathcal{T}_{\text{train}}(t_N)} y_i^{(t')}$$
+
+    where $\mathcal{T}_{\text{train}}(w)$ denotes all time points in the training set corresponding to position in the seasonal cycle $t_N$.
 
     Examples
     --------
     >>> seasonal_baseline = ClimateologyModel(shallowdata)
     >>> seasonal_baseline.forecast('test')    
     >>> seasonal_baseline.show_forecast('test', 26) 
+
+    Note
+    ----
+    training is not necessary
     """
 
     def __init__(self, 
@@ -66,10 +73,12 @@ class ClimateologyModel(BaseModel):
 
             evaluation_df               = dataloader_main_all[dataloader_main_all[dataset]]
             evaluation_df               = evaluation_df[['node','timestamp','target']]
+            
             if self.dataloadermanager.dataorchestrator.config.temporal_frequency == 'w':
                 evaluation_df['t_number']= evaluation_df['timestamp'].dt.isocalendar().week
             elif self.dataloadermanager.dataorchestrator.config.temporal_frequency == 'd':   
-                evaluation_df['t_number']= evaluation_df['timestamp'].dt.isocalendar().day                             
+                evaluation_df['t_number']= evaluation_df['timestamp'].dt.isocalendar().day    
+
             evaluation_df               = pd.merge(evaluation_df, weekly_averages, on = ['node','t_number']).drop(columns = ['t_number'])
             self.predictions.add_horizon_predictions(dataset, evaluation_df, hh)
         self._update_status('forecasted')
@@ -85,13 +94,12 @@ class ClimateologyModel(BaseModel):
         
     def __str__(self):
         # Calculate width
-        all_keys = ['model name', 'model class', 'prediction column', 'forecasted']
+        all_keys = ['model name', 'forecasted']
         width = max(len(k) for k in all_keys)
         
         # Build output
-        lines = ['<PersistenceModel(']
+        lines = [f'<{self.model_class}(']
         lines.append(align('model name', self.name, width))
-        lines.append(align('model class', self.model_class, width))
         lines.append('')
         
         # Status section

@@ -6,6 +6,13 @@ import pandas as pd
 from ...utils.textformatting import warning_emoji
 from ...utils.exceptions import WissdatenMountingError
 
+
+class EpiConfigError(Exception):
+    def __init__(self, explanation: str):
+        statement = "Epiconfig couldn't be loaded" + "\n" + explanation
+        super().__init__(statement)
+
+
 @dataclass
 class EpiConfig:
     """ 
@@ -37,7 +44,8 @@ class EpiConfig:
     include_population:     bool = False
     include_gisd:           bool = False    
     lag_column              str  = 'incidence
-    time_index:             bool = True
+    weekly_time_index:      bool = True
+    daily_time_index:       bool = false
     log_transform:          Optional[List[str]] = None
     log_shift:              float = 1.0    
     
@@ -104,7 +112,8 @@ class EpiConfig:
     # ============= FEATURES =============
     include_population:     bool = False
     include_gisd:           bool = False
-    time_index:             bool = True
+    weekly_time_index:      bool = True
+    daily_time_index:       bool = False
     lag_column:             str  = 'incidence'
     log_transform:          Optional[List[str]] = None
     log_shift:              float = 1.0    
@@ -136,28 +145,31 @@ class EpiConfig:
         self._split_valtest     = pd.to_datetime(self.split_valtest)
 
         if self._min_date >= self._max_date:
-            raise ValueError(f"min_date ({self._min_date.date()}) must be before max_date ({self._max_date.date()})")
+            raise EpiConfigError(f"min_date ({self._min_date.date()}) must be before max_date ({self._max_date.date()})")
         
         if self._split_trainval >= self._split_valtest:
-            raise ValueError(f"split_trainval must be before split_valtest")
+            raise EpiConfigError(f"split_trainval must be before split_valtest")
         
         if not (self._min_date <= self._split_trainval < self._split_valtest <= self._max_date):
-            raise ValueError(f"Splits must be within date range")
+            raise EpiConfigError(f"Splits must be within date range")
         
         # Validate horizon config
         if self.horizon_size < 1:
-            raise ValueError(f"horizon_size must be >= 1, got {self.horizon_size}")
+            raise EpiConfigError(f"horizon_size must be >= 1, got {self.horizon_size}")
         if self.horizon_leadtime < 1:
-            raise ValueError(f"horizon_leadtime must be >= 1, got {self.horizon_leadtime}")
+            raise EpiConfigError(f"horizon_leadtime must be >= 1, got {self.horizon_leadtime}")
         if self.sequence_length < 1:
-            raise ValueError(f"sequence_length must be >= 1, got {self.sequence_length}")
+            raise EpiConfigError(f"sequence_length must be >= 1, got {self.sequence_length}")
         if self.lag_num < 1:
-            raise ValueError(f"number of lags must be >= 1, got {self.lag_num}")            
+            raise EpiConfigError(f"number of lags must be >= 1, got {self.lag_num}")            
         
         # validate task
         if self.target_column == 'incidence' and self.prediction_mode == 'classification':
-            raise ValueError(f'Invalid combination of target as incidence and prediction mode as classification. Please adjust')
-
+            raise EpiConfigError(f'Invalid combination of target as incidence and prediction mode as classification. Please adjust')
+        
+        # time index
+        if self.daily_time_index and self.disease != 'covid_daily':
+            raise EpiConfigError(f'daily_time_index is only relevant to disease covid_daily. Please adjust')
         # Validate input
         self._validate_datapaths()
         self._validate_current_limitations()
@@ -182,12 +194,21 @@ class EpiConfig:
                 raise FileNotFoundError(f"{name} not found: {path}")
             
     def _validate_current_limitations(self):
+        # sequence length
         if self.sequence_length > 1:
             print(f'{warning_emoji} Currently no sequence length implemented for shallow nor deep models, nor their respective loaders\nsequence length is set to 1')  
             self.sequence_length = 1    
+
+        # temporal frequency
         if self.temporal_frequency not in ['w','d']:
             print(f'{warning_emoji} Currently temporal frequency limited to ["w","d"]: {self.temporal_frequency} is invalid and will be reset to "w"')
             self.temporal_frequency = "w"
+
+        # gisd and nuts
+        if self.nuts_level == 'nuts1' and self.include_gisd:
+            raise EpiConfigError('currently no gisd data for nuts1 exists')
+        if self.nuts_level == 'nuts3' and self.split_berlin:
+            raise EpiConfigError('no gisd data for berlin districts exists. please remove gisd data or merge berlin')        
 
     # ============= COMPUTED PROPERTIES =============
     @property

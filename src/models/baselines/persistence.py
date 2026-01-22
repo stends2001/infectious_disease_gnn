@@ -49,7 +49,6 @@ class PersistenceModel(BaseModel):
         for hh in range(self.dataloadermanager.dataorchestrator.config.horizon_size):
             horizon_name            = f'horizon_{hh}'
             timeshift_num           = int(hh + self.dataloadermanager.dataorchestrator.config.horizon_leadtime)
-            timeshift_str           = f"{timeshift_num}W"
             dataloader_collection   = self.dataloadermanager.dataloader_collections[horizon_name]
 
             if dataset == 'train':
@@ -86,14 +85,12 @@ class PersistenceModel(BaseModel):
         
     def __str__(self):
         # Calculate width
-        all_keys = ['model name', 'model class', 'prediction column', 'forecasted']
+        all_keys = ['model name', 'forecasted']
         width = max(len(k) for k in all_keys)
         
         # Build output
-        lines = ['<PersistenceModel(']
+        lines = [f'<{self.model_class}(']
         lines.append(align('model name', self.name, width))
-        lines.append(align('model class', self.model_class, width))
-        lines.append(align('prediction column', self.prediction_col, width))
         lines.append('')
         
         # Status section

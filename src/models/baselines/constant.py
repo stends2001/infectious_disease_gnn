@@ -73,14 +73,13 @@ class ConstantModel(BaseModel):
         
     def __str__(self):
         # Calculate width
-        all_keys = ['model name', 'model class', 'prediction column', 'forecasted']
+        all_keys = ['model name', 'constant value' 'forecasted']
         width = max(len(k) for k in all_keys)
         
         # Build output
-        lines = [f'<ConstantModel({self.constant_value}']
+        lines = [f'<{self.model_class}(']
         lines.append(align('model name', self.name, width))
-        lines.append(align('model class', self.model_class, width))
-        lines.append(align('prediction column', self.prediction_col, width))
+        lines.append(align('constant value', self.constant_value, width))        
         lines.append('')
         
         # Status section

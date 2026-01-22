@@ -14,6 +14,11 @@ from .column_registry import ColumnRegistration, ColEntryMissingError, ColEntryM
 from .epiconfig import EpiConfig
 from .datastagecontainers import RawEpiData, ContextData, HarmonizedData, ProcessedEpiData, FeatureEpiData, NormalizedEpiData, FinalizedEpiData, ProcessedEpiData
 
+class DataOrchestrationError(Exception):
+    def __init__(self, explanation: str):
+        statement = "Data Orchestration couldn't be run" + "\n" + explanation
+        super().__init__(statement)    
+
 # ============= READER CLASS =============
 class EpiDataReader:
     """
@@ -136,11 +141,6 @@ class EpiDataReader:
         loads and returns gisd data for set nuts level
         """
 
-        if self.config.nuts_level == 'nuts1':
-            raise ValueError('currently no gisd data for nuts1 exists')
-        if self.config.nuts_level == 'nuts3' and self.config.split_berlin:
-            raise ValueError('no gisd data for berlin districts exists. please remove gisd data or merge berlin')
-
         # main file, additions-file
         filepath = self.config.get_gisd_path()   
         
@@ -169,7 +169,7 @@ class EpiDataReader:
             freq_guess = 'm'        
 
         if freq_guess.lower() != expected_freq:
-            raise ValueError(f'unexpected temporal frequency found in disease data\nEpiconfig suggests "{expected_freq}" but disease data shows "{freq_guess}"')
+            raise DataOrchestrationError(f'unexpected temporal frequency found in disease data\nEpiconfig suggests "{expected_freq}" but disease data shows "{freq_guess}"')
 
     def orchestrate(self) -> RawEpiData:
         """
@@ -380,7 +380,7 @@ class NUTSHarmonizer:
         """
         if self.config.split_berlin:
             if rawdata.population_berlin is None:
-                raise AttributeError("'population_berlin' attribute is not found in rawdata")
+                raise DataOrchestrationError("'population_berlin' attribute is not found in rawdata")
             
             population_data = self._add_berlin_districts(rawdata.population, rawdata.population_berlin)
             raw_epidata     = rawdata.disease
@@ -567,296 +567,6 @@ class EpiDataProcessor:
 
 # ============= FEATURE CLASS =============            
 class EpiFeatureBuilder:
-    """ 
-    Feature building, separate per function
-
-    Parameters
-    ----------
-    config: 'EpiConfig'
-    column_registration: 'ColumnRegistration'
-
-    Examples
-    --------
-    >>> featuredata = EpiFeatureBuilder(config).orchestrate(processeddata)
-
-    Returns
-    -------
-    .orchestrate() --> 'FeatureEpiData'
-
-    Downstream
-    ----------
-    output 'FeatureEpiData' is input for EpiNormalizer.orchestrate()            
-    """        
-    def __init__(self, config: 'EpiConfig', column_registration: ColumnRegistration):
-        self.config             = config
-        self.column_registration= column_registration
-
-    def _time_week_index(self, df: pd.DataFrame) -> pd.DataFrame:
-        """add time_index feature (sin/cos for weekly values)"""
-        dfc = df.copy()
-        # Extract year and ISO week number
-        iso_calendar    = dfc[self.config.temporal_column].dt.isocalendar()
-        years           = iso_calendar['year']
-        weeks           = iso_calendar['week']        
-
-        # Function to check if a year has 53 weeks
-        def has_53_weeks(year: int) -> bool:
-            dec_28 = pd.Timestamp(year=year, month=12, day=28)
-            return dec_28.isocalendar()[1] == 53
-        
-        # Cache years and their week counts (52 or 53)
-        unique_years    = years.unique()
-        year_week_count = {year: 53 if has_53_weeks(year) else 52 for year in unique_years}
-        # Map each year in df to its week count
-        weeks_in_year   = years.map(year_week_count)        
-
-        # Column names
-        sin_col = f'{self.config.temporal_column}_wsin'
-        cos_col = f'{self.config.temporal_column}_wcos'
-
-        # Compute sine and cosine transformation to encode cyclical nature of weeks in a year
-        dfc[sin_col] = np.sin(2 * np.pi * weeks / weeks_in_year)
-        dfc[cos_col] = np.cos(2 * np.pi * weeks / weeks_in_year)
-
-        if self.config.verbose > 1:
-            print(f'{checkmark} weekly time index {sin_col}, {cos_col} included as feature')                 
-        return dfc
-    
-    def _time_day_index(self, df: pd.DataFrame) -> pd.DataFrame:
-        """add time_index feature (sin/cos for daily values)"""
-        dfc = df.copy()
-        # Extract year and ISO week number
-        iso_calendar    = dfc[self.config.temporal_column].dt.isocalendar() 
-        days            = iso_calendar['day'] 
-
-        # Map each year in df to its week count
-        days_in_week   = 7     
-
-        # Column names
-        sin_col = f'{self.config.temporal_column}_dsin'
-        cos_col = f'{self.config.temporal_column}_dcos'
-
-        # Compute sine and cosine transformation to encode cyclical nature of weeks in a year
-        dfc[sin_col] = np.sin(2 * np.pi * days / days_in_week)
-        dfc[cos_col] = np.cos(2 * np.pi * days / days_in_week)
-
-        if self.config.verbose > 1:
-            print(f'{checkmark} daily time index {sin_col}, {cos_col} included as feature')                 
-        return dfc    
-    
-    def _lags(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Create lagged features and future target.
-        
-        Timeline:
-        - lag_column_t0: current week (timestamp)
-        - lag_column_t_1: 1 week ago
-        - lag_column_t_2: 2 weeks ago
-        - target: horizon_leadtime weeks ahead
-        """
-        dfc = df.copy()
-        
-        # Step 1: Explicitly create t0 for the lag column (current value, unshifted)
-        dfc[f'{self.config.lag_column}_t0'] = dfc[self.config.lag_column]
-        
-        # Step 2: Create lagged features (t_1, t_2, etc.)
-        for lag in range(1, self.config.lag_num):
-            feature = f'{self.config.lag_column}_t_{lag}'
-            dfc[feature] = dfc.groupby(self.config.id_column)[self.config.lag_column].shift(lag)
-            
-            self.column_registration.add_column(
-                feature, 
-                'feature',
-                needs_normalization=True,
-                transformation_group=f'{self.config.lag_column}_t0' if self.config.lag_column != self.config.target_column else 'target'
-            )
-        
-        # Step 3: Shift target into the future (only if it's a separate column or needs shifting)
-        if self.config.horizon_leadtime > 0:
-            dfc[f'{self.config.target_column}_future'] = dfc.groupby(
-                self.config.id_column
-            )[self.config.target_column].shift(-self.config.horizon_leadtime)
-        else:
-            dfc[f'{self.config.target_column}_future'] = dfc[self.config.target_column]
-        
-        # Step 4: Drop the original unshifted columns (we have t0 and future versions now)
-        dfc = dfc.drop(columns=[self.config.lag_column, self.config.target_column])
-        
-        # Drop rows with NaN from shifting
-        dfc = dfc.dropna().reset_index(drop=True)
-    
-        if self.config.verbose > 1:
-            print(f'{checkmark} lags added') 
-
-        return dfc
-
-    def _rename_lagt0(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        identical df with column name {self.config.lag_column} to {self.config.lag_column}_t0
-        """
-        old_featurename = self.config.lag_column
-        new_featurename = f'{self.config.lag_column}_t0'
-
-        renamed_df = df.rename(columns = {old_featurename: new_featurename})   
-
-        return renamed_df
-    
-    def _rename_target(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Rename future target to 'target'"""
-        if self.config.verbose > 1:
-            print(f'{checkmark} target column renamed as such') 
-        return df.rename(columns={f'{self.config.target_column}_future': 'target'})
-
-    def _reorder_df(self, df: pd.DataFrame) -> pd.DataFrame:
-        """simply rearranges columns in a predefined order"""
-        dfc = df.copy()
-        first_cols      = ['timestamp','node','target']
-        feature_cols    = [col for col in df.columns if col not in first_cols]
-
-        if self.config.verbose > 1:
-            print(f'{checkmark} columns reordered') 
-
-        return dfc[first_cols + feature_cols]
-
-    def _update_colregistration_postfeaturebuilding(self):
-        """update column registry based on config"""
-        # if lag col == target col, then the lag will be normalized following identical parameters as the target col
-        lag0_featurename = f'{self.config.lag_column}_t0'
-
-        # TARGET
-        #       if target == 'incidence' (!='cases')    -> normalization needed (transformation => individual)
-        #       if target == 'cases'                    -> no normalization needed
-        if self.config.target_column!='cases':
-            self.column_registration.add_column(
-                    'target', 
-                    'target',
-                    needs_normalization=True,
-                    transformation_group=None
-                )    
-        else:
-            self.column_registration.add_column(
-                    'target', 
-                    'target',
-                    needs_normalization=False,
-                    transformation_group='NA'
-                )                
-        
-        # LAG
-        #       if lag_column == target_column          -> normalization parameters from TARGET are used
-        #       else                                    -> individual transformation
-        if self.config.lag_column == self.config.target_column:            
-            self.column_registration.add_column(
-                    lag0_featurename, 
-                    'feature',
-                    needs_normalization=True,
-                    transformation_group='target'
-                )      
-        else:
-            self.column_registration.add_column(
-                    lag0_featurename, 
-                    'feature',
-                    needs_normalization=True,
-                    transformation_group=None
-                )      
-
-        # POPULATION_SIZE
-        if self.config.include_population:
-            self.column_registration.add_column(
-                'population_size', 
-                'feature', 
-                needs_normalization=True,
-                transformation_group=None
-            )          
-
-        # TIME INDEX
-        if self.config.time_index:
-            sin_col = f'{self.config.temporal_column}_wsin'
-            cos_col = f'{self.config.temporal_column}_wcos'
-
-            self.column_registration.add_column(
-                sin_col, 
-                'feature', 
-                needs_normalization=False,
-                transformation_group=None  # Independent normalization
-            )    
-
-            self.column_registration.add_column(
-                cos_col, 
-                'feature', 
-                needs_normalization=False,
-                transformation_group=None  # Independent normalization
-            )     
-        if self.config.disease == 'covid_daily':
-            sin_col = f'{self.config.temporal_column}_dsin'
-            cos_col = f'{self.config.temporal_column}_dcos'
-
-            self.column_registration.add_column(
-                sin_col, 
-                'feature', 
-                needs_normalization=False,
-                transformation_group=None  # Independent normalization
-            )    
-
-            self.column_registration.add_column(
-                cos_col, 
-                'feature', 
-                needs_normalization=False,
-                transformation_group=None  # Independent normalization
-            )                           
-        
-        # GISD FEATURES
-        if self.config.include_gisd:
-            self.column_registration.add_column(
-                    'gisd',
-                    'feature',
-                    needs_normalization=False,
-                    transformation_group=None  # Independent normalization for each GISD feature
-                )
-            
-            if self.config.verbose > 1:
-                print(f'{checkmark} GISD features registered in column registry')
-
-        if self.config.verbose > 1:
-            print(f'{checkmark} column_registry updated')  
-
-    def orchestrate(self, processed_data: 'ProcessedEpiData') -> 'FeatureEpiData':
-        """orchestrates entire feature addition"""
-        feature_data = processed_data.data
-        self.data = feature_data  # Store reference for GISD column detection
-
-        # Feature: population_size => colregistry done in update the registry function
-        if self.config.include_population:
-            if self.config.verbose > 1:
-                print(f'{checkmark} population size included as feature')    
-        else:
-            # remove column population_size
-            feature_data.drop(columns = ['population_size'], inplace = True) 
-            if self.config.verbose > 1:
-                print(f'{checkmark} population size removed')    
-        
-        # Feature: time_index (timestamp_sin, timestamp_cos)        
-        if self.config.time_index:
-            feature_data = self._time_week_index(feature_data)
-        
-        if self.config.disease == 'covid_daily':
-            feature_data = self._time_day_index(feature_data)
-
-        feature_data = self._lags(feature_data)
-        feature_data = self._rename_lagt0(feature_data)
-        feature_data = self._rename_target(feature_data)   
-        feature_data = self._reorder_df(feature_data) 
-
-        self._update_colregistration_postfeaturebuilding()
-
-        if self.config.verbose:
-            print(f'{checkmark}{checkmark} All features built') 
-        if self.config.verbose > 1:
-            print("")
-
-        return FeatureEpiData(data=feature_data)
-
-################# FEATURE V2 #######################
-class EpiFeatureBuilderV2:
     """ 
     Feature building with CORRECTED timestamp alignment for daily data
     """
@@ -1060,21 +770,21 @@ class EpiFeatureBuilderV2:
             )          
 
         # WEEKLY TIME INDEX
-        if self.config.time_index:
+        if self.config.weekly_time_index:
             sin_col = f'{self.config.temporal_column}_wsin'
             cos_col = f'{self.config.temporal_column}_wcos'
 
             self.column_registration.add_column(sin_col, 'feature', needs_normalization=False, transformation_group=None)    
             self.column_registration.add_column(cos_col, 'feature', needs_normalization=False, transformation_group=None)     
-        
+            
         # DAILY TIME INDEX
-        if self.config.disease == 'covid_daily':
+        if self.config.daily_time_index:
             sin_col = f'{self.config.temporal_column}_dsin'
             cos_col = f'{self.config.temporal_column}_dcos'
 
             self.column_registration.add_column(sin_col, 'feature', needs_normalization=False, transformation_group=None)    
             self.column_registration.add_column(cos_col, 'feature', needs_normalization=False, transformation_group=None)                           
-        
+            
         # GISD FEATURES
         if self.config.include_gisd:
             self.column_registration.add_column(
@@ -1111,11 +821,11 @@ class EpiFeatureBuilderV2:
         
         # NOW add time features aligned with the TARGET timestamp
         # For weekly time_index (timestamp_wsin, timestamp_wcos)
-        if self.config.time_index:
+        if self.config.weekly_time_index:
             feature_data = self._time_week_index(feature_data, shift_for_target=True)
         
         # For daily time index (timestamp_dsin, timestamp_dcos)
-        if self.config.disease == 'covid_daily':
+        if self.config.daily_time_index:
             feature_data = self._time_day_index(feature_data, shift_for_target=True)
         
         feature_data = self._reorder_df(feature_data) 
@@ -1127,7 +837,6 @@ class EpiFeatureBuilderV2:
             print("")
 
         return FeatureEpiData(data=feature_data)
-####################################################
 
 # ============= Normalize CLASS ============= 
 class EpiNormalizer:
@@ -1192,7 +901,7 @@ class EpiNormalizer:
         df_transformed                              = df.copy()
            
         if col not in df_transformed.columns:
-            raise ValueError(f'{col} not found in df')
+            raise DataOrchestrationError(f"{col} not found in df. Couldn't be log-transformed")
 
         df_transformed[col]                         = np.log(df_transformed[col] + self.config.log_shift)
       
@@ -1207,7 +916,7 @@ class EpiNormalizer:
         normalized_df   = df.copy()
 
         if self.config.normalization_method not in self.normalization_functions['apply']:
-            raise KeyError(f'No normalization function {self.config.normalization_method} found.')
+            raise DataOrchestrationError(f'No normalization function {self.config.normalization_method} found.')
 
         ### First pass ###
         # Calculate normalization parameters for columns that need independent normalization,
@@ -1325,132 +1034,6 @@ class EpiNormalizer:
 # ============= Finalize CLASS ============= 
 class EpiDataFinalizer:
     """ 
-    Finalizes the data into a shared df that may be imported by model-specific DataLoader objects.
-
-    Parameters
-    ----------
-    config: 'EpiConfig'
-    column_registration: 'ColumnRegistration'
-
-    Examples
-    --------
-    >>> finaldata = EpiDataFinalizer(config).orchestrate(normalizeddata)
-
-    Returns
-    -------
-    .orchestrate() --> 'FinalizedEpiData'
-
-    Downstream
-    ----------
-    output 'FinalizedEpiData' is input for dataloaders (ShallowDataLoaderManager, GraphDataLoaderManager)
-    """  
-    def __init__(self, config: 'EpiConfig', column_registration: ColumnRegistration):
-        self.config             = config 
-        self.column_registration= column_registration
-
-    def _add_horizons(self, df: pd.DataFrame) -> pd.DataFrame:
-        """loop over horizons, add shifted target under new name f'target_lead{steps_ahead}' where steps_ahead = horizon_leadtime + horizon_idx"""
-        base_lead = self.config.horizon_leadtime
-        for additional_steps in range(1, self.config.horizon_size):
-            steps_ahead = base_lead + additional_steps
-            target_col = f'target_lead{steps_ahead}'
-            
-            # Shift from the base target
-            df[target_col] = df.groupby(self.config.id_column)[f'target_lead{base_lead}'].shift(-additional_steps)
-            
-            # Register in column registry
-            self.column_registration.add_column(
-                target_col,
-                'target',
-                transformation_group='target',              # Use same normalization as base target
-                needs_normalization=True
-            )
-        if self.config.verbose > 1:
-            print(f'{checkmark} targets for all horizons added')              
-        return df
-
-    def _drop_nans(self, df: pd.DataFrame) -> pd.DataFrame:
-        if self.config.verbose > 1:
-            print(f"{checkmark} nans droppped")
-        return df.dropna()
-
-    def _set_targettype_integer(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        return df with columns of which name includes 'target' as int
-        Required when predicting casenumbers instead of incidence rates
-        """
-        for col in df.columns:
-            if 'target' in col:
-                df[col] = df[col].astype(int)
-       
-        if self.config.verbose > 1:
-            print(f"{checkmark} target columns set as integer")
-
-        return df
-
-    def _set_targettype_class(self, df:pd.DataFrame) -> pd.DataFrame:
-        """
-        return df with columns of which name includes 'target' as binary
-        Required when target is casenumber and prediction_mode is classification
-        """
-        for col in df.columns:
-            if 'target' in col:
-                df.loc[df[col] > 0, col] = 1
-       
-        if self.config.verbose > 1:
-            print(f"{checkmark} target columns set as class")
-
-        return df
-
-    def orchestrate(self, normalized_data: NormalizedEpiData) -> 'FinalizedEpiData':
-        """runs entire finalization"""
-        dfc = normalized_data.data
-
-        # 'target' is already at t+horizon_leadtime
-        # Rename it to reflect its actual position
-        base_lead = self.config.horizon_leadtime
-        dfc = dfc.rename(columns={'target': f'target_lead{base_lead}'})
-        
-        # Create additional horizons if needed
-        if self.config.horizon_size > 1:
-            dfc = self._add_horizons(dfc)
-            
-        # For predictions (will be generated during training)
-        self.column_registration.add_column(
-            'pred',
-            'pred',
-            transformation_group='target',
-            needs_normalization=True
-        )      
-
-        dfc_nanfree = self._drop_nans(dfc)
-
-        # if target == 'cases' => target columns should be integers
-        if self.config.target_column == 'cases':
-            if self.config.prediction_mode == 'regression':
-                dfc_nanfree = self._set_targettype_integer(dfc_nanfree)
-            elif self.config.prediction_mode == 'classification':
-                dfc_nanfree = self._set_targettype_class(dfc_nanfree)                
-
-        # Groundtruth uses the first target horizon
-        groundtruth_df = dfc_nanfree.copy()[['timestamp', 'node', f'target_lead{base_lead}']]
-        groundtruth_df = groundtruth_df.rename(columns={f'target_lead{base_lead}': 'target'})
-
-        if self.config.verbose:
-            print(f'{checkmark}{checkmark} All data finalized') 
-        if self.config.verbose > 1:
-            print("")
-
-        return FinalizedEpiData(
-            data=dfc_nanfree,
-            config=self.config,
-            groundtruth=groundtruth_df
-        )
-
-
-#################### FINALIZE V2 ####################
-class EpiDataFinalizerV2:
-    """ 
     Finalizes the data with correct timestamp alignment for targets
     """  
     def __init__(self, config: 'EpiConfig', column_registration: ColumnRegistration):
@@ -1506,7 +1089,7 @@ class EpiDataFinalizerV2:
         
         # Additional horizon timestamps if horizon_size > 1
         if self.config.horizon_size > 1:
-            raise ValueError("cannot currently deal with multiple horizons' separate time indices!")
+            raise DataOrchestrationError("cannot currently deal with multiple horizons' separate time indices!")
             # for additional_steps in range(1, self.config.horizon_size):
             #     steps_ahead = base_lead + additional_steps
             #     dfc[f'target_timestamp_lead{steps_ahead}'] = dfc[self.config.temporal_column] + pd.Timedelta(**{time_unit: steps_ahead})
@@ -1684,9 +1267,9 @@ class DataOrchestrator:
         self.reader         = EpiDataReader(config)
         self.harmonizer     = NUTSHarmonizer(config)
         self.processor      = EpiDataProcessor(config)
-        self.feature_builder= EpiFeatureBuilderV2(config, self.column_registration)
+        self.feature_builder= EpiFeatureBuilder(config, self.column_registration)
         self.normalizer     = EpiNormalizer(config, self.column_registration)
-        self.finalizer      = EpiDataFinalizerV2(config, self.column_registration)
+        self.finalizer      = EpiDataFinalizer(config, self.column_registration)
         
         # Store results at each stage
         self._data_raw       = None
