@@ -54,7 +54,6 @@ class DeepModel(BaseModel, ABC):
         self._set_strategy(strategy)
         self._validate_dataloader_class()
 
-        self.config_info['child']   = 'GraphNeuralNetwork'
         self.model_manager = ModelManager()
         self.monitoring_metrics = None
         self.evaluation_datasets= {}
@@ -261,9 +260,6 @@ class DeepModel(BaseModel, ABC):
             raise ValueError('no valid scheduler found')
         
         self._check_state(['model_hparams_set', 'global_hparams_set'])
-
-
-
         dataloader_collection = self.dataloadermanager.dataloader_collection
 
         train_loader = dataloader_collection.train 
@@ -289,6 +285,7 @@ class DeepModel(BaseModel, ABC):
         else:
             verbose_loops   = []
             epoch_iter      = tqdm(range(self.n_epochs), desc="Training epochs") # if no verbose, just a tqdm
+
         self.model.train()
         best_val_loss       = float('inf')
         patience_counter    = 0
@@ -308,6 +305,9 @@ class DeepModel(BaseModel, ABC):
         #   update phase
 
         for epoch in epoch_iter:
+            # for printing purposes
+            num_epoch = epoch + 1 
+
             # Reset state at epoch start
             self.strategy.reset_state()
 
@@ -317,7 +317,10 @@ class DeepModel(BaseModel, ABC):
             for snapshot in train_loader:
                 snapshot = snapshot.to(self.device)
 
-                loss_train = self.strategy.training_step(     # some models require hidden state and cell state. Taken care of in the strategy.
+                # different models have different input and output in steps
+                # taken care of using the strategy
+
+                loss_train = self.strategy.training_step(
                     model       = self.model, 
                     snapshot    = snapshot, 
                     optimizer   = self.optimizer, 
@@ -352,12 +355,13 @@ class DeepModel(BaseModel, ABC):
             list_val_loss.append(val_loss)
             
             # ======================== UPDATE PHASE ========================
-            current_lr = self.optimizer.param_groups[0]['lr'] # the lr used in this epoch
+            # the lr used in this epoch
+            current_lr = self.optimizer.param_groups[0]['lr']
             list_lr.append(current_lr)
             
             self.model.train()
             # gives three digits as print no matter what
-            verbose_statement_basis = f"Epoch {epoch:03d} train loss: {train_loss:.4f}, val loss: {val_loss:.4f}"
+            verbose_statement_basis = f"Epoch {num_epoch:03d} train loss: {train_loss:.4f}, val loss: {val_loss:.4f}"
             
             # Check if validation loss improved
             val_improved = val_loss < (best_val_loss - self.min_delta)
@@ -386,7 +390,7 @@ class DeepModel(BaseModel, ABC):
 
                 break              
 
-            if epoch in verbose_loops:
+            if num_epoch in verbose_loops:
                 print(verbose_statement)
 
             # Step scheduler => scheduler.step requires val loss
@@ -406,6 +410,7 @@ class DeepModel(BaseModel, ABC):
                                                 'val_loss'      : list_val_loss,
                                                 'patience'      : list_patience,
                                                 'learning_rate' : list_lr}).reset_index(names='epoch')
+        
         self.monitoring_metrics['epoch'] = self.monitoring_metrics['epoch'] + 1
 
         if self.verbose >=1:
@@ -512,7 +517,7 @@ class DeepModel(BaseModel, ABC):
         if dataset == 'test':
             timestamp_idx_offset = idx_offset_train + idx_offset_val
         elif dataset == 'val':
-            timestamp_idx_offset = idx_offset_val 
+            timestamp_idx_offset = idx_offset_train 
         elif dataset == 'train':
             timestamp_idx_offset = 0
         else:

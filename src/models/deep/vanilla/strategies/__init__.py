@@ -1,2 +1,3 @@
 from .recurrentlstm_strategy import RecurrentLSTMStrategy
 from .recurrentgru_strategy import RecurrentGRUStrategy
+from .sequentializedlstm_strategy import SequentializedLSTMStrategy

@@ -76,7 +76,8 @@ class DeepDataLoader:
             f"y={tuple(snapshot.y.shape)}"
         )
         return f"{cls}({info})"      
-    
+  
+   
 @dataclass
 class DeepDataLoaderCollection:
     """ 
@@ -108,7 +109,7 @@ class DeepDataLoaderManager:
         return self     
     
     def _construct_Xy(self, 
-                      df: pd.DataFrame) -> Tuple[torch.Tensor, torch.Tensor, List[Union[pd.Timestamp, str]]]:
+                      df: pd.DataFrame) -> Tuple[torch.Tensor, torch.Tensor, List[pd.Timestamp]]:
         """
         constructs torch.tensor objects from df, which should be the dataorchestrator's final data object.
         
@@ -117,7 +118,9 @@ class DeepDataLoaderManager:
         X: torch.Tensor
             Input data of shape [num_timestamps, num_nodes, num_features]
         y: torch.Tensor
-            Target data of shape [num_timestamps, num_nodes, horizon_size]          
+            Target data of shape [num_timestamps, num_nodes, horizon_size]    
+        t: List[pd.Timestamp]      
+            List of timestamps associacted with each datapoint of length [num_timestamps]
         """
 
         dfc                 = df.copy()
@@ -132,18 +135,19 @@ class DeepDataLoaderManager:
         time_splits         = dfc[['timestamp'] + split_cols].drop_duplicates().reset_index(drop = True)
         self.time_splits    = time_splits
 
+
+        # create feature_arrays:
+        # a list of np.arrays. Each array is of shape [num_timestamp, num_nodes]
+        # which are merged together into a list of an array per feature.
         for feat in feature_cols:
             dtype = dfc[feat].dtype
             # Pivot from long to wide: rows=time, columns=nodes, values=feature
             pivoted = dfc.pivot(index=['timestamp'], columns='node', values=feat).reset_index(drop = True)
 
-            # set missing nodes to zero
-            # pivoted = pivoted.reindex(index=timestamps, columns=node_ids)
-
-            # # convert to numeric
+            # convert to numeric
             pivoted = pivoted.apply(pd.to_numeric, errors='coerce')
 
-            # # Convert to numpy float array, replace NaNs with 0
+            # Convert to numpy float array, replace NaNs with 0
             arr = pivoted.values
             if str(dtype).startswith('int'):
                 arr = arr.astype(np.int32)
@@ -152,8 +156,10 @@ class DeepDataLoaderManager:
 
             feature_arrays.append(arr)
 
-        X_np = np.stack(feature_arrays, axis=-1)
-
+        
+        # create target_arrays using the same approach:
+        # a list of np.arrays. Each array is of shape [num_timestamp, num_nodes]
+        # which are merged together into a list of an array per target column (per prediction horizon).
         for target in target_cols:
             for dfc_col in dfc.columns:
                 
@@ -162,46 +168,59 @@ class DeepDataLoaderManager:
                     # Pivot from long to wide: rows=time, columns=nodes, values=feature
                     pivoted = dfc.pivot(index=['timestamp'], columns='node', values=dfc_col).reset_index(drop = True)
 
-                    # set missing nodes to zero
-                    # pivoted = pivoted.reindex(index=timestamps, columns=node_ids)
-
-                    # # convert to numeric
+                    # convert to numeric
                     pivoted = pivoted.apply(pd.to_numeric, errors='coerce')
                     
-                    # # Convert to numpy float array, replace NaNs with 0
+                    # Convert to numpy float array, replace NaNs with 0
                     arr = pivoted.values
                     if str(dtype).startswith('int'):
                         arr = arr.astype(np.int32)
                     else:
                         arr = arr.astype(np.float32)   
                     target_arrays.append(arr)
+        
+        # now reshape the lists of arrays into 3d arrays
+        X_np = np.stack(feature_arrays, axis=-1) # [num_timestamps, num_nodes, num_features]
+        y_np = np.stack(target_arrays,  axis=-1) # [num_timestamps, num_nodes, horizon_size]
 
-        # Process target column using same approach
-        y_np = np.stack(target_arrays, axis=-1)
-
-        X = torch.tensor(X_np, dtype=torch.float)
-        y = torch.tensor(y_np,dtype=torch.float)
-        return X, y, t
-
+        # convert 3d arrays to tensors
+        X_tensor = torch.tensor(X_np, dtype=torch.float) 
+        y_tensor = torch.tensor(y_np, dtype=torch.float)
+        return X_tensor, y_tensor, t
+      
     def _construct_main_dataloader(self, 
                                    X: torch.Tensor,
                                    y: torch.Tensor,
                                    t: List[str]) -> DeepDataLoader:
         """
+
+        Parameters:
+        ----------
+        X: torch.Tensor
+            Input data of shape [num_timestamps, num_nodes, num_features]
+        y: torch.Tensor
+            Target data of shape [num_timestamps, num_nodes, horizon_size]    
+        t: List[pd.Timestamp]      
+            List of timestamps associacted with each datapoint of length [num_timestamps]
         """
 
-
         dataset = []
-        T       = X.shape[0]  # Total number of timesteps
+        num_timesteps, num_nodes, num_features       = X.shape 
+        _, _, num_targets                            = y.shape
 
         # Calculate maximum valid start position
-        # Need: start + periods + prediction_horizon - 1 < T
-        max_start       = T - self.dataorchestrator.config.horizon_leadtime - (self.dataorchestrator.config.horizon_size - 1) - (self.dataorchestrator.config.sequence_length - 1)
+        # Need: start + periods + prediction_horizon - 1 < num_timesteps
+        max_start       = num_timesteps - self.dataorchestrator.config.horizon_leadtime - (self.dataorchestrator.config.horizon_size - 1) - (self.dataorchestrator.config.sequence_length - 1)
         self.max_start  = max_start
 
         if max_start <= 0:
-            raise ValueError(f"Not enough data: T={T}, periods={self.dataorchestrator.config.sequence_length}"
-                            f"Need at least {self.dataorchestrator.config.sequence_length} timesteps.")
+            raise ValueError(
+                f"Not enough data for windowing: T={num_timesteps}, "
+                f"sequence_length={self.dataorchestrator.config.sequence_length}, "
+                f"horizon_leadtime={self.dataorchestrator.config.horizon_leadtime}, "
+                f"horizon_size={self.dataorchestrator.config.horizon_size}. "
+                f"Need at least {self.dataorchestrator.config.sequence_length + self.dataorchestrator.config.horizon_leadtime + self.dataorchestrator.config.horizon_size} timesteps."
+            )
 
         for t_idx, start in enumerate(range(max_start)):
             # Input window: periods consecutive timesteps
@@ -212,7 +231,7 @@ class DeepDataLoaderManager:
                 x = x_seq.clone().detach().float().permute(1, 2, 0),  # (nodes, features, periods)
                 y = y_seq.clone().detach().float(),                   # (nodes, horizon)
             )
-            dataset.append(data)
+            dataset.append(data)       
 
         return DeepDataLoader(dataset)
 
