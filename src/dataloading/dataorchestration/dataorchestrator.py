@@ -275,10 +275,10 @@ class NUTSHarmonizer:
     def _add_nuts_column(self, df: pd.DataFrame) -> pd.DataFrame:
         """adds nuts-level column"""
         if self.config.nuts_level == "nuts1":
-            df['nuts1']= df['nuts3'].str[:2]     
+            df['nuts1_key']= df['nuts3_key'].str[:2]     
 
         elif self.config.nuts_level =='nuts2':
-            df['nuts2']= df['nuts3'].str[:3]
+            df['nuts2_key']= df['nuts3_key'].str[:3]
 
         if self.config.verbose > 1:
             print(f'{checkmark} nuts column added')  

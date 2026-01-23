@@ -212,6 +212,15 @@ class BaseModel:
         if print_decisions.get(status, False):
             self._print_status_update(status)
 
+    def _check_state(self, required_states: List[str]) -> None:
+        """Validate that required setup steps have been completed."""
+        missing = [s for s in required_states if not self._state.get(s, False)]
+        if missing:
+            raise ValueError(
+                f"Missing required setup steps: {', '.join(missing)}. "
+                f"Call the corresponding methods first."
+            )
+
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(name={self.name!r})"    
     

@@ -2,7 +2,7 @@ from typing import Literal, Union, Optional
 import pandas as pd
 from ...utils.textformatting import section, align
 from ..base import BaseModel, PredictionCollection
-from ...dataloading import ShallowDataLoaderManager
+from ...dataloading import BaseLineDataLoaderManager
 
 from .baselinemodel import BaseLineModel 
 
@@ -12,14 +12,14 @@ class ConstantModel(BaseLineModel):
     """
 
     def __init__(self, 
-                 dataloadermanager: ShallowDataLoaderManager, 
+                 dataloadermanager: BaseLineDataLoaderManager, 
                  name:              Optional[str] = None,
                  verbose:           Literal[-1, 0, 1, 2] = -1):
         
         if not name:
             name = f'ConstantModel'
 
-        super().__init__(dataloadermanager=dataloadermanager, name= name, verbose=verbose )
+        super().__init__(dataloadermanager=dataloadermanager, model_color='#000000', name= name, verbose=verbose )
         
         self.train_losses           = []
         self.val_losses             = []
@@ -32,42 +32,20 @@ class ConstantModel(BaseLineModel):
 
     def set_model_hparams(self, constant_value: float):
         self.constant_value = constant_value
+        self._update_status('model_hparams_set')
 
     def forecast(self, dataset: Literal['train','val','test'] = 'test'):
         """
         Forecast for set dataset
         """
+
+        self._check_state(['model_hparams_set'])
         
         for hh in range(self.dataloadermanager.dataorchestrator.config.horizon_size):
-            horizon_name            = f'horizon_{hh}'
-            timeshift_num           = int(hh + self.dataloadermanager.dataorchestrator.config.horizon_leadtime)
-            timeshift_str           = f"{timeshift_num}W"
-            dataloader_collection   = self.dataloadermanager.dataloader_collections[horizon_name]
-
-            if dataset == 'train':
-                X, y = dataloader_collection.train.X, dataloader_collection.train.y
-
-            elif dataset == 'val':
-                X, y = dataloader_collection.val.X, dataloader_collection.val.y         
-
-            elif dataset == 'test':
-                X, y = dataloader_collection.test.X, dataloader_collection.test.y      
-            else:
-                raise ValueError('please provide a valid dataset: "train"/"val"/"test"')             
-
-            
-            # Then filter to get the evaluation dataset
-            evaluation_df = dataloader_collection.main[dataloader_collection.main[dataset]].reset_index(drop=True)                          
-            evaluation_df['pred'] = self.constant_value
-            evaluation_df = evaluation_df[['node','timestamp','target','pred']]
-
-            # Get the n largest timestamps
-            if hh > 0:
-                largest_timestamps = list(evaluation_df['timestamp'].unique())[-hh:]
-            
-                # Filter out the rows that have these largest timestamps
-                evaluation_df = evaluation_df[~evaluation_df['timestamp'].isin(largest_timestamps)]   
-                         
+            evaluation_df               = self.dataloadermanager.dataloader_collections[self.dataloadermanager.dataloader_collections[dataset]]
+            evaluation_df               = evaluation_df[['node','timestamp','target']]
+            evaluation_df['pred']       = self.constant_value
+                        
             self.predictions.add_horizon_predictions(dataset, evaluation_df, hh)
             
         self._update_status('forecasted')   

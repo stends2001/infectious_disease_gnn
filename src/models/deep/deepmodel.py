@@ -71,16 +71,6 @@ class DeepModel(BaseModel, ABC):
             raise ValueError(f'Invalid input for attribute deepfamily found. Should be "vanilla" or "gnn" but received: {self.deepfamily}')        
                 
 
-
-    def _check_state(self, required_states: List[str]) -> None:
-        """Validate that required setup steps have been completed."""
-        missing = [s for s in required_states if not self._state.get(s, False)]
-        if missing:
-            raise ValueError(
-                f"Missing required setup steps: {', '.join(missing)}. "
-                f"Call the corresponding methods first."
-            )
-
   # model hparams method to be written per model
     @abstractmethod
     def set_model_hparams(self, **kwargs):

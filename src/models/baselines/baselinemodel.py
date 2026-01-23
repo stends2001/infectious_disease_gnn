@@ -20,7 +20,10 @@ class BaseLineModel(BaseModel):
         if not name:
             name = f'Unnamed BaseModel'
 
-        super().__init__(dataloadermanager=dataloadermanager, name= name, model_color="#d8d8d8c3", verbose=verbose)
+        if dataloadermanager.__class__.__name__ != 'BaseLineDataLoaderManager':
+            raise ValueError(f'Unexpected dataloadermanager type. Expected BaseLineDataLoaderManager but got {dataloadermanager.__class__.__name__}')
+
+        super().__init__(dataloadermanager=dataloadermanager, name= name, model_color=model_color, verbose=verbose)
 
         self._setup_transformations()
 
