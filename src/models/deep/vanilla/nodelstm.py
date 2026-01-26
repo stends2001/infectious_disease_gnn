@@ -5,13 +5,17 @@ from typing import Optional, Tuple, Literal
 
 from .strategies import RecurrentLSTMStrategy
 
+from ..basestrategy import desequentialize_x
+
 from ..deepmodel import DeepModel
 from ....dataloading import DeepDataLoaderManager
 
 class NodewiseLSTMModule(nn.Module):
-    def __init__(self, node_features, hidden_size, num_layers, dropout, prediction_horizon):
+    def __init__(self, node_features, hidden_size, num_layers, dropout, prediction_horizon, seq_length):
         super().__init__()
         
+        self.seq_length = seq_length
+
         # Single LSTM applied independently to each node
         self.lstm = nn.LSTM(
             input_size=node_features,
@@ -28,10 +32,14 @@ class NodewiseLSTMModule(nn.Module):
             nn.Linear(hidden_size // 2, prediction_horizon)
         )
     
-    def forward(self, x_t, hidden_state=None, debug=False):
-        # x_t: [num_nodes, node_features, num_seq]
+    def forward(self, x, hidden_state=None, debug=False):
+        # x: [num_nodes, node_features, num_seq]
         
-        h = x_t.squeeze(-1)  # [num_nodes, features]
+        h = desequentialize_x(x, self.seq_length)
+        # h = x.squeeze(-1)  # [num_nodes, features]
+
+        # print('new h dimensions:')
+        # print(h.shape)
         
         if hidden_state is None:
             lstm_out, new_hidden = self.lstm(h)
@@ -67,11 +75,12 @@ class NodeLSTMModel(DeepModel):
                           dropout: float = 0.2):
         self.model_hparams_set = True
         self.model = NodewiseLSTMModule(
-            node_features=len(self.column_registration.get_by_type('feature')),
-            hidden_size=hidden_size,
-            num_layers=num_layers,
-            dropout=dropout,
-            prediction_horizon=self.dataloadermanager.dataorchestrator.config.horizon_size
+            node_features       = len(self.column_registration.get_by_type('feature')),
+            hidden_size         = hidden_size,
+            num_layers          = num_layers,
+            dropout             = dropout,
+            prediction_horizon  = self.dataloadermanager.dataorchestrator.config.horizon_size,
+            seq_length          = self.dataloadermanager.dataorchestrator.config.sequence_length,
         ).to(self.device)
         
         model_hparams_config = {

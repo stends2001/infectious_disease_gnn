@@ -7,6 +7,7 @@ import numpy as np
 from typing import Optional,Literal
 
 from .strategies import StandardGNNStrategy
+from ..basestrategy import desequentialize_x
 
 from ..deepmodel import DeepModel
 from ....dataloading import GraphDataLoaderManager
@@ -24,6 +25,7 @@ class SimpleGCNModule(nn.Module):
                  num_layers: int,
                  dropout: float,
                  horizon_size: int,
+                 seq_length: int
         ):
         super().__init__()
 
@@ -31,6 +33,7 @@ class SimpleGCNModule(nn.Module):
         self.hidden_size        = hidden_size
         self.num_layers         = num_layers
         self.horizon_size = horizon_size
+        self.seq_length = seq_length
 
         # === Spatial GCN layers ===
         self.spatial_convs = nn.ModuleList()
@@ -62,30 +65,20 @@ class SimpleGCNModule(nn.Module):
         x: [num_nodes, node_features, tt]
         edge_index: [2, num_edges]
         """
-
-        if x.ndim == 3:
-            if x.shape[-1] != 1:
-                print(f'{warning_emoji} This spatial GNN takes in only one sequence of data. No time axis expected')
-
         # if debug:
         #     print(f'input size: {x.shape}')
 
-        h = x.squeeze(-1)
+        h = desequentialize_x(x, self.seq_length)
 
         # if debug:
         #     print(f'squeezed input size: {h.shape}')
-        if debug:
-            print(f'Edge index: {edge_index.shape}')
-            print(f'Edge sample: {edge_index[:, :5]}')
-            print(f'Node features before GCN: {h[:3, :3]}')
+
         # Apply GCN layers
         for gcn in self.spatial_convs:
             h = gcn(h, edge_index, edge_weight)
             h = F.relu(h)
             h = self.dropout(h)
-        if debug:
-            print(f'Node features after GCN: {h[:3, :3]}')
-            print(f'did features change? {torch.norm(h - x.squeeze(-1))}')
+
         # if debug:
         #     print(f'convolved input size: {h.shape}')
 
@@ -121,7 +114,8 @@ class SpatialGNNModel(DeepModel):
             hidden_size=hidden_size,
             num_layers=num_layers,
             dropout=dropout,
-            horizon_size=self.dataloadermanager.dataorchestrator.config.horizon_size
+            horizon_size=self.dataloadermanager.dataorchestrator.config.horizon_size,
+            seq_length          = self.dataloadermanager.dataorchestrator.config.sequence_length            
         ).to(self.device)
         
         model_hparams_config = {

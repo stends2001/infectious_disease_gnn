@@ -29,6 +29,10 @@ class ConflictingDataLoaderManager(Exception):
     def __init__(self, model_name: BaseModel, suggested_strategy: str, dataloadermanager: str):
         super().__init__(f"Conflicting dataloader for {model_name}\nstrategy suggests {suggested_strategy} but dataloadermanager is of type {dataloadermanager}")
 
+class ConflictingDataLoaderShape(Exception):
+    def __init__(self, message: str):
+        super().__init__(f"Conflicting shapes in dataloader\n{message}")    
+
 class DeepModel(BaseModel, ABC):
     
     def __init__(self, 
@@ -53,6 +57,7 @@ class DeepModel(BaseModel, ABC):
         self.scheduler: Optional[_LRScheduler]              = None                  # to be initiated by _get_scheduler
         self._set_strategy(strategy)
         self._validate_dataloader_class()
+        self._validate_dataloader_shapes()
 
         self.model_manager = ModelManager()
         self.monitoring_metrics = None
@@ -68,8 +73,20 @@ class DeepModel(BaseModel, ABC):
                 raise ConflictingDataLoaderManager(self.name, 'deep-graph', self.dataloadermanager.__class__.__name__)    
         else:
             raise ValueError(f'Invalid input for attribute deepfamily found. Should be "vanilla" or "gnn" but received: {self.deepfamily}')        
-                
 
+    def _validate_dataloader_shapes(self):
+        input_sample    = self.dataloadermanager.dataloader_collection.train[0]
+        y_n, y_hs       = input_sample.y.shape
+        x_n, x_f, x_seq = input_sample.x.shape
+        config          = self.dataloadermanager.dataorchestrator.config
+
+        if y_n != x_n:
+            raise ConflictingDataLoaderShape(f'num nodes in y: {y_n}\nnum_nodes in x: {x_n}')
+        if y_hs != config.horizon_size:
+            raise ConflictingDataLoaderShape(f'num horizons in y: {y_hs}\nnum horizons in epiconfig: {y_hs}')        
+        if x_seq != config.sequence_length:
+            raise ConflictingDataLoaderShape(f'seq length in x: {x_seq}\nseq length in epiconfig: {x_seq}')                
+      
   # model hparams method to be written per model
     @abstractmethod
     def set_model_hparams(self, **kwargs):

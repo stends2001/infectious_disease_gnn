@@ -5,6 +5,10 @@ from torch_geometric.nn import GATv2Conv
 from typing import Optional, Tuple, Literal
 from torch_geometric.utils import add_self_loops
 
+
+from ..basestrategy import desequentialize_x
+
+
 from .strategies import RecurrentGNNStrategy
 from ..deepmodel import DeepModel
 from ....dataloading import GraphDataLoaderManager
@@ -23,7 +27,8 @@ class GATv2Module(nn.Module):
                  temporal_layers: int,
                  num_heads: int,
                  prediction_horizon: int,
-                 self_loops : bool
+                 self_loops : bool,
+                 seq_length: int
         ):
         super().__init__()
 
@@ -33,6 +38,7 @@ class GATv2Module(nn.Module):
         self.temporal_layers = temporal_layers
         self.prediction_horizon = prediction_horizon
         self.self_loops = self_loops
+        self.seq_length = seq_length
 
         # === Spatial GATv2 layers ===
         self.spatial_convs = nn.ModuleList()
@@ -65,7 +71,7 @@ class GATv2Module(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
     def forward(self,
-                x_t: torch.Tensor,
+                x: torch.Tensor,
                 edge_index: torch.Tensor,
                 edge_weight: Optional[torch.Tensor] = None,
                 hidden_state: Optional[Tuple[torch.Tensor, torch.Tensor]] = None,
@@ -80,12 +86,12 @@ class GATv2Module(nn.Module):
         """
         # --- 1. Spatial GCN processing ---
         if debug:
-            print("input shape:", x_t.shape)
+            print("input shape:", x.shape)
 
-        if self.self_loops:
-            edge_index, edge_weight = add_self_loops(edge_index, edge_attr=edge_weight, num_nodes=x_t.size(0))
+        # if self.self_loops:
+        #     edge_index, edge_weight = add_self_loops(edge_index, edge_attr=edge_weight, num_nodes=x.size(0))
 
-        h = x_t.squeeze(-1)
+        h = desequentialize_x(x, self.seq_length)
 
         for gat in self.spatial_convs:
             h = gat(h, edge_index)
@@ -130,14 +136,15 @@ class GATv2Model(DeepModel):
                           self_loops:bool = False):
         self.model_hparams_set = True
         self.model = GATv2Module(
-            node_features   = len(self.column_registration.get_by_type('feature')),
-            hidden_size     = hidden_size,
-            num_layers      = num_layers,
-            temporal_layers = temporal_layers,
-            dropout         = dropout,
-            num_heads       = num_heads,
-            prediction_horizon= self.dataloadermanager.dataorchestrator.config.horizon_size,
-            self_loops = self_loops
+            node_features       = len(self.column_registration.get_by_type('feature')),
+            hidden_size         = hidden_size,
+            num_layers          = num_layers,
+            temporal_layers     = temporal_layers,
+            dropout             = dropout,
+            num_heads           = num_heads,
+            prediction_horizon  = self.dataloadermanager.dataorchestrator.config.horizon_size,
+            self_loops          = self_loops,
+            seq_length          = self.dataloadermanager.dataorchestrator.config.sequence_length
         ).to(self.device)
         
         model_hparams_config = {'hidden_size': hidden_size,
