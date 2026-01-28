@@ -6,9 +6,11 @@ import numpy as np
 
 if TYPE_CHECKING:
     from .airpconfig import AirpConfig
+    
 
 from .airpdatacontainers import RawAirpData, ProcessedAirpData, ContextAirpData, FeatureAirpData, NormalizedAirpData
 
+from ..dataorchestration.datastagecontainers import ContextData as NUTSContextData
 # ============= READER CLASS =============
 class AirpDataReader:
     """
@@ -65,6 +67,21 @@ class AirpDataReader:
         )
 
         return df
+
+    def _load_world_shapedata(self) -> gpd.GeoDataFrame:
+        """
+        loads shapedata for world 
+
+        df looks like:
+        __________________________
+        | 'country' | 'geometry' |
+
+        """     
+        filepath = self.config.get_world_shapedata_path()
+
+        gdf = gpd.read_file(filepath)
+
+        return gdf           
 
     def _load_population_data(self) -> pd.DataFrame:
         """
@@ -160,6 +177,7 @@ class AirpDataReader:
         rawdata = RawAirpData(
             flights     = self._load_flights_data(),
             worldharm   = self._load_worldharm_lookup_data(),
+            worldshape  = self._load_world_shapedata(),
             airportharm = self._load_airports_shapedata(),            
             popsize     = self._load_population_data(),
             mv_cases    = self._load_case_data(),
@@ -186,9 +204,10 @@ class AirpDataProcessor:
     -------
     .orchestrate() -> Tuple['ProcessedAirpData', 'ContextAirpData']
     """
-    def __init__(self, config: 'AirpConfig', rawdata: 'RawAirpData'):
+    def __init__(self, config: 'AirpConfig', rawdata: 'RawAirpData', nutscontextdata: NUTSContextData):
         self.config = config 
         self.rawdata= rawdata
+        self.nutscontextdata = nutscontextdata
 
     def _return_tokenization_map(self, df: pd.DataFrame, token_col: str) -> Tuple[Dict[str,int], Dict[int,str]]:
         """
@@ -306,11 +325,24 @@ class AirpDataProcessor:
         # TODO: clean dfs by removing columns
 
         processed_data = ProcessedAirpData(flights_df_tt, epi_df_t)
-        context_data   = ContextAirpData(world_harm_t, 
-                                         airport_harm_t, 
-                                         tokenization_map_airports=(airpcode_token, token_airpcode), 
-                                         tokenization_map_countries=(country_token, token_country),
-                                         num_airports = num_airports)
+
+        context_data = ContextAirpData(
+            # HL1
+            world_harm              = world_harm_t,
+            world_num_nodes         = world_harm_t['id1'].max() + 1,
+            world_shapefile         = self.rawdata.worldshape,
+            world_tokenization_map  = (country_token, token_country),
+            # HL2
+            airport_harm            = airport_harm_t,
+            airport_num_nodes       = airport_harm_t['id2'].max() + 1,
+            airport_shapefile       = airport_harm_t, 
+            airport_tokenization_map=(airpcode_token, token_airpcode), 
+            # HL3
+            nuts_harm               = self.nutscontextdata.nuts_names,
+            nuts_num_nodes          = len(self.nutscontextdata.nuts_names),
+            nuts_shapefile          = self.nutscontextdata.shapedata,
+            nuts_tokenization_map   = (self.nutscontextdata.tokenization_map['id_idx'],self.nutscontextdata.tokenization_map['idx_id'])
+        )
 
         return processed_data, context_data
 
@@ -499,7 +531,7 @@ class AirpNormalizer:
         elif self.config.normalization_group == 'individually':
             seperated_columns               = self._widen_ids(imputed_df)
             # make list of strings of all ids
-            airport_ids_columns             = [str(id) for id in range(0,self.contextdata.num_airports)]
+            airport_ids_columns             = [str(id) for id in range(0,self.contextdata.airport_num_nodes)]
             normalization_parameters        = self._return_zscore_params(seperated_columns, col = airport_ids_columns)
             normalized_df                   = self._apply_normalization(seperated_columns, normalization_parameters)
             normalized_df                   = self._widen_ids(normalized_df, reverse = True)       

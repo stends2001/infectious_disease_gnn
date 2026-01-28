@@ -4,6 +4,7 @@ from .airporchestrator_children import AirpDataReader, AirpDataProcessor, AirpFe
 
 if TYPE_CHECKING:
     from .airpconfig import AirpConfig
+    from ..dataorchestration.dataorchestrator import DataOrchestrator
 
 from ...utils.textformatting import checkmark
 
@@ -16,8 +17,9 @@ class AirpOrchestrator:
     airpconfig: 'AirpConfig'
     """        
 
-    def __init__(self, airpconfig: 'AirpConfig'):
+    def __init__(self, airpconfig: 'AirpConfig', nutsdataorchestrator: 'DataOrchestrator'):
         self.airpconfig = airpconfig 
+        self.nutsdataorchestrator = nutsdataorchestrator
 
 
     def load_raw_data(self):
@@ -25,7 +27,7 @@ class AirpOrchestrator:
         self.data_raw    = self._dataloader.orchestrate()
 
     def process_raw_data(self):
-        self._dataprocessor = AirpDataProcessor(self.airpconfig, self.data_raw)
+        self._dataprocessor = AirpDataProcessor(self.airpconfig, self.data_raw, self.nutsdataorchestrator.data_context)
         self.data_processed, self.data_context = self._dataprocessor.orchestrate()
 
     def build_features(self):

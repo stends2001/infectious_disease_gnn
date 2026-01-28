@@ -1,10 +1,10 @@
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, TYPE_CHECKING
 from pathlib import Path
 import pandas as pd
 
-from ..dataorchestration.epiconfig import EpiConfig
-from ..dataorchestration.dataorchestrator import DataOrchestrator
+if TYPE_CHECKING:
+    from ..dataorchestration.dataorchestrator import DataOrchestrator
 
 from ...utils.textformatting import checkmark
 
@@ -15,7 +15,18 @@ class AirpConfigError(Exception):
 
 @dataclass
 class AirpConfig:
-    data_orchestrator: DataOrchestrator
+    """
+    Parameters
+    ----------
+    data_orchestrator: 'DataOrchestrator'
+    min_date:str = '2012-01-01'
+    max_date: str = '2023-12-31'
+    incidence_scalar: int = 100_000
+    normalization_method : Literal['zscore','minmax'] = 'zscore'
+    normalization_group : Literal['collectively','individually'] = 'individually'
+    """
+
+    data_orchestrator: 'DataOrchestrator'
 
     ######################
     min_date: str = '2012-01-01'
@@ -65,6 +76,10 @@ class AirpConfig:
     def get_worldharm_path(self) -> Path:
         """Path to world harmonization TSV file."""
         return self.epiconfig.data_path / 'processed/international/geospatial/harmonization/world_harmonization.tsv'
+    
+    def get_world_shapedata_path(self) -> Path:
+        """Path to world SHP file."""
+        return self.epiconfig.data_path / 'processed/international/geospatial/shapefiles/world_shapefile_geomcountries.shp'        
     
     def get_global_cases_path(self) -> Path:
         """Path to who - cases CSV file."""
