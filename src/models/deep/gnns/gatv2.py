@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch_geometric.nn import GCNConv
+from torch_geometric.nn import GATv2Conv
 import pandas as pd
 import numpy as np
 from typing import Optional,Literal
@@ -14,15 +14,14 @@ from ....dataloading import GraphDataLoaderManager
 
 from ....utils.textformatting import warning_emoji
 
-class SimpleGCNModule(nn.Module):
+class GATv2Module(nn.Module):
     """
-    Simple spatial-only GCN model.
-    Processes graph structure without temporal dynamics.
     """
     def __init__(self,
                  node_features: int,
                  hidden_size: int,
                  num_layers: int,
+                 num_heads: int,
                  dropout: float,
                  horizon_size: int,
                  seq_length: int
@@ -32,23 +31,25 @@ class SimpleGCNModule(nn.Module):
         self.node_features      = node_features
         self.hidden_size        = hidden_size
         self.num_layers         = num_layers
+        self.num_heads          = num_heads
         self.horizon_size = horizon_size
         self.seq_length = seq_length
 
         # === Spatial GCN layers ===
         self.spatial_convs = nn.ModuleList()
-        self.spatial_convs.append(GCNConv(node_features, hidden_size))
+        self.spatial_convs.append(GATv2Conv(node_features, hidden_size, heads=num_heads, dropout=dropout))
 
         for _ in range(num_layers - 1):
-            self.spatial_convs.append(GCNConv(hidden_size, hidden_size))
+            self.spatial_convs.append(
+                GATv2Conv(hidden_size * num_heads, hidden_size, heads=num_heads, dropout=dropout)
+            )
 
         # === Output layer ===
         self.output_proj = nn.Sequential(
-            nn.Linear(hidden_size, hidden_size // 2),
+            nn.Linear(hidden_size * num_heads, hidden_size // 2),  # FIXED
             nn.ReLU(),
             nn.Dropout(dropout),
             nn.Linear(hidden_size // 2, horizon_size),
-            # nn.Sigmoid()  # outputs probability [0, 1]
         )
 
         self.dropout = nn.Dropout(dropout)
@@ -65,32 +66,22 @@ class SimpleGCNModule(nn.Module):
         x: [num_nodes, node_features, tt]
         edge_index: [2, num_edges]
         """
-        # if debug:
-        #     print(f'input size: {x.shape}')
 
         h = desequentialize_x(x, self.seq_length)
 
-        # if debug:
-        #     print(f'squeezed input size: {h.shape}')
-
-        # Apply GCN layers
-        for gcn in self.spatial_convs:
-            h = gcn(h, edge_index, edge_weight)
-            h = F.relu(h)
+        # Apply GAT layers
+        for gat in self.spatial_convs:
+            h = gat(h, edge_index)
+            h = F.elu(h)
             h = self.dropout(h)
-
-        # if debug:
-        #     print(f'convolved input size: {h.shape}')
 
         # Project to output
         output = self.output_proj(h)
-
-        if debug:
-            print(f'output size: {output.shape}')        
+ 
 
         return output
 
-class SpatialGNNModel(DeepModel):
+class GATv2Model(DeepModel):
     """
     Simple spatial GCN model without temporal components.
     """
@@ -100,19 +91,21 @@ class SpatialGNNModel(DeepModel):
                  verbose:           Literal[-1, 0, 1, 2] = -1):
         
         if not name:
-            name = 'SpatialGNN'        
+            name = 'GATv2Model'        
 
         super().__init__(dataloadermanager, name=name, deepfamily='gnn' , verbose=verbose, strategy=StandardGNNStrategy(), model_color='#B87200')                 
 
     def set_model_hparams(self, 
                           hidden_size: int = 64, 
                           num_layers: int = 2,
+                          num_heads: int = 2,
                           dropout: float = 0.2):
         self.model_hparams_set = True
-        self.model = SimpleGCNModule(
+        self.model = GATv2Module(
             node_features=len(self.column_registration.get_by_type('feature')),
             hidden_size=hidden_size,
             num_layers=num_layers,
+            num_heads = num_heads,
             dropout=dropout,
             horizon_size=self.dataloadermanager.dataorchestrator.config.horizon_size,
             seq_length          = self.dataloadermanager.dataorchestrator.config.sequence_length            
@@ -126,4 +119,4 @@ class SpatialGNNModel(DeepModel):
 
         self.config_info['model_hparams'] = model_hparams_config
         self._update_status('model_hparams_set')
-        return self
+        # return self

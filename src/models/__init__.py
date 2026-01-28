@@ -2,7 +2,7 @@ from .baselines import PersistenceModel, ClimateologyModel, ConstantModel
 
 from .shallow.noderf import NodeRFModel
 
-from .deep import SpatialGNNModel, GATv2Model, NodeLSTMModel, NodeBiLSTMModel, NodeGRUModel, GATv2PLUSModel, SeqNodeLSTMModel
+from .deep import SimpleGCNModel, GATv2LSTMModel, NodeLSTMModel, NodeBiLSTMModel, NodeGRUModel, SeqNodeLSTMModel,GATv2Model
 
 MODELSREGISTRY = {
         'unknown'               : 0,                    # all unknowns will be shown in black
@@ -10,11 +10,10 @@ MODELSREGISTRY = {
         'PersistenceModel'      : PersistenceModel,
         'NaiveLinearModel'      : 2,
         'SpatioTemporalXGBModel': 3,
-        'SpatialGNNModel'       : SpatialGNNModel,
-        'GATv2Model'            : GATv2Model,
-        'GATv2PLUSModel'        : GATv2PLUSModel,
+        'SpatialGNNModel'       : SimpleGCNModel,
+        'GATv2LSTMModel'            : GATv2LSTMModel,
         'SeqNodeLSTMModel'      : SeqNodeLSTMModel,
-        # 'TGCNModel'             : TGCNModel,
+        'GATv2Model'             : GATv2Model,
         # 'GConvLSTMModel'        : GConvLSTMModel,
         # 'GATv2EmbeddingsModel'  : GATv2EmbeddingsModel,
         'NodeRFModel'           : NodeRFModel,

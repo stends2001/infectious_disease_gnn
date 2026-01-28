@@ -14,7 +14,7 @@ from ..deepmodel import DeepModel
 from ....dataloading import GraphDataLoaderManager
 
 
-class GATv2Module(nn.Module):
+class GATv2LSTMModule(nn.Module):
     """
     Recurrent GATv2-based spatiotemporal model.
     Processes a single time step at a time and keeps hidden state between steps.
@@ -112,7 +112,7 @@ class GATv2Module(nn.Module):
 
         return output, new_hidden
 
-class GATv2Model(DeepModel):
+class GATv2LSTMModel(DeepModel):
     """
     Purely spatial GCN model that does not use temporal axis.
     Useful to validate the use of graph-structure
@@ -123,7 +123,7 @@ class GATv2Model(DeepModel):
                  verbose:           Literal[-1, 0, 1, 2] = -1):
         
         if not name:
-            name = 'GATv2model'
+            name = 'GATV2LSTMModel'
 
         super().__init__(dataloadermanager, name=name, deepfamily = 'gnn', verbose=verbose, strategy=RecurrentGNNStrategy(), model_color='#1b9e77')
 
@@ -135,7 +135,7 @@ class GATv2Model(DeepModel):
                           num_heads: int = 2, 
                           self_loops:bool = False):
         self.model_hparams_set = True
-        self.model = GATv2Module(
+        self.model = GATv2LSTMModule(
             node_features       = len(self.column_registration.get_by_type('feature')),
             hidden_size         = hidden_size,
             num_layers          = num_layers,

@@ -1,0 +1,5 @@
+{
+  "method": "geographic_neighbors",
+  "self_connection": "mean",
+  "kwargs": {}
+}
