@@ -27,7 +27,7 @@ class EpiConfig:
     
     # ============= DATES =============
     date_range:             Tuple[str, str] = ('2001-01-01', '2025-01-01')
-    temporal_frequency:     Literal['w','d']= 'w'
+    temporal_frequency:     Literal['m','w','d']= 'w'
     
     # ============= GEOGRAPHY =============
     nuts_level:             Literal['nuts1', 'nuts2', 'nuts3'] = 'nuts3'
@@ -96,7 +96,7 @@ class EpiConfig:
     
     # ============= DATES =============
     date_range:             Tuple[str, str] = ('2001-01-01', '2025-01-01')
-    temporal_frequency:     Literal['w','d']= 'w'
+    temporal_frequency:     Literal['m','w','d']= 'w'
     
     # ============= GEOGRAPHY =============
     nuts_level:             Literal['nuts1', 'nuts2', 'nuts3'] = 'nuts3'
@@ -114,6 +114,7 @@ class EpiConfig:
     include_gisd:           bool = False
     weekly_time_index:      bool = True
     daily_time_index:       bool = False
+    monthly_time_index:     bool = False
     lag_column:             str  = 'incidence'
     log_transform:          Optional[List[str]] = None
     log_shift:              float = 1.0    
@@ -195,8 +196,8 @@ class EpiConfig:
             
     def _validate_current_limitations(self):
         # temporal frequency
-        if self.temporal_frequency not in ['w','d']:
-            print(f'{warning_emoji} Currently temporal frequency limited to ["w","d"]: {self.temporal_frequency} is invalid and will be reset to "w"')
+        if self.temporal_frequency not in ['m','w','d']:
+            print(f'{warning_emoji} Currently temporal frequency limited to ["m","w","d"]: {self.temporal_frequency} is invalid and will be reset to "w"')
             self.temporal_frequency = "w"
 
         # gisd and nuts

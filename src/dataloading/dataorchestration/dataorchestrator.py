@@ -180,7 +180,7 @@ class EpiDataReader:
         RawEpiData : Container with all raw dataframes
         """
         raw_disease_data = self._load_disease_data()
-        self._validate_temporal_frequency(raw_disease_data, self.config.temporal_frequency)
+        # self._validate_temporal_frequency(raw_disease_data, self.config.temporal_frequency)
 
         rawdata = RawEpiData(
             disease             = raw_disease_data,
@@ -374,6 +374,26 @@ class NUTSHarmonizer:
         
         return gisd_tokenized 
 
+    def _resample(self, df: pd.DataFrame, temporal_freq: Literal['m','w','d']) -> pd.DataFrame:
+
+        # TODO extend temporal frequency
+        if temporal_freq != 'm':
+            raise ValueError(f'error in resampling! currently only uses temporal_freq of m')
+
+        resampled_df = (
+            df.set_index(self.config.temporal_column)
+            .groupby(self.config.id_column)
+            .resample('MS')                         # m => MS
+            .agg({
+                'cases': 'sum',
+                'population_size': 'mean',
+            })
+            .reset_index()
+        )
+        resampled_df['year'] = resampled_df[self.config.temporal_column].dt.year
+        resampled_df         = resampled_df[[self.config.temporal_column,'cases','year','population_size',self.config.id_column]]
+        return resampled_df
+
     def orchestrate(self, rawdata: 'RawEpiData') -> Tuple['HarmonizedData', 'ContextData']:
         """
         The function that orchestrates all others
@@ -392,11 +412,13 @@ class NUTSHarmonizer:
         population_data     = self._add_nuts_column(population_data)
         aggregated_dfs      = self._aggregate_by_nuts(epidemiology_data, population_data)
         epipopdata          = self._merge_epipopdata(aggregated_dfs[0], aggregated_dfs[1])
-        nutsnames      = self._get_nuts_data(rawdata.nuts_names)
+        nutsnames           = self._get_nuts_data(rawdata.nuts_names)
 
         tokenization_map    = self._get_tokenization_map(epipopdata)
 
         epipopdata          = self._tokenize_df(epipopdata, tokenization_map)
+        if self.config.temporal_frequency not in ['d','w']:
+            epipopdata          = self._resample(epipopdata, self.config.temporal_frequency)
         shapedata           = self._tokenize_df(rawdata.shapedata, tokenization_map)
         nutsnames           = self._tokenize_df(nutsnames, tokenization_map, drop_key = False)     
         
@@ -539,7 +561,7 @@ class EpiDataProcessor:
         """
         The function that orchestrates all others
         """
-        epipopdata = self._add_incidence_column(harmonizeddata.data)
+        epipopdata = self._add_incidence_column(harmonizeddata.data.copy())
 
         if self.config.target_column != 'cases':
             epipopdata = self._drop_cases_column(epipopdata)        
@@ -655,6 +677,34 @@ class EpiFeatureBuilder:
         
         return dfc    
     
+    def _time_month_index(self, df: pd.DataFrame, shift_for_target: bool = False) -> pd.DataFrame:
+        """
+        """
+        dfc = df.copy()
+        
+        if shift_for_target:
+            timestamps = (
+                dfc[self.config.temporal_column]
+                + pd.DateOffset(months=self.config.horizon_leadtime)
+            )
+        else:
+            timestamps = dfc[self.config.temporal_column]
+        
+        months = timestamps.dt.month
+        months_in_year = 12
+
+        sin_col = f'{self.config.temporal_column}_msin'
+        cos_col = f'{self.config.temporal_column}_mcos'
+
+        dfc[sin_col] = np.sin(2 * np.pi * months / months_in_year)
+        dfc[cos_col] = np.cos(2 * np.pi * months / months_in_year)
+
+        if self.config.verbose > 1:
+            alignment_msg = "aligned with target" if shift_for_target else "for current timestamp"
+            print(f'{checkmark} monthly time index {sin_col}, {cos_col} included as feature ({alignment_msg})')
+        
+        return dfc    
+
     def _lags(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Create lagged features and future target.
@@ -784,7 +834,15 @@ class EpiFeatureBuilder:
 
             self.column_registration.add_column(sin_col, 'feature', needs_normalization=False, transformation_group=None)    
             self.column_registration.add_column(cos_col, 'feature', needs_normalization=False, transformation_group=None)                           
-            
+
+        # MONTHLY TIME INDEX
+        if self.config.monthly_time_index:
+            sin_col = f'{self.config.temporal_column}_msin'
+            cos_col = f'{self.config.temporal_column}_mcos'
+
+            self.column_registration.add_column(sin_col, 'feature', needs_normalization=False, transformation_group=None)    
+            self.column_registration.add_column(cos_col, 'feature', needs_normalization=False, transformation_group=None)                  
+
         # GISD FEATURES
         if self.config.include_gisd:
             self.column_registration.add_column(
@@ -822,11 +880,14 @@ class EpiFeatureBuilder:
         # NOW add time features aligned with the TARGET timestamp
         # For weekly time_index (timestamp_wsin, timestamp_wcos)
         if self.config.weekly_time_index:
-            feature_data = self._time_week_index(feature_data, shift_for_target=True)
+            feature_data = self._time_week_index(feature_data, shift_for_target=False)
         
         # For daily time index (timestamp_dsin, timestamp_dcos)
         if self.config.daily_time_index:
-            feature_data = self._time_day_index(feature_data, shift_for_target=True)
+            feature_data = self._time_day_index(feature_data, shift_for_target=False)
+
+        if self.config.monthly_time_index:
+            feature_data = self._time_month_index(feature_data, shift_for_target=False)            
         
         feature_data = self._reorder_df(feature_data) 
         self._update_colregistration_postfeaturebuilding()
@@ -1074,18 +1135,19 @@ class EpiDataFinalizer:
         X timesteps ahead of the input timestamp.
         """
         dfc = df.copy()
-        
-        # Determine timedelta unit based on disease type
-        if 'daily' in self.config.disease.lower():
-            time_unit = 'days'
-        else:
-            time_unit = 'weeks'
-        
-        # For each target horizon, create corresponding timestamp
         base_lead = self.config.horizon_leadtime
         
-        # Base horizon timestamp
-        dfc[f'timestamp'] = dfc[self.config.temporal_column] + pd.Timedelta(**{time_unit: base_lead})
+        # Use appropriate offset based on frequency
+        if self.config.temporal_frequency == 'd':
+            offset = pd.Timedelta(days=base_lead)
+        elif self.config.temporal_frequency == 'w':
+            offset = pd.Timedelta(weeks=base_lead)
+        elif self.config.temporal_frequency == 'm':
+            offset = pd.DateOffset(months=base_lead)
+        else:
+            raise ValueError(f"Unsupported temporal_frequency: {self.config.temporal_frequency}")
+        
+        dfc['timestamp'] = dfc[self.config.temporal_column] + offset
         
         # Additional horizon timestamps if horizon_size > 1
         if self.config.horizon_size > 1:
