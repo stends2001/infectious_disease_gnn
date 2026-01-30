@@ -47,19 +47,19 @@ class ContextAirpData:
     # World (HL1)
     world_harm:                         pd.DataFrame 
     world_num_nodes:                    int
-    world_shapefile:                    pd.DataFrame
+    world_shapefile:                    gpd.GeoDataFrame
     world_tokenization_map:             Tuple[Dict[str,int], Dict[int,str]]
     
     # Airports (HL2)
     airport_harm:                       pd.DataFrame
     airport_num_nodes:                  int
-    airport_shapefile:                  pd.DataFrame 
+    airport_shapefile:                  gpd.GeoDataFrame 
     airport_tokenization_map:           Tuple[Dict[str,int], Dict[int,str]]
 
     # Nuts (HL3)
     nuts_harm:                          pd.DataFrame
     nuts_num_nodes:                     int
-    nuts_shapefile:                     pd.DataFrame
+    nuts_shapefile:                     gpd.GeoDataFrame
     nuts_tokenization_map:              Tuple[Dict[str,int], Dict[int,str]]
 
     def __post_init__(self):

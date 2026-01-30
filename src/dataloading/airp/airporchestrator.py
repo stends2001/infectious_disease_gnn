@@ -45,6 +45,7 @@ class AirpOrchestrator:
         self.build_features()
         self.normalize_feature_data()
         
+        print(f'AirpOrchestrator loaded succesfully {checkmark}')
         return self
     
     def __repr__(self) -> str:
