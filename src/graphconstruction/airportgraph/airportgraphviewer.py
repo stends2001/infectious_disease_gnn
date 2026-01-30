@@ -28,6 +28,16 @@ palette_reds   = sns.color_palette("Reds",   n_colors = 100)
 palette_greens = sns.color_palette("Greens", n_colors = 100)
 
 class AirportGraphViewer():
+    """
+    Examples
+    --------
+    graph_orchestrator   = AirportGraphOrchestrator(airp_orchestrator)
+    graph_structure      = graph_orchestrator.generate_graphstructure('distance',  decay = 'boolean')
+    graph_previewer = AirportGraphViewer(graph_orchestrator, airp_orchestrator.data_context,graph_structure)
+    figure          = graph_previewer.view(graphname = 'a', node_layer2=0).ticks.change_xticks([]).ticks.change_yticks([])
+    figure.labels.change_suptitle('Boolean distance based graph', fontweight='bold', fontsize = 13).labels.set_suptitle_y(0.93)
+    figure.show()        
+    """
     
     def __init__(self, airport_graph_orchestrator: 'AirportGraphOrchestrator', airport_context_data: 'ContextAirpData', graphstructure: 'GraphStructure'):
         self.airport_graph_orchestrator = airport_graph_orchestrator
