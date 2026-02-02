@@ -74,7 +74,7 @@ class EvaluationPlotter:
         return fig
 
     @convert_managedfigure
-    def plot_metric_compilation(self, dataset: Literal['train','val','test'] = 'test', horizon: int = 0, metrics: List[str] = ['pearson_corr','spearman_corr','ccc','rmse'], plot_types: List[str]=['box','box','violin','box'], subfig_size: Tuple[float,float] = (8,6)) -> ManagedFigure:
+    def plot_metric_compilation(self, dataset: Literal['train','val','test'] = 'test', horizon: int = 0, metrics: List[str] = ['pearson_corr','spearman_corr','ccc','rmse'], plot_types: List[str]=['box','box','box','box'], subfig_size: Tuple[float,float] = (8,6)) -> ManagedFigure:
         """
         Create a compilation of multiple metrics in subplots.
         """

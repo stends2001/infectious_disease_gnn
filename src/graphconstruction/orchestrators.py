@@ -9,6 +9,7 @@ from matplotlib.figure import Figure
 from pandas import Timestamp
 from tqdm import tqdm
 
+from ..utils.helpers import get_project_utilities_env
 
 from ..utils.textformatting import warning_emoji, error_emoji
 
@@ -40,7 +41,7 @@ class BaseGraphOrchestrator:
     def __init__(self,                  
                  data_orchestrator: DataOrchestrator,
                  id_col:          str = 'node',
-                 graph_dir:       str = "data/graphs/"):
+                 graph_dir:       str = "graphs/"):
         
         # extract metadata
         self.context_data    = data_orchestrator.data_context
@@ -51,7 +52,7 @@ class BaseGraphOrchestrator:
         self.shapes          = self._validate_shapedata(self.context_data.shapedata)
         
         self.nuts_level      = self.context_data.nuts_level
-        self.graph_dir       = os.path.join(graph_dir, f'{self.nuts_level}')
+        self.graph_dir       = os.path.join(get_project_utilities_env(),graph_dir, f'{self.nuts_level}')
         self.num_nodes       = self.context_data.num_nodes
         self.node_ids        = np.array(self.shapes[self.id_col].values) 
 
@@ -93,7 +94,7 @@ class StaticGraphOrchestrator(BaseGraphOrchestrator):
     def __init__(self,                  
                  data_orchestrator: DataOrchestrator,
                  id_col:            str = 'node',
-                 graph_dir:         str = "data/graphs/"):
+                 graph_dir:         str = "graphs/"):
         
         super().__init__(data_orchestrator, id_col, graph_dir)
                
@@ -305,7 +306,7 @@ class DynamicGraphOrchestrator(BaseGraphOrchestrator):
     def __init__(self,                  
                  data_orchestrator: DataOrchestrator,
                  id_col:            str = 'node',
-                 graph_dir:         str = "data/graphs/"):
+                 graph_dir:         str = "graphs/"):
         
         super().__init__(data_orchestrator, id_col, graph_dir)    
         

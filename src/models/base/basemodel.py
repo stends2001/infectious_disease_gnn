@@ -5,6 +5,8 @@ import matplotlib.pyplot as plt
 import matplotlib.figure as Figure
 import matplotlib.patheffects as path_effects
 
+from ..utils.modelcolors import model_colors
+
 from ...plotting import convert_managedfigure, ManagedFigure
 
 from .predictions_manager import PredictionManager
@@ -61,10 +63,7 @@ class BaseModel:
             'forecasted'        : False,
         }
 
-        if model_color:
-            self.model_color = model_color 
-        else:
-            self.model_color = '#000000'
+        self.model_color = self._get_modelcolor()
 
         self._update_status('model_initialized')
 
@@ -224,5 +223,17 @@ class BaseModel:
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(name={self.name!r})"    
     
+    def _get_modelcolor(self) -> str:
+        lookup_name = self.__class__.__name__.lower()
+        
+        if hasattr(self, 'model_color'):
+            return self.model_color
+        
+        elif lookup_name not in model_colors:
+            raise ValueError(f'no color set for model of class {lookup_name}')
+        else:
+            return model_colors[lookup_name]
+        
+
     def _clean_name(self, name: str) -> str:
         return name.lower().replace(' ', '_')

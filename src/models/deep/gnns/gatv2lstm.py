@@ -125,7 +125,7 @@ class GATv2LSTMModel(DeepModel):
         if not name:
             name = 'GATV2LSTMModel'
 
-        super().__init__(dataloadermanager, name=name, deepfamily = 'gnn', verbose=verbose, strategy=RecurrentGNNStrategy(), model_color='#1b9e77')
+        super().__init__(dataloadermanager, name=name, deepfamily = 'gnn', verbose=verbose, strategy=RecurrentGNNStrategy())
 
     def set_model_hparams(self, 
                           hidden_size: int = 128, 

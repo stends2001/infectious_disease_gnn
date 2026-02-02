@@ -93,7 +93,7 @@ class GATv2Model(DeepModel):
         if not name:
             name = 'GATv2Model'        
 
-        super().__init__(dataloadermanager, name=name, deepfamily='gnn' , verbose=verbose, strategy=StandardGNNStrategy(), model_color='#B87200')                 
+        super().__init__(dataloadermanager, name=name, deepfamily='gnn' , verbose=verbose, strategy=StandardGNNStrategy())                 
 
     def set_model_hparams(self, 
                           hidden_size: int = 64, 

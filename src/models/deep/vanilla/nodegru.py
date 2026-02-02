@@ -62,7 +62,7 @@ class NodeGRUModel(DeepModel):
         if not name:
             name = 'NodeGRU'
 
-        super().__init__(dataloadermanager, name=name, deepfamily = 'vanilla', verbose=verbose, strategy = RecurrentGRUStrategy(), model_color='#467a39')
+        super().__init__(dataloadermanager, name=name, deepfamily = 'vanilla', verbose=verbose, strategy = RecurrentGRUStrategy())
 
     def set_model_hparams(self,
                           hidden_size: int = 128,

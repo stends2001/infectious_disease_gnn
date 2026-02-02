@@ -65,7 +65,7 @@ class NodeLSTMModel(DeepModel):
         if not name:
             name = 'NodeLSTM'
         
-        super().__init__(dataloadermanager, name=name, verbose=verbose, deepfamily = 'vanilla', strategy = RecurrentLSTMStrategy(), model_color='#1f78b4')
+        super().__init__(dataloadermanager, name=name, verbose=verbose, deepfamily = 'vanilla', strategy = RecurrentLSTMStrategy())
         
         self.dataloadermanager = dataloadermanager
 

@@ -152,10 +152,13 @@ class GraphRegistry:
 
     def _save_static_graph(self, graph_entry: GraphEntry, graphname: str, directory: str) -> None:
         """Save static graph structure"""
+        print(directory)
         if os.path.exists(directory):
             raise FileExistsError(f'{error_emoji} GraphEntry Not Saved: {graphname} directory already exists')
 
         os.makedirs(directory, exist_ok=True)
+
+        
 
         edge_index = graph_entry.structure.edge_index
         edge_weight = graph_entry.structure.edge_weight

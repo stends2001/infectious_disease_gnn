@@ -60,7 +60,7 @@ class SeqNodeLSTMModel(DeepModel):
         if not name:
             name = 'SequentializedNodeLSTM'
         
-        super().__init__(dataloadermanager, name=name, verbose=verbose, deepfamily = 'vanilla', strategy = SequentializedLSTMStrategy(), model_color='#1f78b4')
+        super().__init__(dataloadermanager, name=name, verbose=verbose, deepfamily = 'vanilla', strategy = SequentializedLSTMStrategy())
         
         self.dataloadermanager = dataloadermanager
 

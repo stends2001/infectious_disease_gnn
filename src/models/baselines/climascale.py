@@ -1,10 +1,10 @@
 from typing import TYPE_CHECKING, Optional, Literal
 import pandas as pd 
 
+from .baselinemodel import BaseLineModel 
+
 from ...utils.textformatting import align, section
 from ...dataloading import BaseLineDataLoaderManager 
-
-from .baselinemodel import BaseLineModel 
 
 class ClimaScaleModel(BaseLineModel):
 
@@ -16,42 +16,82 @@ class ClimaScaleModel(BaseLineModel):
         if not name:
             name = f'ClimaScale Model'
 
-        super().__init__(dataloadermanager=dataloadermanager, name= name, model_color="#707070", verbose=verbose)
-        self.seasonal_averages = self._get_temporal_averages(dataloadermanager.dataloader_collections)
+        super().__init__(dataloadermanager=dataloadermanager, name= name, verbose=verbose)
 
-    def _get_temporal_averages(self, dataloader_main: pd.DataFrame) -> pd.DataFrame:
-        """returns a pd with the averages per timepoint over the entire dataset"""
-        dl_main = dataloader_main.copy()
-        if self.dataloadermanager.dataorchestrator.config.temporal_frequency == 'w':
-            dl_main['t_number'] = dl_main['timestamp'].dt.isocalendar().week
-        elif self.dataloadermanager.dataorchestrator.config.temporal_frequency == 'd':
-            dl_main['t_number'] = dl_main['timestamp'].dt.isocalendar().day            
-        return dl_main.groupby(['node','t_number'])['target'].mean().reset_index().rename(columns = {'target':'pred'})
-
+        self.horizon_leadtime = self.dataloadermanager.dataorchestrator.config.horizon_leadtime
+               
     def forecast(self, dataset: Literal['train','val','test'] = 'test'):
         """
         Forecast for set dataset
         """
-        
+        dl: pd.DataFrame = self.dataloadermanager.dataloader_collections.copy()
+
         for hh in range(self.dataloadermanager.dataorchestrator.config.horizon_size):
             horizon_name            = f'horizon_{hh}'
 
-            evaluation_df               = self.dataloadermanager.dataloader_collections[self.dataloadermanager.dataloader_collections[dataset]]
-            evaluation_df               = evaluation_df[['node','timestamp','target']]
-            
-            if self.dataloadermanager.dataorchestrator.config.temporal_frequency == 'w':
-                evaluation_df['t_number']= evaluation_df['timestamp'].dt.isocalendar().week
-            elif self.dataloadermanager.dataorchestrator.config.temporal_frequency == 'd':   
-                evaluation_df['t_number']= evaluation_df['timestamp'].dt.isocalendar().day    
+            if dataset == 'train':
+                data_seen = dl[dl['train']]
+            elif dataset == 'val':
+                data_seen = dl[dl['train']]
+            elif dataset == 'test':
+                data_seen = dl[dl['train'] | dl['val']]   
+            else:
+                raise ValueError(f'invalid dataset {dataset}')
+        
+            evaluation_df   = dl[dl[dataset]]
 
-            evaluation_dataset               = pd.merge(evaluation_df, self.seasonal_averages, on = ['node','t_number']).drop(columns = ['t_number'])
-            df_normalized                   = self._normalize(evaluation_dataset)    
-            self.predictions.add_horizon_predictions(dataset, df_normalized, hh)            
-           
+            seasonal_averages = self._get_seasonal_means(data_seen)
+            dataloader_main   = self._get_seasonal_indexes(evaluation_df)
+
+            merged_df   = pd.merge(dataloader_main, seasonal_averages, on = ['node','t_idx']).sort_values(by = ['timestamp','node'])
+            
+            evaluation_dataset = merged_df.groupby('node').apply(lambda g: self.compute_pred(g, self.horizon_leadtime))
+            evaluation_dataset = evaluation_dataset.reset_index(drop = True)
+            df_normalized                   = self._normalize(evaluation_dataset[['node','timestamp','target','pred']])    
+            self.predictions.add_horizon_predictions(dataset, df_normalized, hh)          
+
         self._update_status('forecasted')   
         return self  
   
-    def __str__(self):
+    def _get_seasonal_means(self, dataloader_main: pd.DataFrame) -> pd.DataFrame:
+        """returns a pd with the averages per timepoint over the entire dataset"""
+        dl_main         = self._get_seasonal_indexes(dataloader_main)
+        seasonal_means  = dl_main.groupby(['node','t_idx'])['target'].mean().reset_index().rename(columns = {'target':'seasonal_mean'})
+        return seasonal_means
+    
+    def _get_seasonal_indexes(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        returns the same df but with a new column t_ind;
+        relating timestamp to seasonal time index
+        """
+        dfc = df.copy()
+        temporal_frequency = self.dataloadermanager.dataorchestrator.config.temporal_frequency
+
+        if temporal_frequency== 'w':
+            dfc['t_idx'] = dfc['timestamp'].dt.isocalendar().week
+        
+        elif temporal_frequency == 'd':
+            dfc['t_idx'] = dfc['timestamp'].dt.isocalendar().day          
+        
+        elif temporal_frequency == "m":
+           dfc['t_idx'] = dfc["timestamp"].dt.month          
+
+        return dfc
+    
+    def compute_pred(self, group, h):
+        # shift target and seasonal_mean by h within each node
+        shifted_target  = group['target'].shift(h)
+        shifted_seasonal = group['seasonal_mean'].shift(h)
+        
+        # avoid division by zero
+        scaling_factor = shifted_target / shifted_seasonal.replace(0, float('nan'))
+        
+        group['pred'] = scaling_factor * group['seasonal_mean']
+        
+        group['pred'] = group['pred'].fillna(0)
+        return group   
+
+    def __str__(self):          
         # Calculate width
         all_keys = ['model name', 'model family', 'forecasted']
         width = max(len(k) for k in all_keys)

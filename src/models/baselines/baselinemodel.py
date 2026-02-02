@@ -12,8 +12,7 @@ from ...dataloading.dataorchestration.normalization import apply_minmax_scaling,
 class BaseLineModel(BaseModel):
 
     def __init__(self, 
-                 dataloadermanager: BaseLineDataLoaderManager,       
-                 model_color:        str,                           
+                 dataloadermanager: BaseLineDataLoaderManager,                     
                  name:              Optional[str] = None,
                  verbose:           Literal[-1, 0, 1, 2] = -1):
         
@@ -23,7 +22,7 @@ class BaseLineModel(BaseModel):
         if dataloadermanager.__class__.__name__ != 'BaseLineDataLoaderManager':
             raise ValueError(f'Unexpected dataloadermanager type. Expected BaseLineDataLoaderManager but got {dataloadermanager.__class__.__name__}')
 
-        super().__init__(dataloadermanager=dataloadermanager, name= name, model_color=model_color, verbose=verbose)
+        super().__init__(dataloadermanager=dataloadermanager, name= name, verbose=verbose)
 
         self._setup_transformations()
 

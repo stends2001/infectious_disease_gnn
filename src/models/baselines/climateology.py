@@ -16,7 +16,7 @@ class ClimateologyModel(BaseLineModel):
         if not name:
             name = f'Climateology Mode'
 
-        super().__init__(dataloadermanager=dataloadermanager, name= name, model_color="#707070", verbose=verbose)
+        super().__init__(dataloadermanager=dataloadermanager, name= name, verbose=verbose)
         self.seasonal_averages = self._get_temporal_averages(dataloadermanager.dataloader_collections)
 
     def _get_temporal_averages(self, dataloader_main: pd.DataFrame) -> pd.DataFrame:

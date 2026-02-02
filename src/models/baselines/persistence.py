@@ -17,7 +17,7 @@ class PersistenceModel(BaseLineModel):
         if not name:
             name = f'Persistence Model'
 
-        super().__init__(dataloadermanager=dataloadermanager, name= name, model_color="#d8d8d8d5", verbose=verbose)
+        super().__init__(dataloadermanager=dataloadermanager, name= name, verbose=verbose)
 
     def forecast(self, dataset: Literal['train','val','test'] = 'test'):
         """
