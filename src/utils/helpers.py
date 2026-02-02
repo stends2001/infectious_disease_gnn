@@ -37,13 +37,25 @@ def reorder_dict(d: dict, elements: List[str]) -> dict:
             reordered[key] = d[key]
     return reordered
 
-def get_data_env() -> str:
+def get_wissdaten_env() -> str:
     tmpdir          = os.environ.get('TMPDIR', None)
     if tmpdir is None:
         raise ValueError('No temporary directory found!')
     
-    wissdaten_dir   = os.path.join(tmpdir, 'wissdaten')
-    data_env        = os.path.join(wissdaten_dir, 'ZKI-PH4/deschrijvers_wissdaten/data')
+    wissdaten_dir           = os.path.join(tmpdir, 'wissdaten')
+    personal_wissdaten_dir  = os.path.join(wissdaten_dir, 'ZKI-PH4/deschrijvers_wissdaten')
+    return personal_wissdaten_dir
+
+def get_outcomes_env() -> str:
+    outcomes_env        = os.path.join(get_wissdaten_env(), 'outcomes')
+    return outcomes_env
+
+def get_project_utilities_env() -> str:
+    proj_utils_env        = os.path.join(get_wissdaten_env(), 'project_utilities/infectious_disease_gnn')
+    return proj_utils_env
+
+def get_data_env() -> str:
+    data_env        = os.path.join(get_wissdaten_env(), 'data')
     return data_env
 
 def sum_preserve_nan(x):
