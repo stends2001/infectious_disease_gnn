@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Optional, List, Union, Dict, Any, Literal
+from typing import Optional, List, Union, Dict, Any, Literal, Type
 
 import torch
 import torch.optim as optim
@@ -34,6 +34,8 @@ class ConflictingDataLoaderShape(Exception):
         super().__init__(f"Conflicting shapes in dataloader\n{message}")    
 
 class DeepModel(BaseModel, ABC):
+
+    _childclasses: Dict[str, Type["DeepModel"]] = {}
     
     def __init__(self, 
                  dataloadermanager:     Union[GraphDataLoaderManager, DeepDataLoaderManager], 
@@ -61,6 +63,11 @@ class DeepModel(BaseModel, ABC):
         self.model_manager = ModelManager()
         self.monitoring_metrics = None
         self.evaluation_datasets= {}
+
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        DeepModel._childclasses[cls.__name__.lower()] = cls
 
     def _validate_dataloader_class(self):
         # if strategy suggests vanilla deepmodel:
@@ -558,47 +565,23 @@ class DeepModel(BaseModel, ABC):
         self._update_status('forecasted')
         return self  
         
-    def save(self, filename: Optional[str] = None) -> str:
+    def save(self, filename: Optional[str] = None) -> None:
         """
         Save the trained model.
-        
-        Parameters
-        ----------
-        filename : Optional[str]
-            Custom filename. If None, auto-generates one.
-            
-        Returns
-        -------
-        str : Path where model was saved
-        
-        Example
-        -------
-        >>> model.train()
-        >>> model.save('my_best_model')
         """
-        return self.model_manager.save(self, filename)
+        self._check_state(['trained'])
+
+        self.model_manager.save(self, filename)
     
     @classmethod
-    def load(cls, filepath: str) -> 'DeepModel':
+    def load(cls, model_name: str) -> 'DeepModel':
         """
         Load a trained model.
-        
-        Parameters
-        ----------
-        filepath : str
-            Path to the saved model file
-            
-        Returns
-        -------
-        GraphNeuralNetwork : The loaded model
-        
-        Example
-        -------
-        >>> model = MyGNN.load('saved_models/my_best_model.pt')
-        >>> model.forecast('test')
+
+        NOTE: classmethod 
         """
         manager = ModelManager()
-        return manager.load(filepath, cls)
+        return manager.load(model_name, cls)
 
     def __str__(self):
         # Calculate width

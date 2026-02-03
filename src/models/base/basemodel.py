@@ -30,7 +30,7 @@ class BaseModel:
                  verbose:           Literal[-1, 0, 1, 2] = -1):
         
         if not name:
-            self.name = 'unnamed'
+            self.name = 'unnamed model'
         else:
             self.name = self._clean_name(name)
         
@@ -153,21 +153,9 @@ class BaseModel:
         else:
             raise ValueError('currently no other plots than lineplots supported') 
 
+    # @abstractmethod
     def save_model(self):
-        """
-        Save model configuration (hyperparameters, settings).
-        This is the main save method - child classes should override
-        if they need to save additional things (like weights).
-        
-        Returns
-        -------
-        str : The assigned model ID
-        """
-        if self.name == 'unknown':
-            raise ValueError('Model needs a valid name before saving')
-        
-        model_id                = self.config_manager.register_entry(self.config_info)
-        self.config_info['id']  = model_id
+        pass
        
     def _print_status_update(self, status: str) -> str:
 
@@ -213,6 +201,9 @@ class BaseModel:
 
     def _check_state(self, required_states: List[str]) -> None:
         """Validate that required setup steps have been completed."""
+        if isinstance(required_states, str):
+            required_states = [required_states]
+
         missing = [s for s in required_states if not self._state.get(s, False)]
         if missing:
             raise ValueError(
@@ -234,6 +225,5 @@ class BaseModel:
         else:
             return model_colors[lookup_name]
         
-
     def _clean_name(self, name: str) -> str:
         return name.lower().replace(' ', '_')

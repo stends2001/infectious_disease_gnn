@@ -7,7 +7,7 @@ from src.dataloading.dataorchestration.column_registry import ColEntryMissingTra
 from ..base import BaseModel
 from ...dataloading import BaseLineDataLoaderManager 
 from ...dataloading.dataorchestration.normalization import apply_minmax_scaling, apply_zscore_scaling
-
+from ...utils.textformatting import warning_emoji
 
 class BaseLineModel(BaseModel):
 
@@ -26,14 +26,21 @@ class BaseLineModel(BaseModel):
 
         self._setup_transformations()
 
-    def train(self):
+    def train(self, dataset: Literal['train','val','test'] = 'test'):
         print("This baseline model doesn't train")
+
+    @abstractmethod
+    def forecast(self):
+        pass
 
     def set_global_hparams(self):
         print("This baseline model doesn't require global hparams")
 
     def set_model_hparams(self):
         print("This baseline model doesn't require model hparams")     
+
+    def save_model(self):
+        print(f'{warning_emoji} Baseline models cant be saved.')
 
     def _setup_transformations(self):
         self.transformations = {
@@ -66,7 +73,3 @@ class BaseLineModel(BaseModel):
             df_norm = self.transformations[normalization_method](df_norm, params = {col: transformation_dict['normalization'] for col in ['target','pred']}, columns = ['target','pred'])
             
         return df_norm           
-
-    @abstractmethod
-    def forecast():
-        pass
