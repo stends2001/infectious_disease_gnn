@@ -2,7 +2,7 @@ from typing import TYPE_CHECKING, Optional, Literal
 import pandas as pd 
 
 from .baselinemodel import BaseLineModel 
-
+from ...utils import check_dataset
 from ...utils.textformatting import align, section
 from ...dataloading import BaseLineDataLoaderManager 
 
@@ -19,7 +19,8 @@ class ClimaScaleModel(BaseLineModel):
         super().__init__(dataloadermanager=dataloadermanager, name= name, verbose=verbose)
 
         self.horizon_leadtime = self.dataloadermanager.dataorchestrator.config.horizon_leadtime
-               
+
+    @check_dataset()
     def forecast(self, dataset: Literal['train','val','test'] = 'test'):
         """
         Forecast for set dataset
@@ -43,12 +44,11 @@ class ClimaScaleModel(BaseLineModel):
             seasonal_averages = self._get_seasonal_means(data_seen)
             dataloader_main   = self._get_seasonal_indexes(evaluation_df)
 
-            merged_df   = pd.merge(dataloader_main, seasonal_averages, on = ['node','t_idx']).sort_values(by = ['timestamp','node'])
+            merged_df   = pd.merge(dataloader_main, seasonal_averages, on = [self.epiconfig.id_column,'t_idx']).sort_values(by = [self.epiconfig.temporal_column,self.epiconfig.id_column])
             
-            evaluation_dataset = merged_df.groupby('node').apply(lambda g: self.compute_pred(g, self.horizon_leadtime))
-            evaluation_dataset = evaluation_dataset.reset_index(drop = True)
-            df_normalized                   = self._normalize(evaluation_dataset[['node','timestamp','target','pred']])    
-            self.predictions.add_horizon_predictions(dataset, df_normalized, hh)          
+            evaluation_dataset = merged_df.groupby(self.epiconfig.id_column).apply(lambda g: self._compute_pred(g, self.horizon_leadtime))
+            evaluation_dataset = evaluation_dataset.reset_index(drop = True)                   
+            self.predictions.add_horizon_predictions(dataset, self._normalize(evaluation_dataset[[self.epiconfig.id_column,self.epiconfig.temporal_column,'target','pred']]), hh)          
 
         self._update_status('forecasted')   
         return self  
@@ -56,7 +56,7 @@ class ClimaScaleModel(BaseLineModel):
     def _get_seasonal_means(self, dataloader_main: pd.DataFrame) -> pd.DataFrame:
         """returns a pd with the averages per timepoint over the entire dataset"""
         dl_main         = self._get_seasonal_indexes(dataloader_main)
-        seasonal_means  = dl_main.groupby(['node','t_idx'])['target'].mean().reset_index().rename(columns = {'target':'seasonal_mean'})
+        seasonal_means  = dl_main.groupby([self.epiconfig.id_column,'t_idx'])['target'].mean().reset_index().rename(columns = {'target':'seasonal_mean'})
         return seasonal_means
     
     def _get_seasonal_indexes(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -68,17 +68,17 @@ class ClimaScaleModel(BaseLineModel):
         temporal_frequency = self.dataloadermanager.dataorchestrator.config.temporal_frequency
 
         if temporal_frequency== 'w':
-            dfc['t_idx'] = dfc['timestamp'].dt.isocalendar().week
+            dfc['t_idx'] = dfc[self.epiconfig.temporal_column].dt.isocalendar().week
         
         elif temporal_frequency == 'd':
-            dfc['t_idx'] = dfc['timestamp'].dt.isocalendar().day          
+            dfc['t_idx'] = dfc[self.epiconfig.temporal_column].dt.isocalendar().day          
         
         elif temporal_frequency == "m":
            dfc['t_idx'] = dfc["timestamp"].dt.month          
 
         return dfc
     
-    def compute_pred(self, group, h):
+    def _compute_pred(self, group, h):
         # shift target and seasonal_mean by h within each node
         shifted_target  = group['target'].shift(h)
         shifted_seasonal = group['seasonal_mean'].shift(h)

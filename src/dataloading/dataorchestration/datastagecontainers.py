@@ -7,6 +7,7 @@ from ...utils.textformatting import checkmark
 
 if TYPE_CHECKING:
     from .epiconfig import EpiConfig
+    from .temporalsummary import EpiDataTemporalSummary
 
 # ============= DATA CONTAINERS =============
 
@@ -60,9 +61,10 @@ class ContextData:
     shapedata:      gpd.GeoDataFrame
     nuts_names:     pd.DataFrame
     tokenization_map: Dict[str, Dict[Union[int,str],Union[int,str]]]    
+    temporal_summary: 'EpiDataTemporalSummary'
     
     def __repr__(self):
-        return (f"<ContextData(nuts_level={self.nuts_level}, num_nodes={self.num_nodes}, shapedata, nuts_names, tokenization_map)>")    
+        return (f"<ContextData(nuts_level={self.nuts_level}, num_nodes={self.num_nodes}, shapedata, nuts_names, tokenization_map, temporal_summary)>")    
 
 @dataclass
 class HarmonizedData:
@@ -100,8 +102,9 @@ class NormalizedEpiData:
 @dataclass
 class FinalizedEpiData:
     data:        pd.DataFrame
+    data_denorm: pd.DataFrame
     config:      'EpiConfig' 
     groundtruth: pd.DataFrame
 
     def __repr__(self):
-        return (f"FinalizedEpiData(data, config, groundtruth)>")          
+        return (f"FinalizedEpiData(data, data_denorm, config, groundtruth)>")          

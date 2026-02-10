@@ -20,6 +20,7 @@ from ..base import BaseModel
 from .basestrategy import Strategy
 from ..utils.loss.losshandler import LossHandler
 
+from ...utils import check_dataset
 from ...utils.textformatting import warning_emoji, section, align, checkmark
 from ...utils.colors import traincolor, valcolor
 from ...dataloading import GraphDataLoaderManager,  DeepDataLoaderManager
@@ -63,7 +64,6 @@ class DeepModel(BaseModel, ABC):
         self.model_manager = ModelManager()
         self.monitoring_metrics = None
         self.evaluation_datasets= {}
-
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
@@ -441,6 +441,7 @@ class DeepModel(BaseModel, ABC):
 
         self._update_status('trained')
 
+    @check_dataset()
     def forecast(self, dataset: Literal['train','val','test'] = 'test'):
         """
         Unified forecasting loop that works for deep learning models.
@@ -513,7 +514,7 @@ class DeepModel(BaseModel, ABC):
         timepoints_idx                  = np.repeat(np.arange(num_timepoints), n_nodes)
         nodes                           = np.tile(np.arange(n_nodes), num_timepoints)
         # an object with the same shape as `reshaped` but with the idx to timestamps and node_ids
-        index                           = pd.MultiIndex.from_arrays([timepoints_idx, nodes], names=['timestamp_idx', 'node'])
+        index                           = pd.MultiIndex.from_arrays([timepoints_idx, nodes], names=['timestamp_idx', self.epiconfig.id_column])
 
         prediction_columns              = [f'pred_{hh}' for hh in range(horizon_size)]
         prediction_df                   = pd.DataFrame(reshaped, 
@@ -532,7 +533,7 @@ class DeepModel(BaseModel, ABC):
                                                        index=index,
                                                        columns=target_columns).reset_index(drop=False)
         
-        pred_target         = pd.merge(target_df, prediction_df, on=['timestamp_idx','node'])
+        pred_target         = pd.merge(target_df, prediction_df, on=['timestamp_idx',self.epiconfig.id_column])
 
         idx_offset_train = len(self.dataloadermanager.time_splits[self.dataloadermanager.time_splits['train']])
         idx_offset_val   = len(self.dataloadermanager.time_splits[self.dataloadermanager.time_splits['val']])
@@ -545,15 +546,15 @@ class DeepModel(BaseModel, ABC):
             timestamp_idx_offset = 0
         else:
             raise ValueError(f'no valid dataset found')
+        timestamp_idx_offset = timestamp_idx_offset + self.dataloadermanager.dataorchestrator.config.sequence_length - 1
         
         # matching index with TODAY, not with prediction horizon!
         pred_target['timestamp_idx']    = pred_target['timestamp_idx'] + timestamp_idx_offset
         timestamp_mapping               = self.dataloadermanager.time_splits.reset_index(drop = False)
-        pred_target                     = pd.merge(timestamp_mapping[['index','timestamp']], pred_target, left_on = 'index', right_on = 'timestamp_idx').drop(columns = ['index','timestamp_idx'])
+        pred_target                     = pd.merge(timestamp_mapping[['index',self.epiconfig.temporal_column]], pred_target, left_on = 'index', right_on = 'timestamp_idx').drop(columns = ['index','timestamp_idx'])
 
         for hh in range(horizon_size):
-            horizon_data = pred_target[['timestamp','node',f'pred_{hh}',f'target_{hh}']].rename(columns = {f'pred_{hh}':'pred', f'target_{hh}':'target'})
-
+            horizon_data = pred_target[[self.epiconfig.temporal_column,self.epiconfig.id_column,f'pred_{hh}',f'target_{hh}']].rename(columns = {f'pred_{hh}':'pred', f'target_{hh}':'target'})
             if self.loss.loss_name in ['poisson','outbreakpoisson']:
                 print('additonal transformation')
                 self.predictions.add_horizon_predictions(dataset, horizon_data, hh, additional_transformation=True, transf = 'poisson_sampling', transf_args={'sampling_mode': 'mean'})

@@ -5,12 +5,14 @@ import os
 from typing import List, Tuple, Optional, Union, Literal
 from dataclasses import dataclass
 
+from pathlib import Path
 from tqdm import tqdm
 
 from ....graphconstruction.containers import GraphStructure, DynamicGraphStructure
-from ...dataorchestration.dataorchestrator import DataOrchestrator
+from ...epidataorchestration import EpiDataOrchestrator
 
 from ....utils.textformatting import error_emoji
+from ....utils.helpers import get_project_utilities_env
 
 class GraphStructureError(Exception):
     pass
@@ -138,11 +140,13 @@ class GraphDataLoaderManager:
                             )
     """
     def __init__(self, 
-                 dataorchestrator: DataOrchestrator):
+                 dataorchestrator: EpiDataOrchestrator):
         
         self.dataorchestrator       = dataorchestrator
         self.column_registration    = dataorchestrator.column_registration
         self._graphmode: Optional[Literal['static','dynamic']] = None
+
+        self.basedir                = get_project_utilities_env()
 
     def retrieve_dynamic_graph(self, graphname:str , timesteps: Optional[List[str]] = None, frequency: str = 'yearly', graphdirectory:str = 'data/graphs'):
         """
@@ -180,7 +184,7 @@ class GraphDataLoaderManager:
         
         return self
             
-    def retrieve_static_graph(self, graphname: str, graphdirectory: str = 'data/graphs') -> 'GraphDataLoaderManager':
+    def retrieve_static_graph(self, graphname: str, graphdirectory: str = 'graphs') -> 'GraphDataLoaderManager':
         """
         load a graph object.
 
@@ -189,9 +193,9 @@ class GraphDataLoaderManager:
         graphname: str
             The name of the file. Should correspond to the filename: f'{graphdirectory}/{graphname}/_edge_index.pt' and edge_weight.
         graphdirectory: str = 'data/graphs'
-        """
+        """   
     
-        graphpath  = os.path.join(graphdirectory, self.dataorchestrator.config.nuts_level, graphname, graphname)
+        graphpath  = os.path.join(self.basedir, graphdirectory, self.dataorchestrator.config.nuts_level, graphname, graphname)
         
         try:
             i           = torch.load(graphpath + '_edge_index.pt', weights_only = False)
@@ -259,19 +263,19 @@ class GraphDataLoaderManager:
         dfc                 = df.copy()
         feature_arrays      = []
         target_arrays       = []
-        t                   = dfc['timestamp'].unique().tolist()
+        t                   = dfc[self.dataorchestrator.config.temporal_column].unique().tolist()
 
         feature_cols = self.column_registration.get_by_type('feature')
         split_cols   = self.column_registration.get_by_type('split')
         target_cols  = self.column_registration.get_by_type('target')          
 
-        time_splits         = dfc[['timestamp'] + split_cols].drop_duplicates().reset_index(drop = True)
+        time_splits         = dfc[[self.dataorchestrator.config.temporal_column] + split_cols].drop_duplicates().reset_index(drop = True)
         self.time_splits    = time_splits
 
         for feat in feature_cols:
             dtype = dfc[feat].dtype
             # Pivot from long to wide: rows=time, columns=nodes, values=feature
-            pivoted = dfc.pivot(index=['timestamp'], columns='node', values=feat).reset_index(drop = True)
+            pivoted = dfc.pivot(index=[self.dataorchestrator.config.temporal_column], columns=self.dataorchestrator.config.id_column, values=feat).reset_index(drop = True)
 
             # set missing nodes to zero
             # pivoted = pivoted.reindex(index=timestamps, columns=node_ids)
@@ -296,7 +300,7 @@ class GraphDataLoaderManager:
                 if target in dfc_col and dfc_col not in feature_cols:
                     dtype = dfc[dfc_col].dtype
                     # Pivot from long to wide: rows=time, columns=nodes, values=feature
-                    pivoted = dfc.pivot(index=['timestamp'], columns='node', values=dfc_col).reset_index(drop = True)
+                    pivoted = dfc.pivot(index=[self.dataorchestrator.config.temporal_column], columns=self.dataorchestrator.config.id_column, values=dfc_col).reset_index(drop = True)
 
                     # set missing nodes to zero
                     # pivoted = pivoted.reindex(index=timestamps, columns=node_ids)

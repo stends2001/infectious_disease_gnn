@@ -9,10 +9,12 @@ from ...plotting import  ManagedFigure, convert_managedfigure
 from ...utils.colors import traincolor, valcolor, testcolor
 from ...utils.textformatting import warning_emoji, checkmark
 from ...utils.constants import berlin_district_ids, berlin_id
-from .normalization import apply_minmax_scaling, apply_zscore_scaling, pipeline_minmax_normalization, pipeline_zscore_normalization
+from .normalization import apply_minmax_scaling, apply_zscore_scaling, pipeline_minmax_normalization, pipeline_zscore_normalization, reverse_log, reverse_minmax_scaling, reverse_zscore_scaling
 from .column_registry import ColumnRegistration, ColEntryMissingError, ColEntryMissingTransformationError, ColEntryMissingTransformationReferralError
 from .epiconfig import EpiConfig
 from .datastagecontainers import RawEpiData, ContextData, HarmonizedData, ProcessedEpiData, FeatureEpiData, NormalizedEpiData, FinalizedEpiData, ProcessedEpiData
+
+from .temporalsummary import EpiDataTemporalSummary
 
 class DataOrchestrationError(Exception):
     def __init__(self, explanation: str):
@@ -394,6 +396,17 @@ class NUTSHarmonizer:
         resampled_df         = resampled_df[[self.config.temporal_column,'cases','year','population_size',self.config.id_column]]
         return resampled_df
 
+    def _setup_temporal_summary(self) -> 'EpiDataTemporalSummary':
+        return EpiDataTemporalSummary(self.config.temporal_frequency,
+                                    str(self.config.min_date.date()), 
+                                    str(self.config.max_date.date()),
+                                    self.config.split_trainval,
+                                    self.config.split_valtest,
+                                    self.config.horizon_size,
+                                    self.config.horizon_leadtime,
+                                    self.config.lag_num,
+                                    self.config.sequence_length)        
+
     def orchestrate(self, rawdata: 'RawEpiData') -> Tuple['HarmonizedData', 'ContextData']:
         """
         The function that orchestrates all others
@@ -427,6 +440,9 @@ class NUTSHarmonizer:
         if rawdata.gisd is not None:
             gisd_harmonized = self._prepare_gisd(rawdata.gisd, tokenization_map)
 
+        # temporal summary
+        temporal_summary = self._setup_temporal_summary()
+
         harmdata = HarmonizedData(
             data = epipopdata,
             gisd = gisd_harmonized  # Add this
@@ -437,7 +453,8 @@ class NUTSHarmonizer:
             num_nodes           = len(tokenization_map['id_idx']),
             shapedata           = shapedata,
             nuts_names          = nutsnames,
-            tokenization_map    = tokenization_map            
+            tokenization_map    = tokenization_map,
+            temporal_summary    = temporal_summary            
         )
 
         if self.config.verbose:
@@ -468,8 +485,9 @@ class EpiDataProcessor:
     ----------
     output 'ProcessedEpiData' is input for EpiFeatureBuilder.orchestrate()        
     """        
-    def __init__(self, config: 'EpiConfig'):
+    def __init__(self, config: 'EpiConfig', temporal_summary: EpiDataTemporalSummary):
         self.config = config
+        self.temporal_summary = temporal_summary
 
     def _add_incidence_column(self, epipopdata: pd.DataFrame) -> pd.DataFrame:
         """adds incidence column"""
@@ -502,21 +520,23 @@ class EpiDataProcessor:
         
         return epipopdata.drop(columns=cols_to_drop, errors='ignore')
 
-    def _filter_mindate(self, df, min_date: pd.Timestamp) -> pd.DataFrame:
-        if self.config.verbose:
-            print(f"{checkmark} min_date has been extended to {self.config.min_date_extended.date()}")  
+    def _filter_mindate(self, df) -> pd.DataFrame:
+        # Use extended min date from temporal summary
+        extended = self.temporal_summary.get_extended_dates()
 
         if self.config.verbose > 1:
             print(f'{checkmark} filtered on min date')            
         
-        return df.loc[df['timestamp'] >= min_date].reset_index(drop = True)                
+        return df.loc[df['timestamp'] >= extended['min']].reset_index(drop=True)          
 
-    def _filter_maxdate(self, df, max_date: pd.Timestamp) -> pd.DataFrame:
+    def _filter_maxdate(self, df) -> pd.DataFrame:
+        # Use extended min date from temporal summary
+        extended = self.temporal_summary.get_extended_dates()
 
         if self.config.verbose > 1:
             print(f'{checkmark} filtered on max date')  
 
-        return df.loc[df['timestamp'] < max_date].reset_index(drop = True)       
+        return df.loc[df['timestamp'] < extended['max']].reset_index(drop=True)        
 
     def _merge_gisd(self, epipopdata: pd.DataFrame, gisd: pd.DataFrame) -> pd.DataFrame:
         """
@@ -566,8 +586,8 @@ class EpiDataProcessor:
         if self.config.target_column != 'cases':
             epipopdata = self._drop_cases_column(epipopdata)        
 
-        epipopdata = self._filter_maxdate(epipopdata, self.config.max_date)
-        epipopdata = self._filter_mindate(epipopdata, self.config.min_date_extended)
+        epipopdata = self._filter_maxdate(epipopdata)
+        epipopdata = self._filter_mindate(epipopdata)
         
         # Merge GISD data BEFORE dropping year column (it needs year for merging)
         if harmonizeddata.gisd is not None:
@@ -934,8 +954,9 @@ class EpiNormalizer:
     #   - apply_zscore_scaling          (applies same normalization onto train/val/test)
     """        
 
-    def __init__(self, config: 'EpiConfig', column_registration: ColumnRegistration):
+    def __init__(self, config: 'EpiConfig', column_registration: ColumnRegistration, temporal_summary: EpiDataTemporalSummary):
         self.config                 = config 
+        self.temporal_summary       = temporal_summary
         self.column_registration    = column_registration
         self.normalization_functions= {
             'pipeline': {'minmax': pipeline_minmax_normalization,   'zscore': pipeline_zscore_normalization},
@@ -943,17 +964,19 @@ class EpiNormalizer:
         }
 
     def _set_splits(self, df: pd.DataFrame) -> pd.DataFrame:
-        """create split columns"""
-        df['train'] = df[self.config.temporal_column] < self.config.split_trainval_ts
-        df['val']   = (df[self.config.temporal_column] >= self.config.split_trainval_ts) & (df[self.config.temporal_column] < self.config.split_valtest_ts)
-        df['test']  = df[self.config.temporal_column] >= self.config.split_valtest_ts
+        """Create split columns using INPUT splits from temporal summary"""
+        splits = self.temporal_summary.get_input_splits()
         
-        # Add split columns to registry
+        df['train'] = df[self.config.temporal_column] < splits['trainval']
+        df['val'] = (df[self.config.temporal_column] >= splits['trainval']) & \
+                    (df[self.config.temporal_column] < splits['valtest'])
+        df['test'] = df[self.config.temporal_column] >= splits['valtest']
+        
         for split_col in ['train', 'val', 'test']:
             self.column_registration.add_column(split_col, 'split')
-
+        
         if self.config.verbose > 1:
-            print(f'{checkmark} split columns (train/val/test) added')             
+            print(f'{checkmark} split columns added (input timeline)')
         
         return df
 
@@ -976,7 +999,10 @@ class EpiNormalizer:
         train_df        = df[df['train']]
         normalized_df   = df.copy()
 
-        if self.config.normalization_method not in self.normalization_functions['apply']:
+        if self.config.normalization_method == 'none':
+            return normalized_df
+
+        elif self.config.normalization_method not in self.normalization_functions['apply']:
             raise DataOrchestrationError(f'No normalization function {self.config.normalization_method} found.')
 
         ### First pass ###
@@ -1194,6 +1220,75 @@ class EpiDataFinalizer:
 
         return df
 
+    def _create_original_version(self, normalized_df: pd.DataFrame) -> pd.DataFrame:
+            """
+            Create a denormalized version of the finalized data.
+            This has the same rows and timestamps as the normalized version,
+            but with original (non-normalized) values.
+            """
+            dfc = normalized_df.copy()
+            
+            # Get normalization method
+            norm_method = self.config.normalization_method
+            
+            if norm_method == 'none':
+                return dfc
+            
+            # Reverse transformations for each column
+            for col_entry in self.column_registration.columns:
+                if col_entry.column_name not in dfc.columns:
+                    continue
+                    
+                # Skip context columns
+                if col_entry.transformation_group == 'NA':
+                    continue
+                
+                # Get transformation parameters
+                if col_entry.transformation_group is None:
+                    # Independent normalization
+                    if col_entry.transformation:
+                        params = col_entry.transformation
+                    else:
+                        continue           
+                
+                else:
+                    # Use reference column's parameters
+                    ref_entry = self.column_registration.get_by_name(col_entry.transformation_group)
+                    if ref_entry.transformation:
+                        params = ref_entry.transformation
+                    else:
+                        continue
+                
+                # Reverse normalization
+                if 'normalization' in params:
+                    if norm_method == 'minmax':
+                        dfc = reverse_minmax_scaling(dfc, params['normalization'], column=col_entry.column_name)
+                    elif norm_method == 'zscore':
+                        dfc = reverse_zscore_scaling(dfc, params['normalization'], column=col_entry.column_name)
+                
+                # Reverse log transform
+                if 'log' in params:
+                    dfc = reverse_log(dfc, params['log'], column=col_entry.column_name)
+
+            # now to target
+            target_columns = [f'target_lead{steps_ahead+self.config.horizon_leadtime}' for steps_ahead in range(self.config.horizon_size)]   
+            params          = self.column_registration.get_by_name('target').transformation      
+
+            for colname in target_columns:
+                # Reverse normalization
+                if 'normalization' in params:
+                    if norm_method == 'minmax':
+                        dfc = reverse_minmax_scaling(dfc, params['normalization'], column=colname)
+                    elif norm_method == 'zscore':
+                        dfc = reverse_zscore_scaling(dfc, params['normalization'], column=colname)
+                
+                # Reverse log transform
+                if 'log' in params:
+                    dfc = reverse_log(dfc, params['log'], column=colname)                 
+
+
+            return dfc
+
     def orchestrate(self, normalized_data: NormalizedEpiData) -> 'FinalizedEpiData':
         """Runs entire finalization with correct timestamp alignment"""
         dfc = normalized_data.data
@@ -1219,6 +1314,10 @@ class EpiDataFinalizer:
         )      
 
         dfc_nanfree = self._drop_nans(dfc)
+        # NEW: Create original (non-normalized) version
+        # Start from feature data (before normalization)
+        dfc_denormalized = self._create_original_version(dfc_nanfree)
+
 
         # If target == 'cases' => target columns should be integers
         if self.config.target_column == 'cases':
@@ -1242,8 +1341,9 @@ class EpiDataFinalizer:
 
         return FinalizedEpiData(
             data=dfc_nanfree,
+            data_denorm = dfc_denormalized,
             config=self.config,
-            groundtruth=groundtruth_df
+            groundtruth=None
         )
 #####################################################
 
@@ -1324,14 +1424,6 @@ class DataOrchestrator:
             self.config.id_column, 
             'context'
         )   
-
-        # Initialize pipeline components
-        self.reader         = EpiDataReader(config)
-        self.harmonizer     = NUTSHarmonizer(config)
-        self.processor      = EpiDataProcessor(config)
-        self.feature_builder= EpiFeatureBuilder(config, self.column_registration)
-        self.normalizer     = EpiNormalizer(config, self.column_registration)
-        self.finalizer      = EpiDataFinalizer(config, self.column_registration)
         
         # Store results at each stage
         self._data_raw       = None
@@ -1344,31 +1436,44 @@ class DataOrchestrator:
           
     def load_raw(self) -> 'DataOrchestrator':
         """Load raw data from files"""
+        self.reader         = EpiDataReader(self.config)
         self._data_raw = self.reader.orchestrate()
         return self
     
     def harmonize_raw(self) -> 'DataOrchestrator':
-        """Harmonize data on NUTS-level"""        
+        """Harmonize data on NUTS-level"""     
+        self.harmonizer     = NUTSHarmonizer(self.config)   
         self._data_harmonized, self._data_context = self.harmonizer.orchestrate(self.data_raw)        
         return self
     
     def process_data(self) -> 'DataOrchestrator':
-        """Preprocess the harmonized data"""
-        self._data_processed = self.processor.orchestrate(self._data_harmonized)
-        return self
+            """Preprocess the harmonized data"""
+            self.processor = EpiDataProcessor(
+                self.config, 
+                self.data_context.temporal_summary
+            )
+            self._data_processed = self.processor.orchestrate(self.data_harmonized)
+            return self
 
     def build_features(self) -> 'DataOrchestrator':
         """build features. Note that this method adjusts self.column_registry."""
+        self.feature_builder= EpiFeatureBuilder(self.config, self.column_registration)
         self._data_feature = self.feature_builder.orchestrate(self.data_processed)
         return self        
    
     def normalize(self) -> 'DataOrchestrator':
-        """normalize data. Note that this method adjusts self.column_registry."""   
-        self._data_normalized = self.normalizer.orchestrate(self.data_feature)   
+        """normalize data"""
+        self.normalizer = EpiNormalizer(
+            self.config, 
+            self.column_registration,
+            self.data_context.temporal_summary
+        )
+        self._data_normalized = self.normalizer.orchestrate(self.data_feature)
         return self      
 
     def finalize(self) -> 'DataOrchestrator':
         """Finalize data."""
+        self.finalizer      = EpiDataFinalizer(self.config, self.column_registration)
         self._data_final = self.finalizer.orchestrate(self.data_normalized)
         return self        
 
@@ -1390,10 +1495,13 @@ class DataOrchestrator:
             fig, ax = plt.subplots(1,1, figsize = (14,4))
             data = self.data_processed.data
 
-            data_train  = data[data['timestamp'] <= self.config.split_trainval].reset_index(drop = True)
-            data_valtest= data[data['timestamp'] >  self.config.split_trainval].reset_index(drop = True)
-            data_val    = data_valtest[data_valtest['timestamp'] <= self.config.split_valtest].reset_index(drop = True)
-            data_test   = data_valtest[data_valtest['timestamp'] >  self.config.split_valtest].reset_index(drop = True)         
+            # Get the ADJUSTED input splits from temporal summary
+            splits = self.data_context.temporal_summary.get_input_splits()
+            
+            data_train  = data[data['timestamp'] < splits['trainval']].reset_index(drop=True)
+            data_val    = data[(data['timestamp'] >= splits['trainval']) & 
+                            (data['timestamp'] < splits['valtest'])].reset_index(drop=True)
+            data_test   = data[data['timestamp'] >= splits['valtest']].reset_index(drop=True)
 
             sns.lineplot(data_train[data_train['node'] == node_idx],    x = 'timestamp', color = traincolor, label = 'train', y=f'{self.config.target_column}')
             sns.lineplot(data_val[data_val['node'] == node_idx],        x = 'timestamp', color = valcolor  , label = 'val',y=f'{self.config.target_column}')
@@ -1402,12 +1510,12 @@ class DataOrchestrator:
             ax.set_xlabel("")
         else:
             raise ValueError(f'currently no other data stage than "processed" implemented for the previewer.')
-                 
+                
         ax.set_title(f"processed {self.config.target_column} in node {node_idx}") 
         plt.tight_layout()  
         plt.close()
         return fig
-
+    
     def __repr__(self):
         stages = []
         if self._data_raw is not None:

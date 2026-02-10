@@ -108,6 +108,7 @@ class EpiConfig:
     sequence_length:        int = 1
     lag_num:                int = 1
     prediction_mode:        Literal['regression','classification'] = 'regression'
+    predict_difference:     bool = False
     
     # ============= FEATURES =============
     include_population:     bool = False
@@ -208,10 +209,15 @@ class EpiConfig:
 
     # ============= COMPUTED PROPERTIES =============
     @property
-    def lookback_weeks(self) -> int:
-        """Total weeks of data needed for sequence + horizon + leadtime."""
-        return self.sequence_length + self.horizon_size + self.horizon_leadtime - 1
+    def lookback_periods(self) -> int:
+        """Total periods of data needed for lags."""
+        return max(self.lag_num - 1, self.sequence_length - 1)
     
+    @property
+    def forward_periods(self) -> int:
+        """Total periods lost at end due to target shifting."""
+        return self.horizon_leadtime + (self.horizon_size - 1)
+
     @property
     def min_date(self) -> pd.Timestamp:
         """Original minimum date (user-specified)."""
@@ -221,12 +227,31 @@ class EpiConfig:
     def max_date(self) -> pd.Timestamp:
         """Maximum date."""
         return self._max_date
-    
+        
     @property
     def min_date_extended(self) -> pd.Timestamp:
         """Extended minimum date accounting for lookback period."""
-        return self._min_date - pd.Timedelta(weeks=self.lookback_weeks)
-    
+        if self.temporal_frequency == 'd':
+            return self._min_date - pd.Timedelta(days=self.lookback_periods)
+        elif self.temporal_frequency == 'w':
+            return self._min_date - pd.Timedelta(weeks=self.lookback_periods)
+        elif self.temporal_frequency == 'm':
+            return self._min_date - pd.DateOffset(months=self.lookback_periods)
+        else:
+            raise ValueError(f"Unsupported temporal_frequency: {self.temporal_frequency}")
+
+    @property
+    def max_date_extended(self) -> pd.Timestamp:
+        """Extended maximum date accounting for forward horizon period."""
+        if self.temporal_frequency == 'd':
+            return self._max_date + pd.Timedelta(days=self.forward_periods)
+        elif self.temporal_frequency == 'w':
+            return self._max_date + pd.Timedelta(weeks=self.forward_periods)
+        elif self.temporal_frequency == 'm':
+            return self._max_date + pd.DateOffset(months=self.forward_periods)
+        else:
+            raise ValueError(f"Unsupported temporal_frequency: {self.temporal_frequency}")
+        
     @property
     def split_trainval_ts(self) -> pd.Timestamp:
         """Train/val split as timestamp."""

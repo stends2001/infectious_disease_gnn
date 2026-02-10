@@ -5,7 +5,7 @@ from ...utils.textformatting import align, section
 from ...dataloading import BaseLineDataLoaderManager 
 from .baselinemodel import BaseLineModel 
 
-
+from ...utils import check_dataset
 
 class PersistenceModel(BaseLineModel):
 
@@ -19,6 +19,7 @@ class PersistenceModel(BaseLineModel):
 
         super().__init__(dataloadermanager=dataloadermanager, name= name, verbose=verbose)
 
+    @check_dataset()
     def forecast(self, dataset: Literal['train','val','test'] = 'test'):
         """
         Forecast for set dataset
@@ -27,17 +28,25 @@ class PersistenceModel(BaseLineModel):
         for hh in range(self.dataloadermanager.dataorchestrator.config.horizon_size):
             horizon_name            = f'horizon_{hh}'
             timeshift_num           = int(hh + self.dataloadermanager.dataorchestrator.config.horizon_leadtime)
-            evaluation_df           = self.dataloadermanager.dataloader_collections.copy()
-            evaluation_df['pred']   = evaluation_df.groupby(self.dataloadermanager.dataorchestrator.config.id_column)['target'].shift(timeshift_num).reset_index(drop = True)
-           
-            evaluation_dataset      = evaluation_df[evaluation_df[dataset]]
+            evaluation_df = self.dataloadermanager.dataloader_collections
+            # evaluation_df = evaluation_df[[self.epiconfig.id_column,'timestamp','target']]
+            evaluation_df = evaluation_df.sort_values([self.epiconfig.id_column, self.epiconfig.temporal_column])
 
-            df_normalized = self._normalize(evaluation_dataset)                               
-            self.predictions.add_horizon_predictions(dataset, df_normalized, hh)
+            timeshift_num           = int(hh + self.dataloadermanager.dataorchestrator.config.horizon_leadtime)
+            evaluation_df['pred']   = evaluation_df.groupby(self.dataloadermanager.dataorchestrator.config.id_column)['target'].shift(timeshift_num)
+            evaluation_df           = evaluation_df[evaluation_df[dataset]]
+
+            # Now evaluation_df is already filtered
+            evaluation_dataset = evaluation_df[[self.epiconfig.id_column, self.epiconfig.temporal_column,'target','pred']]
+
+                          
+            self.predictions.add_horizon_predictions(dataset, self._normalize(evaluation_dataset), hh)
 
         self._update_status('forecasted')   
         return self  
   
+
+
     def __str__(self):
         # Calculate width
         all_keys = ['model name', 'model family', 'forecasted']

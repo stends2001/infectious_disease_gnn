@@ -8,6 +8,7 @@ MODELSREGISTRY = {
         'SpatialGNNModel'       : 5,
         'GATv2Model'            : 2,
         'NodeLSTMModel'         : 8,
+        'LSTMModel'             : 8,
         'NodeBiLSTMModel'       : 9,
         'NodeGRUModel'          : 10
     }    

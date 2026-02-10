@@ -14,6 +14,7 @@ model_colors = {
     # deep:
     #   vanilla
     'nodelstmmodel'     : '#1467B7',
+    'lstmmodel'         : '#1467B7',
     'seqnodelstmmodel'  : '#3892E8',
     'nodebilstmmodel'   : '#84BCF1',
     'nodegrumodel'      : '#D1E5F9',

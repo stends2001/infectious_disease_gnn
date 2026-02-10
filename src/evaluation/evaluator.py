@@ -2,6 +2,7 @@ from typing import Union, List, Literal, Union, Optional, Dict
 import pandas as pd
 from tqdm import tqdm 
 
+from ..utils import check_dataset
 from .metrics import ClassificationMetrics, RegressionMetrics
 from ..utils.textformatting import align, warning_emoji
 from ..models.base.basemodel import BaseModel
@@ -21,13 +22,11 @@ class Evaluator:
         # Column names
         self.target_col     = 'target'
         self.pred_col       = 'pred'
-        self.id_col         = 'node'
+        self.id_col         = models[0].epiconfig.id_column
         self.temporal_col   = 'timestamp'
         
         # Storage
         self.evaluation_entries: Dict[str, pd.DataFrame]         = {}
-        # self.metrics = ['mse','rmse','spearman_corr', 'pearson_corr' ,'ccc','node_smape']
-
 
         self.plotter = EvaluationPlotter(self)
 
@@ -42,6 +41,7 @@ class Evaluator:
         elif self.prediction_mode == 'regression':
             self.metric_calculator = RegressionMetrics(self.target_col, self.pred_col, self.id_col, self.temporal_col)
 
+    @check_dataset()
     def add_evaluation(self, 
                        horizon:     int  = 0,
                        dataset:     Literal['train', 'val', 'test'] = 'test') -> 'Evaluator':
@@ -71,6 +71,7 @@ class Evaluator:
             self.metric_compilations.add_horizon(compilation_metrics, f'horizon_{horizon}', dataset)
         return self
 
+    @check_dataset()
     def _compile_metrics(self, horizon, dataset) -> dict:
         metrics_dict = {}
         for metric_name in tqdm(self.metric_calculator.supported_metrics, desc = 'computing metrics'):
@@ -81,6 +82,7 @@ class Evaluator:
             metrics_dict[metric_name] = metric_df
         return metrics_dict
 
+    @check_dataset()
     def _compile_predictions(self, horizon, dataset) -> pd.DataFrame:
         predictions_compilation = None
 
@@ -89,7 +91,7 @@ class Evaluator:
             if predictions_compilation is None:
                 predictions_compilation= model_predictions
             else:
-                predictions_compilation = pd.merge(predictions_compilation, model_predictions[['timestamp','node',f'pred_{name}']], on = ['timestamp','node'])
+                predictions_compilation = pd.merge(predictions_compilation, model_predictions[[self.temporal_col,self.id_col ,f'pred_{name}']], on = [self.temporal_col,self.id_col ])
 
         if predictions_compilation is None:
             raise IndexError(f'predictions_compilation is invalid')        
@@ -113,6 +115,7 @@ class Evaluator:
             .reset_index()
         )
    
+    @check_dataset()   
     def _compute_all_models_metric(self, 
                                    metric_name: str,
                                    horizon,

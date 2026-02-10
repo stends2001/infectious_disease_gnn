@@ -8,6 +8,7 @@ from torch_geometric.utils import add_self_loops
 
 from ..basestrategy import desequentialize_x
 
+from ....graphconstruction import has_self_loops
 
 from .strategies import RecurrentGNNStrategy
 from ..deepmodel import DeepModel
@@ -88,8 +89,11 @@ class GATv2LSTMModule(nn.Module):
         if debug:
             print("input shape:", x.shape)
 
-        # if self.self_loops:
-        #     edge_index, edge_weight = add_self_loops(edge_index, edge_attr=edge_weight, num_nodes=x.size(0))
+        if self.self_loops:
+            edge_index, edge_weight = add_self_loops(edge_index, edge_attr=edge_weight, num_nodes=x.size(0))
+        elif not has_self_loops(edge_index):
+            # if self_loops is False while edge_index also doesn't have self-loops:
+            print('no self-loops found in edge_index, while model instance has model hparameters self_loops False. Please reconsider.')
 
         h = desequentialize_x(x, self.seq_length)
 

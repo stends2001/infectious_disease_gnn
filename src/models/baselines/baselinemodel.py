@@ -29,9 +29,8 @@ class BaseLineModel(BaseModel):
     def train(self, dataset: Literal['train','val','test'] = 'test'):
         print("This baseline model doesn't train")
 
-    @abstractmethod
     def forecast(self):
-        pass
+        raise NotImplementedError("Child classes of BaseLineModel must implement train-method")
 
     def set_global_hparams(self):
         print("This baseline model doesn't require global hparams")
@@ -41,7 +40,7 @@ class BaseLineModel(BaseModel):
 
     def save_model(self):
         print(f'{warning_emoji} Baseline models cant be saved.')
-
+    
     def _setup_transformations(self):
         self.transformations = {
             'minmax': apply_minmax_scaling,

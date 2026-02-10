@@ -7,7 +7,8 @@ from dataclasses import dataclass
 
 from tqdm import tqdm
 
-from ...dataorchestration.dataorchestrator import DataOrchestrator
+from ...epidataorchestration import EpiDataOrchestrator
+
 from ....graphconstruction.containers import GraphStructure, DynamicGraphStructure
 from ....utils.textformatting import error_emoji
 
@@ -92,7 +93,7 @@ class DeepDataLoaderManager:
     """
     """
     def __init__(self, 
-                 dataorchestrator: DataOrchestrator):
+                 dataorchestrator: EpiDataOrchestrator):
         
         self.dataorchestrator       = dataorchestrator
         self.column_registration    = dataorchestrator.column_registration
@@ -101,13 +102,13 @@ class DeepDataLoaderManager:
         """
         creates the actual dataloaders
         """
-        X,y,t                             = self._construct_Xy(self.dataorchestrator.data_final.data)
-        main_dataloader                   = self._construct_main_dataloader(X = X, y = y, t= t)
+        X,y                               = self._construct_Xy(self.dataorchestrator.data_final.data)
+        main_dataloader                   = self._construct_main_dataloader(X = X, y = y)
         self.dataloader_collection        = self._split_dataloader(main_dataloader = main_dataloader)
         return self     
     
     def _construct_Xy(self, 
-                      df: pd.DataFrame) -> Tuple[torch.Tensor, torch.Tensor, List[pd.Timestamp]]:
+                      df: pd.DataFrame) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         constructs torch.tensor objects from df, which should be the dataorchestrator's final data object.
         
@@ -117,20 +118,18 @@ class DeepDataLoaderManager:
             Input data of shape [num_timestamps, num_nodes, num_features]
         y: torch.Tensor
             Target data of shape [num_timestamps, num_nodes, horizon_size]    
-        t: List[pd.Timestamp]      
-            List of timestamps associacted with each datapoint of length [num_timestamps]
         """
 
         dfc                 = df.copy()
         feature_arrays      = []
         target_arrays       = []
-        t                   = dfc['timestamp'].unique().tolist()
+        t                   = dfc[self.dataorchestrator.config.temporal_column].unique().tolist()
 
         feature_cols = self.column_registration.get_by_type('feature')
         split_cols   = self.column_registration.get_by_type('split')
         target_cols  = self.column_registration.get_by_type('target')          
 
-        time_splits         = dfc[['timestamp'] + split_cols].drop_duplicates().reset_index(drop = True)
+        time_splits         = dfc[[self.dataorchestrator.config.temporal_column] + split_cols].drop_duplicates().reset_index(drop = True)
         self.time_splits    = time_splits
 
 
@@ -140,7 +139,7 @@ class DeepDataLoaderManager:
         for feat in feature_cols:
             dtype = dfc[feat].dtype
             # Pivot from long to wide: rows=time, columns=nodes, values=feature
-            pivoted = dfc.pivot(index=['timestamp'], columns='node', values=feat).reset_index(drop = True)
+            pivoted = dfc.pivot(index=[self.dataorchestrator.config.temporal_column], columns=self.dataorchestrator.config.id_column, values=feat).reset_index(drop = True)
 
             # convert to numeric
             pivoted = pivoted.apply(pd.to_numeric, errors='coerce')
@@ -164,7 +163,7 @@ class DeepDataLoaderManager:
                 if target in dfc_col and dfc_col not in feature_cols:
                     dtype = dfc[dfc_col].dtype
                     # Pivot from long to wide: rows=time, columns=nodes, values=feature
-                    pivoted = dfc.pivot(index=['timestamp'], columns='node', values=dfc_col).reset_index(drop = True)
+                    pivoted = dfc.pivot(index=[self.dataorchestrator.config.temporal_column], columns=self.dataorchestrator.config.id_column, values=dfc_col).reset_index(drop = True)
 
                     # convert to numeric
                     pivoted = pivoted.apply(pd.to_numeric, errors='coerce')
@@ -184,12 +183,11 @@ class DeepDataLoaderManager:
         # convert 3d arrays to tensors
         X_tensor = torch.tensor(X_np, dtype=torch.float) 
         y_tensor = torch.tensor(y_np, dtype=torch.float)
-        return X_tensor, y_tensor, t
+        return X_tensor, y_tensor
       
     def _construct_main_dataloader(self, 
                                    X: torch.Tensor,
-                                   y: torch.Tensor,
-                                   t: List[str]) -> DeepDataLoader:
+                                   y: torch.Tensor) -> DeepDataLoader:
         """
 
         Parameters:
@@ -388,13 +386,13 @@ class DeepDataLoaderManager:
 #         dfc                 = df.copy()
 #         feature_arrays      = []
 #         target_arrays       = []
-#         t                   = dfc['timestamp'].unique().tolist()
+#         t                   = dfc[self.dataorchestrator.config.temporal_column].unique().tolist()
 
 #         feature_cols = self.column_registration.get_by_type('feature')
 #         split_cols   = self.column_registration.get_by_type('split')
 #         target_cols  = self.column_registration.get_by_type('target')          
 
-#         time_splits         = dfc[['timestamp'] + split_cols].drop_duplicates().reset_index(drop = True)
+#         time_splits         = dfc[[self.dataorchestrator.config.temporal_column] + split_cols].drop_duplicates().reset_index(drop = True)
 #         self.time_splits    = time_splits
 
 
@@ -404,7 +402,7 @@ class DeepDataLoaderManager:
 #         for feat in feature_cols:
 #             dtype = dfc[feat].dtype
 #             # Pivot from long to wide: rows=time, columns=nodes, values=feature
-#             pivoted = dfc.pivot(index=['timestamp'], columns='node', values=feat).reset_index(drop = True)
+#             pivoted = dfc.pivot(index=[self.dataorchestrator.config.temporal_column], columns=self.dataorchestrator.config.id_column, values=feat).reset_index(drop = True)
 
 #             # convert to numeric
 #             pivoted = pivoted.apply(pd.to_numeric, errors='coerce')
@@ -428,7 +426,7 @@ class DeepDataLoaderManager:
 #                 if target in dfc_col and dfc_col not in feature_cols:
 #                     dtype = dfc[dfc_col].dtype
 #                     # Pivot from long to wide: rows=time, columns=nodes, values=feature
-#                     pivoted = dfc.pivot(index=['timestamp'], columns='node', values=dfc_col).reset_index(drop = True)
+#                     pivoted = dfc.pivot(index=[self.dataorchestrator.config.temporal_column], columns=self.dataorchestrator.config.id_column, values=dfc_col).reset_index(drop = True)
 
 #                     # convert to numeric
 #                     pivoted = pivoted.apply(pd.to_numeric, errors='coerce')

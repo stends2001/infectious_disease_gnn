@@ -3,7 +3,7 @@ import pandas as pd
 from ...utils.textformatting import section, align
 from ..base import BaseModel, PredictionCollection
 from ...dataloading import BaseLineDataLoaderManager
-
+from ...utils import check_dataset
 from .baselinemodel import BaseLineModel 
 
 class ConstantModel(BaseLineModel):
@@ -33,7 +33,8 @@ class ConstantModel(BaseLineModel):
     def set_model_hparams(self, constant_value: float):
         self.constant_value = constant_value
         self._update_status('model_hparams_set')
-
+    
+    @check_dataset()
     def forecast(self, dataset: Literal['train','val','test'] = 'test'):
         """
         Forecast for set dataset
@@ -43,10 +44,10 @@ class ConstantModel(BaseLineModel):
         
         for hh in range(self.dataloadermanager.dataorchestrator.config.horizon_size):
             evaluation_df               = self.dataloadermanager.dataloader_collections[self.dataloadermanager.dataloader_collections[dataset]]
-            evaluation_df               = evaluation_df[['node','timestamp','target']]
+            evaluation_df               = evaluation_df[[self.epiconfig.id_column,self.epiconfig.temporal_column,'target']]
             evaluation_df['pred']       = self.constant_value
                         
-            self.predictions.add_horizon_predictions(dataset, evaluation_df, hh)
+            self.predictions.add_horizon_predictions(dataset, self._normalize(evaluation_df), hh)
             
         self._update_status('forecasted')   
         return self  

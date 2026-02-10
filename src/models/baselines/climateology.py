@@ -3,6 +3,7 @@ import pandas as pd
 
 from ...utils.textformatting import align, section
 from ...dataloading import BaseLineDataLoaderManager 
+from ...utils import check_dataset
 
 from .baselinemodel import BaseLineModel 
 
@@ -23,11 +24,12 @@ class ClimateologyModel(BaseLineModel):
         """returns a pd with the averages per timepoint over the entire dataset"""
         dl_main = dataloader_main.copy()
         if self.dataloadermanager.dataorchestrator.config.temporal_frequency == 'w':
-            dl_main['t_number'] = dl_main['timestamp'].dt.isocalendar().week
+            dl_main['t_number'] = dl_main[self.epiconfig.temporal_column].dt.isocalendar().week
         elif self.dataloadermanager.dataorchestrator.config.temporal_frequency == 'd':
-            dl_main['t_number'] = dl_main['timestamp'].dt.isocalendar().day            
-        return dl_main.groupby(['node','t_number'])['target'].mean().reset_index().rename(columns = {'target':'pred'})
+            dl_main['t_number'] = dl_main[self.epiconfig.temporal_column].dt.isocalendar().day            
+        return dl_main.groupby([self.epiconfig.id_column,'t_number'])['target'].mean().reset_index().rename(columns = {'target':'pred'})
 
+    @check_dataset()
     def forecast(self, dataset: Literal['train','val','test'] = 'test'):
         """
         Forecast for set dataset
@@ -37,16 +39,15 @@ class ClimateologyModel(BaseLineModel):
             horizon_name            = f'horizon_{hh}'
 
             evaluation_df               = self.dataloadermanager.dataloader_collections[self.dataloadermanager.dataloader_collections[dataset]]
-            evaluation_df               = evaluation_df[['node','timestamp','target']]
+            evaluation_df               = evaluation_df[[self.epiconfig.id_column,self.epiconfig.temporal_column,'target']]
             
             if self.dataloadermanager.dataorchestrator.config.temporal_frequency == 'w':
-                evaluation_df['t_number']= evaluation_df['timestamp'].dt.isocalendar().week
+                evaluation_df['t_number']= evaluation_df[self.epiconfig.temporal_column].dt.isocalendar().week
             elif self.dataloadermanager.dataorchestrator.config.temporal_frequency == 'd':   
-                evaluation_df['t_number']= evaluation_df['timestamp'].dt.isocalendar().day    
+                evaluation_df['t_number']= evaluation_df[self.epiconfig.temporal_column].dt.isocalendar().day    
 
-            evaluation_dataset               = pd.merge(evaluation_df, self.seasonal_averages, on = ['node','t_number']).drop(columns = ['t_number'])
-            df_normalized                   = self._normalize(evaluation_dataset)    
-            self.predictions.add_horizon_predictions(dataset, df_normalized, hh)            
+            evaluation_dataset               = pd.merge(evaluation_df, self.seasonal_averages, on = [self.epiconfig.id_column,'t_number']).drop(columns = ['t_number'])             
+            self.predictions.add_horizon_predictions(dataset, self._normalize(evaluation_dataset), hh)            
            
         self._update_status('forecasted')   
         return self  

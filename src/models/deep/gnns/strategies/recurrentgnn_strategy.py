@@ -12,18 +12,18 @@ class RecurrentGNNStrategy(Strategy):
     
     def _update_hidden_state(self, hidden_state, device):
         """Helper to detach and move hidden state to device"""
-        hidden_state = tuple(h.detach() for h in hidden_state)
+        # hidden_state = tuple(h.detach() for h in hidden_state)
         if hidden_state is not None:
             hidden_state = tuple(h.to(device) for h in hidden_state)
         return hidden_state
     
     def training_step(self, model, snapshot, optimizer, loss_fn) -> float:
         optimizer.zero_grad()
-        y_hat, self.hidden_state = model(
+        y_hat, _= model(
             snapshot.x, 
             snapshot.edge_index, 
             snapshot.edge_weight,
-            self.hidden_state
+            hidden_state = None
         )
         self.hidden_state = self._update_hidden_state(self.hidden_state, snapshot.x.device)
         
@@ -33,11 +33,11 @@ class RecurrentGNNStrategy(Strategy):
         return loss.item()
     
     def validation_step(self, model, snapshot, loss_fn) -> float:
-        y_hat, self.hidden_state = model(
+        y_hat, _ = model(
             snapshot.x,
             snapshot.edge_index,
             snapshot.edge_weight,
-            self.hidden_state
+            hidden_state = None
         )
         self.hidden_state = self._update_hidden_state(self.hidden_state, snapshot.x.device)
         
@@ -45,11 +45,11 @@ class RecurrentGNNStrategy(Strategy):
         return loss.item()
     
     def forecast_step(self, model, snapshot, loss_fn) -> Tuple[torch.Tensor, float]:
-        y_hat, self.hidden_state = model(
+        y_hat, _ = model(
             snapshot.x,
             snapshot.edge_index,
             snapshot.edge_weight,
-            self.hidden_state
+            hidden_state = None
         )
         self.hidden_state = self._update_hidden_state(self.hidden_state, snapshot.x.device)
         

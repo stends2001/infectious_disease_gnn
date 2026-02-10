@@ -40,13 +40,24 @@ class RegressionMetrics:
         self.pred_col       = pred_col
         self.id_col         = id_col
         self.temporal_col   = temporal_col
-        self.supported_metrics = ['mse','rmse','pearson_corr','spearman_corr','ccc','node_smape']
+        self.supported_metrics = ['mse','rmse','pearson_corr','spearman_corr','ccc','node_smape','mae','r2']
 
     # =============== Node-level metrics =============== #
     def mse(self, df: pd.DataFrame) -> float:
         """return mean square error"""
         return float(np.mean((df[self.target_col] - df[self.pred_col]) ** 2)) # return of np.mean is floating[any] (supports complex numbers)
     
+    def mae(self, df: pd.DataFrame) -> float:
+        return float(np.mean(np.abs(df[self.target_col] - df[self.pred_col])))
+
+    def r2(self, df: pd.DataFrame) -> float:
+        y_true = df[self.target_col]
+        y_pred = df[self.pred_col]        
+        ss_res = np.sum((y_true - y_pred) ** 2)
+        ss_tot = np.sum((y_true - np.mean(y_true)) ** 2)
+        r2=  float(1 - ss_res/ ss_tot)
+        return r2
+
     def rmse(self, df: pd.DataFrame) -> float:
         """Root mean squared error."""
         return np.sqrt(self.mse(df))

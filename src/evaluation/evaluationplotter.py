@@ -10,11 +10,11 @@ import matplotlib.dates as mdates
 from matplotlib.figure import Figure
 from matplotlib.axes import Axes
 
-from src.utils import testcolor
-from src.plotting import convert_managedfigure, ManagedFigure, calculate_subplot_layout
+from ..utils import testcolor, check_dataset
+from ..plotting import convert_managedfigure, ManagedFigure, calculate_subplot_layout
 
 if TYPE_CHECKING:
-    from src.evluation.evaluator import Evaluator  # Only imported for type checking, not at runtime
+    from .evaluator import Evaluator  # Only imported for type checking, not at runtime
 
 
 class EvaluationPlotter:
@@ -55,13 +55,13 @@ class EvaluationPlotter:
         compilation_predictions = self.evaluator.prediction_compilations.get_compilation(horizon, dataset)
 
         for idx, node_id in enumerate(nodes):  
-            node_data = compilation_predictions[compilation_predictions['node'] == node_id]
+            node_data = compilation_predictions[compilation_predictions[self.evaluator.id_col] == node_id]
             ax        = axes[idx]
 
             
             for modelname, plotting_info in models_plotting_info.items():
-                sns.lineplot(node_data, x = 'timestamp', y = f'pred_{modelname}', color = plotting_info['color'],  linestyle = plotting_info['linestyle'],  marker = '.', label  = f'{modelname}', ax = ax)      
-            sns.lineplot(node_data, x = 'timestamp', y = 'target',                  color = testcolor,  label = 'target', marker = 'o',                  ax = ax)
+                sns.lineplot(node_data, x = self.evaluator.temporal_col, y = f'pred_{modelname}', color = plotting_info['color'],  linestyle = plotting_info['linestyle'],  marker = '.', label  = f'{modelname}', ax = ax)      
+            sns.lineplot(node_data, x = self.evaluator.temporal_col, y = 'target',                  color = testcolor,  label = 'target', marker = 'o',                  ax = ax)
             ax.grid()
             ax.set_xlabel("")
             ax.set_ylabel("")
@@ -97,7 +97,7 @@ class EvaluationPlotter:
             metric_df = self.evaluator.metric_compilations.get_metric(horizon_name, dataset, metric)
             metric_df_long = pd.melt(
                 metric_df, 
-                id_vars='node', 
+                id_vars=self.evaluator.id_col, 
                 value_vars=list(model_name_colors.keys()),
                 var_name='model', 
                 value_name='value'
@@ -152,7 +152,7 @@ class EvaluationPlotter:
         metric_df = self.evaluator.metric_compilations.get_metric(horizon, dataset, metric)
         metric_df_long = pd.melt(
             metric_df, 
-            id_vars='node', 
+            id_vars=self.evaluator.id_col, 
             value_vars=list(model_name_colors.keys()),
             var_name='model', 
             value_name='value'
@@ -216,7 +216,7 @@ class EvaluationPlotter:
 
         if highlight_node:
             # Plot red dot for the specified node for all models
-            node_values = df[df['node'] == highlight_node]  # Get values for the specified node
+            node_values = df[df[self.evaluator.id_col] == highlight_node]  # Get values for the specified node
             
             # Loop over each model and plot a red dot for the specified node
             for i, model in enumerate(model_name_colors.keys()):
@@ -267,7 +267,7 @@ class EvaluationPlotter:
         axes = axes.flatten()
         
         # Merge with shapefile
-        merged_data = gpd.GeoDataFrame(pd.merge(metric_df, shapedata, on='node'))
+        merged_data = gpd.GeoDataFrame(pd.merge(metric_df, shapedata, on=self.evaluator.id_col))
         merged_data['value'] = pd.to_numeric(merged_data['value'], errors='coerce')
         
         # Set color scale
@@ -361,7 +361,7 @@ class EvaluationPlotter:
             metric_df = self.evaluator.metric_compilations.get_metric(horizons_str[idx], dataset, metric)
             metric_df_long = pd.melt(
                 metric_df,
-                id_vars='node',
+                id_vars=self.evaluator.id_col,
                 value_vars=list(model_name_colors.keys()),
                 var_name='model',
                 value_name='value'
