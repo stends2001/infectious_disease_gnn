@@ -1,4 +1,5 @@
-from .dataorchestration.dataorchestrator import DataOrchestrator
-from .dataorchestration.epiconfig import EpiConfig
+from .epidataorchestration.epidataorchestrator import EpiDataOrchestrator 
+from .epidataorchestration.epiconfig import EpiConfig
+from .dataloaders import BaseLineDataLoaderManager, DeepDataLoaderManager, GraphDataLoaderManager
 
-from .dataloaders import ShallowDataLoaderManager, GraphDataLoaderManager, DeepDataLoaderManager, BaseLineDataLoaderManager
+# from .dataloaders import ShallowDataLoaderManager

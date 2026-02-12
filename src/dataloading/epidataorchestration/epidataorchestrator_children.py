@@ -582,6 +582,14 @@ class EpiFeatureBuilder:
 
         return dfc[self.column_registration.registered_columns]
 
+    def _add_delta_column(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Compute first difference of target column, store t-1 anchor for reversal."""
+        col = self.config.target_column
+        df[f'{col}_anchor'] = df.groupby(self.config.id_column)[col].shift(1)
+        df[col] = df.groupby(self.config.id_column)[col].diff()
+
+        return df.dropna().reset_index(drop=True)
+
     def orchestrate(self, processed_data: 'ProcessedEpiData') -> 'FeatureEpiData':
         time_start = time.time()
         feature_data = processed_data.data.copy()
@@ -592,18 +600,33 @@ class EpiFeatureBuilder:
         else:
             feature_data = feature_data.drop(columns=['population_size'], errors='ignore')
             if self.config.verbose > 1:
-                print(f'{checkmark} population size removed') 
+                print(f'{checkmark} population size removed')
+
+        # Delta transform: must happen before lags and target shift,
+        # so that lag features and the forecast target are all in delta-space
+        if self.config.predict_difference:
+            feature_data = self._add_delta_column(feature_data)
+            self.column_registration.update_transformation(
+                'target',
+                {'delta': {'anchor_col': f'{self.config.target_column}_anchor'}}
+            )
+            self.column_registration.add_column(
+                f'{self.config.target_column}_anchor',
+                'context',
+                needs_normalization=False
+            )
+            if self.config.verbose > 1:
+                print(f'{checkmark} delta transform applied')
 
         feature_data = self._add_time_index(feature_data)
         feature_data = self._lag_variable(feature_data)
         feature_data = self._shift_target(feature_data)
         feature_data = self._rename_target(feature_data)
         feature_data = self._reorder_df(feature_data)
-        
+
         time_end = time.time()
         if self.config.verbose > 2:
-            print(f'Execution of EpiFeatureBuilder took {round(time_end - time_start,3)}s')   
-
+            print(f'Execution of EpiFeatureBuilder took {round(time_end - time_start,3)}s')
 
         return FeatureEpiData(data=feature_data)
 

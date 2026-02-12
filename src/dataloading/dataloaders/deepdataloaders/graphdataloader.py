@@ -3,13 +3,35 @@ import torch
 from .baseloader import DeepBaseDataLoaderManager
 from .datacontainers import GraphData, GraphDataList, GraphStructureError
 
-
+from dataclasses import dataclass
 import os
 from typing import Optional, Literal
 
 from ....dataloading.epidataorchestration import EpiDataOrchestrator
-from ....graphconstruction.containers import GraphStructure
+
 from ....utils.helpers import get_project_utilities_env
+
+@dataclass 
+class GraphStructure:
+    """
+    edge_index:     torch.Tensor 
+    edge_weight:    torch.Tensor   
+    """
+    edge_index:     torch.Tensor 
+    edge_weight:    torch.Tensor    
+
+    def __post_init__(self):
+        if self.edge_index.shape[1] != len(self.edge_weight):
+            raise ValueError(
+                f"Incompatiable shapes of edge_index (len = {self.edge_index.shape[1]}) and edge_weight (len = {len(self.edge_weight)}) in GraphStructure"
+            )
+        
+        self.num_nodes      = len(self.edge_index[0].unique())
+        self.num_edges      = len(self.edge_index)
+    
+    def __repr__(self) -> str:
+        representation = f'<GraphStructure(num_nodes = {self.num_nodes}, num_edges = {len(self.edge_weight)})>'
+        return representation 
 
 class GraphDataLoaderManager(DeepBaseDataLoaderManager):
     """DataLoader manager for graph neural networks"""

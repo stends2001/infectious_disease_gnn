@@ -116,6 +116,13 @@ class EpiConfig:
             print(f'{warning_emoji} Currently temporal frequency limited to ["m","w","d"]: {self.temporal_frequency} is invalid and will be reset to "w"')
             self.temporal_frequency = "w" 
 
+        if self.predict_difference and self.horizon_leadtime > 1:
+            raise EpiConfigError(
+                f"predict_difference=True is only supported with horizon_leadtime=1. "
+                f"Got horizon_leadtime={self.horizon_leadtime}. "
+                f"For multi-step forecasting with deltas, set horizon_leadtime=1 and use horizon_size > 1 instead."
+            )            
+
     # ============= COMPUTED PROPERTIES =============
     @property
     def split_columns(self) -> list[str]:

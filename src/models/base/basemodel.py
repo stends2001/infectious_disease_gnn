@@ -14,15 +14,15 @@ from .predictions_manager import PredictionManager
 
 from ..registry import MODELSREGISTRY
 from ..utils import MODELSCOLORPALETTE
-
-from ...dataloading import ShallowDataLoaderManager, DeepDataLoaderManager, GraphDataLoaderManager,BaseLineDataLoaderManager
+from ...dataloading import BaseLineDataLoaderManager, DeepDataLoaderManager, GraphDataLoaderManager
+# from ...dataloading import ShallowDataLoaderManager, DeepDataLoaderManager, GraphDataLoaderManager,BaseLineDataLoaderManager
 from ...utils.colors import testcolor, color_is_light
 from ...utils.textformatting import warning_emoji, error_emoji, checkmark
 
 class BaseModel:
 
     def __init__(self, 
-                 dataloadermanager: Union[BaseLineDataLoaderManager,ShallowDataLoaderManager, DeepDataLoaderManager, GraphDataLoaderManager], 
+                 dataloadermanager: Union[BaseLineDataLoaderManager, DeepDataLoaderManager, GraphDataLoaderManager], 
                  name:              Optional[str]        = None,
                  model_color:       Optional[str]        = None,
                  verbose:           Literal[-1, 0, 1, 2] = -1):
@@ -40,7 +40,7 @@ class BaseModel:
         self.verbose                    = verbose
         self.config_info                = {}
         self.model_class                = self.__class__.__name__
-        self.predictions                = PredictionManager(self.dataloadermanager.dataorchestrator.config, self.column_registration, self.temporal_summary)
+        self.predictions                = PredictionManager(self.dataloadermanager.dataorchestrator, self.column_registration, self.temporal_summary)
         self.prediction_mode            = self.dataloadermanager.dataorchestrator.config.prediction_mode
 
         # Config

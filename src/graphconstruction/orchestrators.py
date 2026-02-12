@@ -23,7 +23,7 @@ from .graphregistry import GraphEntry, GraphRegistry
 # from .graphstructures import GraphStructure, DynamicGraphStructure
 from .graphstats import StaticGraphStats, DynamicGraphStats
 from .graphconfig import StaticGraphConfig, DynamicGraphConfig
-from ..dataloading import DataOrchestrator
+from ..dataloading import EpiDataOrchestrator
 
 from .commuterdataloader import CommuterDataLoader
 
@@ -39,7 +39,7 @@ class BaseGraphOrchestrator:
     - _validate_shapedata
     """
     def __init__(self,                  
-                 data_orchestrator: DataOrchestrator,
+                 data_orchestrator: EpiDataOrchestrator,
                  id_col:          str = 'node',
                  graph_dir:       str = "graphs/"):
         
@@ -48,7 +48,7 @@ class BaseGraphOrchestrator:
         self.epipopdata      = data_orchestrator.data_harmonized.data
 
         self.id_col          = id_col 
-        self.tokens          = self.context_data.tokenization_map['id_idx']
+        self.tokens          = data_orchestrator.data_context.tokenization_map['nuts_node-idx']
         self.shapes          = self._validate_shapedata(self.context_data.shapedata)
         
         self.nuts_level      = self.context_data.nuts_level
@@ -92,7 +92,7 @@ class StaticGraphOrchestrator(BaseGraphOrchestrator):
     - _generate_graphstats
     """
     def __init__(self,                  
-                 data_orchestrator: DataOrchestrator,
+                 data_orchestrator: EpiDataOrchestrator,
                  id_col:            str = 'node',
                  graph_dir:         str = "graphs/"):
         
@@ -304,7 +304,7 @@ class DynamicGraphOrchestrator(BaseGraphOrchestrator):
     - _set_frequency
     """
     def __init__(self,                  
-                 data_orchestrator: DataOrchestrator,
+                 data_orchestrator: EpiDataOrchestrator,
                  id_col:            str = 'node',
                  graph_dir:         str = "graphs/"):
         

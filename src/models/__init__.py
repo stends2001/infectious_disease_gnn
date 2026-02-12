@@ -6,6 +6,8 @@ Three types of models:
 """
 from .baselines import PersistenceModel, ClimateologyModel, ConstantModel, ClimaScaleModel
 
-from .shallow.noderf import NodeRFModel
+# from .shallow.noderf import NodeRFModel
 
-from .deep import SimpleGCNModel, GATv2LSTMModel, NodeLSTMModel, NodeBiLSTMModel, NodeGRUModel, SeqNodeLSTMModel,GATv2Model
+from .deep import SimpleGCNModel, GATv2LSTMModel, LSTMModel
+
+# from .deep import SimpleGCNModel, GATv2LSTMModel, NodeLSTMModel, NodeBiLSTMModel, NodeGRUModel, SeqNodeLSTMModel,GATv2Model

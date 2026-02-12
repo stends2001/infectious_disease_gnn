@@ -40,10 +40,6 @@ class ContextData:
     @property 
     def num_nodes(self):
         return len(self.tokenization_map['nuts_node-idx'])
-    
-    @property     
-    def num_timestamps(self):
-        return len(self.tokenization_map['timestamp_idx'])        
 
     def __repr__(self):
         representation = (f"<{self.__class__.__name__}(nuts_level = {self.nuts_level},"

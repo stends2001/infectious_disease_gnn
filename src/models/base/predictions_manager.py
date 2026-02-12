@@ -3,6 +3,7 @@ import geopandas as gpd
 from dataclasses import dataclass, field
 from typing import Literal, Optional, Dict, Union
 from ...dataloading.epidataorchestration.normalization import reverse_log, reverse_minmax_scaling, reverse_zscore_scaling
+from ...dataloading.epidataorchestration.epidataorchestrator import EpiDataOrchestrator
 from ...dataloading.epidataorchestration.epiconfig import EpiConfig
 from ...dataloading.epidataorchestration.column_registry import ColumnRegistration, ColEntryMissingTransformationError
 from ...dataloading.epidataorchestration.temporal_summary import EpiDataTemporalSummary, TemporalError
@@ -44,13 +45,14 @@ class PredictionManager:
 
     """
 
-    def __init__(self, epiconfig: EpiConfig, column_registration: ColumnRegistration, temporal_summary: EpiDataTemporalSummary):
+    def __init__(self, data_orchestrator: EpiDataOrchestrator, column_registration: ColumnRegistration, temporal_summary: EpiDataTemporalSummary):
 
         self.train = PredictionCollection()
         self.val   = PredictionCollection()
         self.test  = PredictionCollection()
         
-        self.epiconfig          = epiconfig
+        self.epidata_orchestrator = data_orchestrator
+        self.epiconfig          = data_orchestrator.config
         self.column_registration= column_registration
         self.temporal_summary   = temporal_summary
         self._setup_reverse_transformations()
@@ -142,37 +144,38 @@ class PredictionManager:
             raise ValueError(f'No predictions found for {dataset}')
 
     def _denorm_predictions(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Reverse transformations (normalization and log) for predictions and target columns.
-        
-        Parameters
-        -----------
-        df : pd.DataFrame
-            DataFrame that looks like: | timestamp | node | pred | target
-            
-        Returns
-        --------
-        pd.DataFrame
-            DataFrame with reversed transformations applied
-        """
-        normalization_method    = self.epiconfig.normalization_method
+        normalization_method = self.epiconfig.normalization_method
 
-        if self.epiconfig.normalization_method == 'none':
+        if normalization_method == 'none':
             return df
         
-        df_denorm               = df.copy()       
+        df_denorm = df.copy()
+
+        if self.epiconfig.predict_difference:
+            df_denorm = self._get_anchor_for_merge(df_denorm)
+        
         if self.epiconfig.target_column == 'incidence':
-            col_entry_target        = self.column_registration.get_by_name('target')
-            transformation_dict     = col_entry_target.transformation
+            col_entry_target    = self.column_registration.get_by_name('target')
+            transformation_dict = col_entry_target.transformation
 
             if transformation_dict is None:
-                raise ColEntryMissingTransformationError(entryname = 'target')
+                raise ColEntryMissingTransformationError(entryname='target')
             
-            for col in ['target','pred']:
-                df_denorm = self.reverse_transformations[normalization_method](df_denorm, transformation_dict['normalization'], column = col)
+            for col in ['target', 'pred']:
+                df_denorm = self.reverse_transformations[normalization_method](
+                    df_denorm, transformation_dict['normalization'], column=col
+                )
                 
                 if 'log' in transformation_dict:
-                    df_denorm = self.reverse_transformations['log'](df_denorm, transformation_dict['log'], column = col)        
+                    df_denorm = self.reverse_transformations['log'](
+                        df_denorm, transformation_dict['log'], column=col
+                    )
+
+            if self.epiconfig.predict_difference and 'delta' in transformation_dict:
+                anchor_col = transformation_dict['delta']['anchor_col']
+                for col in ['target', 'pred']:
+                    df_denorm[col] = df_denorm[col] + df_denorm[anchor_col]
+                df_denorm = df_denorm.drop(columns=[anchor_col])
         
         return df_denorm
 
@@ -182,22 +185,34 @@ class PredictionManager:
         return df
     
     def _get_prediction_df_cols(self, df: pd.DataFrame) -> pd.DataFrame:
-        """returns only the four columns required, as long as they're present"""
-        return df[[self.epiconfig.temporal_column,self.epiconfig.id_column,'target','pred']].copy()        
-    
+        cols = [self.epiconfig.temporal_column, self.epiconfig.id_column, 'target', 'pred']
+        return df[cols].copy()    
+        
     def _validate_columns(self, data: pd.DataFrame) -> pd.DataFrame:
-        """checks the presence of required (and only the required) columns"""
-        essential_columns = [self.epiconfig.temporal_column,self.epiconfig.id_column,'target','pred']
+        essential_columns = [self.epiconfig.temporal_column, self.epiconfig.id_column, 'target', 'pred']
+        
         for cc in essential_columns:
             if cc not in data.columns.tolist():
                 raise ValueError(f'{cc} not found in prediction df')
             
         for cc in data.columns:
             if cc not in essential_columns:
-                raise ValueError(f'{cc} found in prediction df')
+                raise ValueError(f'{cc} found in prediction df but not expected')
                         
         return data
     
+    def _get_anchor_for_merge(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Fetches the anchor column from data_final.data and merges it onto df
+        by timestamp and node id, so _denorm_predictions can use it for delta reversal.
+        """
+        anchor_col = f'{self.epiconfig.target_column}_anchor'
+        merge_keys = [self.epiconfig.temporal_column, self.epiconfig.id_column]
+
+        source_df = self.epidata_orchestrator.data_final.data[merge_keys + [anchor_col]]
+        
+        return df.merge(source_df, on=merge_keys, how='left')
+
     @check_dataset()
     def _filter_by_dataset_timerange(self, df: pd.DataFrame, dataset: Literal['train','val','test']) -> pd.DataFrame:
         if dataset == 'train':

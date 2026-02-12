@@ -2,11 +2,11 @@ from typing import Optional, Literal, List
 from abc import abstractmethod
 import numpy as np
 import pandas as pd
-from src.dataloading.dataorchestration.column_registry import ColEntryMissingTransformationError
+from ...dataloading.epidataorchestration.column_registry import ColEntryMissingTransformationError
 
 from ..base import BaseModel
 from ...dataloading import BaseLineDataLoaderManager 
-from ...dataloading.dataorchestration.normalization import apply_minmax_scaling, apply_zscore_scaling
+from ...dataloading.epidataorchestration.normalization import apply_minmax_scaling, apply_zscore_scaling
 from ...utils.textformatting import warning_emoji
 
 class BaseLineModel(BaseModel):

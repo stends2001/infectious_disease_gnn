@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Optional, List, Union, Dict, Any, Literal, Type
+from typing import Optional, Union, Dict, Any, Literal, Type
 
 import torch
 import torch.optim as optim
@@ -12,19 +12,19 @@ import numpy as np
 from tqdm import tqdm
 
 import matplotlib.pyplot as plt
-# from matplotlib.figure.Figure import Figure
 import seaborn as sns
 
 from .modelmanager import ModelManager
 from ..base import BaseModel
-from .basestrategy import Strategy
 from ..utils.loss.losshandler import LossHandler
-
+from ...dataloading.dataloaders.deepdataloaders.graphdataloader import GraphDataLoaderManager
+from ...dataloading.dataloaders.deepdataloaders.deepdataloader import DeepDataLoaderManager
 from ...utils import check_dataset
 from ...utils.textformatting import warning_emoji, section, align, checkmark
 from ...utils.colors import traincolor, valcolor
-from ...dataloading import GraphDataLoaderManager,  DeepDataLoaderManager
-from ...plotting import ManagedFigure, convert_managedfigure
+from .strategies.basestrategy import Strategy
+
+from .debugging import DeepModelDebuggingError
 
 class ConflictingDataLoaderManager(Exception):
     def __init__(self, model_name: BaseModel, suggested_strategy: str, dataloadermanager: str):
@@ -81,22 +81,10 @@ class DeepModel(BaseModel, ABC):
             raise ValueError(f'Invalid input for attribute deepfamily found. Should be "vanilla" or "gnn" but received: {self.deepfamily}')        
 
     def _validate_dataloader_shapes(self):
-        input_sample    = self.dataloadermanager.dataloader_collection.train[0]
-        y_n, y_hs       = input_sample.y.shape
-        x_n, x_f, x_seq = input_sample.x.shape
-        config          = self.dataloadermanager.dataorchestrator.config
-
-        if y_n != x_n:
-            raise ConflictingDataLoaderShape(f'num nodes in y: {y_n}\nnum_nodes in x: {x_n}')
-        if y_hs != config.horizon_size:
-            raise ConflictingDataLoaderShape(f'num horizons in y: {y_hs}\nnum horizons in epiconfig: {y_hs}')        
-        if x_seq != config.sequence_length:
-            raise ConflictingDataLoaderShape(f'seq length in x: {x_seq}\nseq length in epiconfig: {x_seq}')                
+        pass     
       
-  # model hparams method to be written per model
-    @abstractmethod
-    def set_model_hparams(self, **kwargs):
-        pass
+    def set_model_hparams(self):
+        raise NotImplementedError("Child classes of DeepModel must implement set_model_hparams")
 
     def _get_optimizer(self, optimizer_name: str, lr: float, optimizer_kwargs: Dict[str, Any]) -> Optimizer:
         """Factory method to create and return optimizer"""
@@ -205,7 +193,6 @@ class DeepModel(BaseModel, ABC):
         self._update_status('global_hparams_set')
         return self
 
-    # @convert_managedfigure
     def show_monitoring_metrics(self):
         """Returns plot of trainloss, valloss, patience and learning rate per epoch."""
         if self.model is None:
@@ -255,23 +242,7 @@ class DeepModel(BaseModel, ABC):
         return fig
 
     def train(self):
-        """
-        Unified training loop that works for both standard and recurrent models.
-        
-        Parameters
-        ----------
-        verbose: Literal[0,1,2] = 1:
-            how often to return evaluation - updates during training.
-            if 0 then only a tqdm is shown. for 1, an update is shown every 10 epochs.
-            when 2, every epoch.
-        dataloader_snapshot: bool = True
-            whether or not to print the __str__ of the DeepDataLoader 
-        show_loss: bool = True
-            whether or not to plot train and val loss, as well as learning rate per epoch.
-
-        See Also
-        --------
-        Strategies => src.models.deep.strategies            
+        """ 
         """
         if self.model is None:
             raise ValueError('Please initiate a model')
@@ -283,10 +254,9 @@ class DeepModel(BaseModel, ABC):
             raise ValueError('no valid scheduler found')
         
         self._check_state(['model_hparams_set', 'global_hparams_set'])
-        dataloader_collection = self.dataloadermanager.dataloader_collection
 
-        train_loader = dataloader_collection.train 
-        val_loader   = dataloader_collection.val
+        train_loader = self.dataloadermanager.dataloader_train 
+        val_loader   = self.dataloadermanager.dataloader_val 
 
         # print dataloader snapshot
         if self.verbose>=2:
@@ -332,7 +302,7 @@ class DeepModel(BaseModel, ABC):
             num_epoch = epoch + 1 
 
             # Reset state at epoch start
-            self.strategy.reset_state()
+            self.strategy.reset_state_epoch()
 
             # ======================== TRAINING PHASE ========================
             total_loss = 0
@@ -360,7 +330,7 @@ class DeepModel(BaseModel, ABC):
             val_loss = 0
             
             # Reset state for validation
-            self.strategy.reset_state()
+            self.strategy.reset_state_dataset()
 
             with torch.no_grad():
                 for snapshot in val_loader:
@@ -444,128 +414,152 @@ class DeepModel(BaseModel, ABC):
     @check_dataset()
     def forecast(self, dataset: Literal['train','val','test'] = 'test'):
         """
-        Unified forecasting loop that works for deep learning models.
-
-        See Also
-        --------
-        Strategies => src.models.deep.strategies
-        basemodel._denorm_predictions()
+        Unified forecasting loop for deep learning models.
+        
+        Returns predictions aligned with the correct timestamps using the 
+        pre-computed time_splits from the dataloader manager.
         """
         self._check_state(['model_hparams_set', 'global_hparams_set', 'trained'])
 
         if self.model is None:
             raise ValueError('Please initiate a model')
-        
 
         self.model.eval()
         
-        predictions = []
-        labels      = []
-
-        hh                      = 0
-        dataloader_collection   = self.dataloadermanager.dataloader_collection
-        eval_df                 = self.dataloadermanager.dataorchestrator.data_final.data
-        eval_df                 = eval_df[eval_df[dataset]]
-
-        if dataset == 'train':
-            dataloader = dataloader_collection.train
-        elif dataset == 'val':
-            dataloader = dataloader_collection.val
-        elif dataset == 'test':
-            dataloader = dataloader_collection.test       
-
-        else:
-            raise ValueError(f'dataset must be either "train", "val" or "test"')
-
+        # Get the appropriate dataloader
+        dataloader = getattr(self.dataloadermanager, f'dataloader_{dataset}')
+        
         # Reset state before forecasting
-        self.strategy.reset_state()
+        self.strategy.reset_state_dataset()
         
         iterator = tqdm(dataloader, desc=f"Forecasting {dataset}") if self.verbose >= 0 else dataloader
 
-        loss = 0
+        all_predictions = []
+        all_targets = []
+        total_loss = 0
+        
         with torch.no_grad():
             for snapshot in iterator:
                 snapshot = snapshot.to(self.device)
 
                 y_hat, loss_val = self.strategy.forecast_step(
-                    model   = self.model, 
-                    snapshot= snapshot, 
-                    loss_fn = self.loss
+                    model=self.model, 
+                    snapshot=snapshot, 
+                    loss_fn=self.loss
                 )
-                loss += loss_val
+                total_loss += loss_val
 
-                # snapshot.y as well as y_hat are a torch.Tensor of shape (num_nodes, horizon_size)
-                # labels and predictions are thus a List of these torch.Tensors, one for each timestep.
-                labels.append(snapshot.y)
-                predictions.append(y_hat)
+                # Collect predictions and targets
+                all_predictions.append(y_hat.detach().cpu())
+                all_targets.append(snapshot.y.detach().cpu())
 
-        loss = loss / len(dataloader)
+        avg_loss = total_loss / len(dataloader)
+        setattr(self, f'{dataset}_loss', avg_loss)
 
-        setattr(self, f'{dataset}_loss', loss)
-
-        # ======================== FORMAT PREDICTIONS ========================
-        tensor_list_cpu                         =    [t.detach().cpu() for t in predictions]   # detach from device
-        stacked                                 = torch.stack(tensor_list_cpu)              # concatenates the list of torch.Tensors into one torch.Tensor 
-        num_timepoints, n_nodes, horizon_size   = stacked.shape                             # shape is (timestep, num_nodes, horizon_size)
-
-        # check whether these are correct with config!
-
-        reshaped                        = stacked.view(num_timepoints * n_nodes, horizon_size).numpy()  
-        timepoints_idx                  = np.repeat(np.arange(num_timepoints), n_nodes)
-        nodes                           = np.tile(np.arange(n_nodes), num_timepoints)
-        # an object with the same shape as `reshaped` but with the idx to timestamps and node_ids
-        index                           = pd.MultiIndex.from_arrays([timepoints_idx, nodes], names=['timestamp_idx', self.epiconfig.id_column])
-
-        prediction_columns              = [f'pred_{hh}' for hh in range(horizon_size)]
-        prediction_df                   = pd.DataFrame(reshaped, 
-                                                       index=index, 
-                                                       columns=prediction_columns).reset_index(drop=False)
-
-        # ======================== FORMAT TARGETS ========================
-        tensor_list_cpu                 = [t.detach().cpu() for t in labels]
-        stacked                         = torch.stack(tensor_list_cpu)   
-        num_timepoints, n_nodes, horizon= stacked.shape
-
-        reshaped                        = stacked.view(num_timepoints * n_nodes, horizon).numpy()  
-
-        target_columns                  = [f'target_{hh}' for hh in range(horizon_size)]
-        target_df                       = pd.DataFrame(reshaped, 
-                                                       index=index,
-                                                       columns=target_columns).reset_index(drop=False)
+        # Stack all predictions and targets
+        # Shape: [num_sequences, num_nodes, horizon_size]
+        predictions_tensor = torch.stack(all_predictions)
+        targets_tensor = torch.stack(all_targets)
         
-        pred_target         = pd.merge(target_df, prediction_df, on=['timestamp_idx',self.epiconfig.id_column])
-
-        idx_offset_train = len(self.dataloadermanager.time_splits[self.dataloadermanager.time_splits['train']])
-        idx_offset_val   = len(self.dataloadermanager.time_splits[self.dataloadermanager.time_splits['val']])
-
-        if dataset == 'test':
-            timestamp_idx_offset = idx_offset_train + idx_offset_val
-        elif dataset == 'val':
-            timestamp_idx_offset = idx_offset_train 
-        elif dataset == 'train':
-            timestamp_idx_offset = 0
-        else:
-            raise ValueError(f'no valid dataset found')
-        timestamp_idx_offset = timestamp_idx_offset + self.dataloadermanager.dataorchestrator.config.sequence_length - 1
+        num_sequences, num_nodes, horizon_size = predictions_tensor.shape
         
-        # matching index with TODAY, not with prediction horizon!
-        pred_target['timestamp_idx']    = pred_target['timestamp_idx'] + timestamp_idx_offset
-        timestamp_mapping               = self.dataloadermanager.time_splits.reset_index(drop = False)
-        pred_target                     = pd.merge(timestamp_mapping[['index',self.epiconfig.temporal_column]], pred_target, left_on = 'index', right_on = 'timestamp_idx').drop(columns = ['index','timestamp_idx'])
-
+        # Create the results dataframe
+        results = self._format_forecast_results(
+            predictions=predictions_tensor,
+            targets=targets_tensor,
+            dataset=dataset,
+            num_sequences=num_sequences,
+            num_nodes=num_nodes,
+            horizon_size=horizon_size
+        )
+        
+        # Store predictions for each horizon
         for hh in range(horizon_size):
-            horizon_data = pred_target[[self.epiconfig.temporal_column,self.epiconfig.id_column,f'pred_{hh}',f'target_{hh}']].rename(columns = {f'pred_{hh}':'pred', f'target_{hh}':'target'})
-            if self.loss.loss_name in ['poisson','outbreakpoisson']:
-                print('additonal transformation')
-                self.predictions.add_horizon_predictions(dataset, horizon_data, hh, additional_transformation=True, transf = 'poisson_sampling', transf_args={'sampling_mode': 'mean'})
+            horizon_data = results[
+                [self.epiconfig.temporal_column, self.epiconfig.id_column, f'pred_{hh}', f'target_{hh}']
+            ].rename(columns={f'pred_{hh}': 'pred', f'target_{hh}': 'target'})
+            
+            if self.loss.loss_name in ['poisson', 'outbreakpoisson']:
+                self.predictions.add_horizon_predictions(
+                    dataset, horizon_data, hh, 
+                    additional_transformation=True, 
+                    transf='poisson_sampling', 
+                    transf_args={'sampling_mode': 'mean'}
+                )
             else:
                 self.predictions.add_horizon_predictions(dataset, horizon_data, hh)
-            if self.verbose > 1:
-                print(f"{dataset.capitalize()} loss: {loss:.4f}")
+        
+        if self.verbose > 1:
+            print(f"{dataset.capitalize()} loss: {avg_loss:.4f}")
         
         self._update_status('forecasted')
-        return self  
+        return self
+
+    def _format_forecast_results(
+        self,
+        predictions: torch.Tensor,
+        targets: torch.Tensor,
+        dataset: str,
+        num_sequences: int,
+        num_nodes: int,
+        horizon_size: int
+    ) -> pd.DataFrame:
+        """
+        Format predictions and targets into a dataframe with correct timestamps.
         
+        Uses the time_splits dataframe to align sequence indices with actual timestamps.
+        """
+        # Reshape to long format: [num_sequences * num_nodes, horizon_size]
+        pred_reshaped = predictions.view(num_sequences * num_nodes, horizon_size).numpy()
+        target_reshaped = targets.view(num_sequences * num_nodes, horizon_size).numpy()
+        
+        # Create index arrays
+        sequence_idx = np.repeat(np.arange(num_sequences), num_nodes)
+        node_idx = np.tile(np.arange(num_nodes), num_sequences)
+        
+        # Get the timestamps for this dataset
+        dataset_time_splits = self.dataloadermanager.time_splits[
+            self.dataloadermanager.time_splits[dataset]
+        ].reset_index()
+        
+        # Sequence indices correspond to rows in the filtered time_splits
+        # (after accounting for sequence_length lookback)
+        sequence_length = self.dataloadermanager.dataorchestrator.config.sequence_length
+        
+        timestamp_indices = sequence_idx 
+        
+        # Map to actual timestamps
+        timestamps = dataset_time_splits.loc[timestamp_indices, self.epiconfig.temporal_column].values
+        
+        # Build the results dataframe
+        results = pd.DataFrame({
+            self.epiconfig.temporal_column: timestamps,
+            self.epiconfig.id_column: node_idx
+        })
+        
+        # Add prediction columns
+        for hh in range(horizon_size):
+            results[f'pred_{hh}'] = pred_reshaped[:, hh]
+            results[f'target_{hh}'] = target_reshaped[:, hh]
+        
+        return results
+
+    def debug(self):
+        if self.model is None:
+            raise ValueError('Please initiate a model')
+
+        self._check_state(['model_hparams_set'])
+
+        train_sample = self.dataloadermanager.dataloader_train[0].to(self.device)
+        y_hat , report = self.strategy.debug(self.model, train_sample)
+
+        y_hat = y_hat.detach().cpu()
+        y     = train_sample.y.detach().cpu()
+        report.validate()
+        if y_hat.shape != y.shape:
+            raise DeepModelDebuggingError(f"incompatible prediction shape: y_hat [{y_hat.shape}], y [{y.shape}]")
+        
+    
     def save(self, filename: Optional[str] = None) -> None:
         """
         Save the trained model.
