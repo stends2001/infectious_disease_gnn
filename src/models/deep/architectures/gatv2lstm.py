@@ -66,7 +66,8 @@ class GATv2LSTMArchitecture(nn.Module):
                 ) -> Tuple[torch.Tensor,torch.Tensor,torch.Tensor]:
         
         # x shape: [num_nodes, num_features, seq_len]
-        
+        if self.self_loops:
+            edge_index, _ = add_self_loops(edge_index, num_nodes=self.num_nodes)
         # Apply GAT at EACH timestep (only one layer)
         seq_outputs = []
         for t in range(x.shape[2]):

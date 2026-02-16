@@ -1,42 +1,88 @@
 # Spatiotemporal modelling of infectious diseases
 
-## Abstract
-This project aims to develop and validate machine learning algorithms using data on vaccine-preventable diseases to study and forecast their spatio-temporal dynamics. Given its public health impact, measles is the primary focus. Unlike many other diseases, measles outbreaks often start with cases imported from abroad.
+## New big update to be made: Foldwise train/val/test
+from dataclasses import replace
+from typing import List, Tuple
+import pandas as pd
 
-By integrating socio-demographic, epidemiological, and travel data, this project aims to improve understanding of transmission patterns and build predictive models for future outbreaks, especially for measles. Early work has tested various temporal models, using influenza as a proof of concept. Influenza is seasonal and well-documented in Germany, and simple graph neural networks (GNNs)—deep learning models that capture spatial relationships—show promising predictive power on this dataset.
+@dataclass
+class CVFold:
+    fold_idx:       int
+    train_end:      str   # = split_trainval
+    val_end:        str   # = split_valtest
 
-The next step is to develop GNN models suited for datasets with many instances of no reported cases, typical for measles. By analysing how outbreaks spread spatially, the project will assess how well these models predict future cases. The goal is to advance both modelling methods and knowledge of vaccine-preventable diseases.
+class SpatioTemporalCV:
+    
+    def __init__(self, 
+                 base_config:   EpiConfig,
+                 cv_strategy:   Literal['expanding', 'sliding'],
+                 n_folds:       int,
+                 val_size:      str,          # e.g. '52w', '12m'
+                 train_size:    Optional[str] = None  # only for sliding
+                 ):
+        
+        self.base_config    = base_config
+        self.cv_strategy    = cv_strategy
+        self.n_folds        = n_folds
+        self.val_size       = val_size
+        self.train_size     = train_size
 
-## Current update
-I have an environment up and running. I am running mostly experiments on influenza casenumbers in Germany on Bundeslander (NUTS1), NUTS2, and Kreis (NUTS3) level. My goal in this is to create an environment in which I test what works and what doesn't work. I've been trying out some experiments with a bunch of different graphs:
-- identity graph => each node is only connected to itself
-- boolean neighbors => each node is only connected to those directly surrounding it
-- gravity models - variations
+    def _generate_folds(self) -> List[CVFold]:
+        folds       = []
+        val_end     = pd.Timestamp(self.base_config.split_valtest)
+        val_delta   = self._parse_size(self.val_size)
 
-I've also started with some baseline spatial - GCN vs spatio-temporal GNNs. For now, nothing meaningful to report.
+        for i in range(self.n_folds - 1, -1, -1):
+            fold_val_end    = val_end   - i * val_delta
+            fold_val_start  = fold_val_end - val_delta
 
-One thing I struggle with is that I don't how to weight my predictions. Should I forecast 1 timestep ahead, or use a horizon of a couple timesteps. I've been doing the latter one, but then determining the loss over all of them rather than on the first or last timestep. I further find that the 1 - step ahead prediction is basically a repetition of the most-recently observed trend.
+            if self.cv_strategy == 'sliding' and self.train_size:
+                train_delta     = self._parse_size(self.train_size)
+                fold_train_start= fold_val_start - train_delta
+            else:
+                fold_train_start= pd.Timestamp(self.base_config.min_date)
 
-## Project goals:
-- different graph - systems 
-	- pertussis => children?
-	- influenza => neighborhood?
-	- measles => travel?
-- develop a spatiotemporal - pipeline whatever tha may be
-- for measles specifically, relate local German epidemiology to international epidemiology
-    - have data per airport in Germany: another gravity model layer on top to model the spread of incoming flights, and associated risk depending on 
-      origin of flight
-- childhood diseases => school holidays
-- scenario development => long term predictions
-      
-## To Dos
-- Denormalization
-- Loss class
-- Metrics
-- Experiment - class and -runner
-- Dashboard -> interact with models
-- Config and results to be optimized
-- Go through Notebooks
+            folds.append(CVFold(
+                fold_idx    = len(folds),
+                train_end   = fold_val_start.strftime('%Y-%m-%d'),
+                val_end     = fold_val_end.strftime('%Y-%m-%d'),
+            ))
+        return folds
+
+    def _parse_size(self, size_str: str) -> pd.DateOffset:
+        """Parse '52w', '12m', '365d' into DateOffset"""
+        num = int(size_str[:-1])
+        unit = size_str[-1]
+        if unit == 'w':
+            return pd.DateOffset(weeks=num)
+        elif unit == 'm':
+            return pd.DateOffset(months=num)
+        elif unit == 'd':
+            return pd.DateOffset(days=num)
+        else:
+            raise ValueError(f'Unknown size unit: {unit}')
+
+    def get_fold_config(self, fold: CVFold) -> EpiConfig:
+        """Return a new EpiConfig with dates adjusted for this fold"""
+        return replace(
+            self.base_config,
+            split_trainval  = fold.train_end,
+            split_valtest   = fold.val_end,   # val_end becomes the new max
+            max_date        = fold.val_end,
+        )
+
+    def run(self, model_fn) -> List[dict]:
+        """
+        model_fn: callable that takes EpiConfig and returns metric dict
+        e.g. lambda config: train_and_evaluate(config)
+        """
+        results = []
+        for fold in self._generate_folds():
+            fold_config = self.get_fold_config(fold)
+            orchestrator = EpiDataOrchestrator(fold_config).build()
+            metrics = model_fn(orchestrator)
+            results.append({'fold': fold.fold_idx, **metrics})
+        return results
 
 ## Literature Review
 
