@@ -50,6 +50,8 @@ class EpiConfig:
     lag_column:             str  = 'incidence'
 
     feature_population_size:bool = False      
+    feature_popdens:        bool = False
+    feature_gisd:           bool = False
     
     # ============= NORMALIZATION =============
     normalization_method:   Literal['minmax', 'zscore', 'none'] = 'zscore'
@@ -123,6 +125,20 @@ class EpiConfig:
                 f"For multi-step forecasting with deltas, set horizon_leadtime=1 and use horizon_size > 1 instead."
             )            
 
+        # features
+        if self.feature_popdens:
+            if self.nuts_level != 'nuts3':
+                raise EpiConfigError('currently population-density-feature data only exists for nuts3. Please remove this feature, or switch to nuts3.')
+            
+            if self.split_berlin:
+                raise EpiConfigError('currently population-density-feature data only exists for Berlin as entirety, not split. Please adjust.')
+
+        if self.feature_gisd:
+            if self.nuts_level not in ['nuts2','nuts3']:
+                raise EpiConfigError('GISD data only available for nuts2 or nuts3. Please adjust')
+            if self.split_berlin:
+                raise EpiConfigError('currently GISD data only exists for Berlin as entirety, not split. Please adjust.')        
+
     # ============= COMPUTED PROPERTIES =============
     @property
     def split_columns(self) -> list[str]:
@@ -144,6 +160,14 @@ class EpiConfig:
         """Path to population CSV file."""
         return self.data_path / 'processed/germany/sociodemography/population_size_03.csv'
     
+    def get_population_density_path(self) -> Path:
+        """Path to population density CSV file."""
+        return self.data_path / f'processed/germany/sociodemography/population_density_{self.nuts_level}.csv'        
+
+    def get_gisd_path(self) -> Path:
+        """Path to gisd CSV file."""
+        return self.data_path / f'processed/germany/sociodemography/gisd_{self.nuts_level}.csv'        
+
     def get_population_berlin_districts_path(self) -> Path:
         """Path to berlin - districts population (2024) CSV file."""
         return self.data_path / 'processed/germany/sociodemography/population_size_berlin_districts_03.csv'    

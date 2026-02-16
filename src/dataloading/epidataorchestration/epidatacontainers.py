@@ -17,6 +17,9 @@ class RawEpiData:
     shapedata:          gpd.GeoDataFrame
     nuts_harm:          pd.DataFrame    
     population_berlin:  Optional[pd.DataFrame] = None
+
+    population_density: Optional[pd.DataFrame] = None
+    gisd:               Optional[pd.DataFrame] = None
     
     def __repr__(self):
         representation = (f"<{self.__class__.__name__}(disease {checkmark}, "
@@ -26,6 +29,12 @@ class RawEpiData:
         
         if self.population_berlin is not None:
             representation += f", population_berlin {checkmark}"
+        
+        if self.population_density is not None:
+            representation += f", population_density {checkmark}"
+
+        if self.gisd is not None:
+            representation += f", gisd {checkmark}"
 
         return representation +")>"
 
@@ -54,37 +63,57 @@ class ContextData:
 
 @dataclass
 class HarmonizedData:
-    data:     pd.DataFrame
+    epidata:     pd.DataFrame
+
+    population_density: Optional[pd.DataFrame] = None
+    gisd:               Optional[pd.DataFrame] = None    
 
     def __repr__(self):
-        representation = (f"<{self.__class__.__name__}(data {checkmark}")
+        representation = f"<{self.__class__.__name__}(epidata {checkmark}"
+
+        if self.population_density is not None:
+            representation += f", population_density {checkmark}, "
+
+        if self.gisd is not None:
+            representation += f", gisd {checkmark}"            
+                          
         representation += ")>"
         return representation
 
 @dataclass
 class ProcessedEpiData:
-    data:     pd.DataFrame
+    epidata:     pd.DataFrame
+
+    population_density: Optional[pd.DataFrame] = None
+    gisd:               Optional[pd.DataFrame] = None        
     
     def __repr__(self):
-        representation = (f"<{self.__class__.__name__}(data {checkmark}")
+        representation = (f"<{self.__class__.__name__}(epidata {checkmark}")
+
+        if self.population_density is not None:
+            representation += f", population_density {checkmark}, "
+
+        if self.gisd is not None:
+            representation += f", gisd {checkmark}"      
+
         representation += ")>"
         return representation
 
 @dataclass
 class FeatureEpiData:
-    data:               pd.DataFrame
+    epidata:               pd.DataFrame
 
     def __repr__(self):
-        representation = (f"<{self.__class__.__name__}(data {checkmark}")
+        representation = (f"<{self.__class__.__name__}(epidata {checkmark}")
         representation += ")>"
         return representation  
 
 @dataclass
 class NormalizedEpiData:
-    data:     pd.DataFrame  
+    epidata:     pd.DataFrame  
 
     def __repr__(self):
-        representation = (f"<{self.__class__.__name__}(data {checkmark}")
+        representation = (f"<{self.__class__.__name__}(epidata {checkmark}")
         representation += ")>"
         return representation
 

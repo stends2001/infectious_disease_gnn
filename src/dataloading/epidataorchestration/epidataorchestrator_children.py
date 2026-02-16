@@ -130,15 +130,63 @@ class EpiDataReader:
         
         return df
 
+    def _load_population_density(self) -> pd.DataFrame:
+        """
+        loads population density data for the specified nuts level
+
+        df looks like:
+        _____________________________________________________
+        | '{nuts_level}_key' | 'year' | 'population_density ' |
+
+        where '{nuts_level}' is self.nuts_level in epiconfig.
+        """          
+        filepath = self.config.get_population_density_path()
+        
+        df = pd.read_csv(
+            filepath,
+            dtype={f'{self.config.nuts_level}_key': str}
+            )
+        
+        if self.config.verbose > 1:
+            print(f"{checkmark} Loaded population density")
+        
+        return df
+
+    def _load_gisd(self) -> pd.DataFrame:
+        """
+        loads population density data for the specified nuts level
+
+        df looks like:
+        _____________________________________________________
+        | '{nuts_level}_key' | 'year' | 'gisd ' |
+
+        where '{nuts_level}' is self.nuts_level in epiconfig.
+        """          
+        filepath = self.config.get_gisd_path()
+        
+        df = pd.read_csv(
+            filepath,
+            dtype={f'{self.config.nuts_level}_key': str}
+            )
+                
+        if self.config.verbose > 1:
+            print(f"{checkmark} Loaded population density")
+        
+        return df
+
     def orchestrate(self) -> RawEpiData:
         time_start = time.time()
+
         rawdata = RawEpiData(
             disease             = self._load_disease_data(),
             population          = self._load_population_data(),
             shapedata           = self._load_nuts_shapedata(),
             nuts_harm           = self._load_nuts_harm(),
             population_berlin   = self._load_population_data_berlin_districts() if self.config.split_berlin else None,   
+            population_density  = self._load_population_density() if self.config.feature_popdens else None,
+            gisd                = self._load_gisd() if self.config.feature_gisd else None
         )
+
         time_end = time.time()
         if self.config.verbose > 2:
             print(f'Execution of EpiDataReader took {round(time_end - time_start,3)}s')
@@ -358,6 +406,21 @@ class Harmonizer:
         shapedata  = self._apply_tokenization(rawdata.shapedata, tokenization_map['nuts_node-idx'],f'{self.config.nuts_level}_key', self.config.id_column)
         nutsnames  = self._apply_tokenization(nutsnames, tokenization_map['nuts_node-idx'],f'{self.config.nuts_level}_key',         self.config.id_column)
 
+        # extra features
+        if self.config.feature_popdens:
+            if rawdata.population_density is None: 
+                raise DataOrchestrationError('no population density found in rawdata')
+            population_density_data = self._apply_tokenization(rawdata.population_density, tokenization_map['nuts_node-idx'],f'{self.config.nuts_level}_key', self.config.id_column)
+        else:
+            population_density_data = None
+
+        if self.config.feature_gisd:
+            if rawdata.gisd is None: 
+                raise DataOrchestrationError('no gisd found in rawdata')
+            gisd_data = self._apply_tokenization(rawdata.gisd, tokenization_map['nuts_node-idx'],f'{self.config.nuts_level}_key', self.config.id_column)            
+        else:
+            gisd_data = None
+
         if isinstance(shapedata, pd.DataFrame):
             shapedata = gpd.GeoDataFrame(shapedata)
 
@@ -365,7 +428,10 @@ class Harmonizer:
         temporal_summary = self._return_temporal_summary()
 
         harmdata = HarmonizedData(
-            data = epipopdata
+            epidata             = epipopdata,
+
+            population_density  = population_density_data,
+            gisd                = gisd_data
         )
         
         ctxdata = ContextData(
@@ -410,20 +476,6 @@ class EpiDataProcessor:
 
         return epipopdata.drop(columns=['cases']) 
        
-    def _drop_cols(self, epipopdata: pd.DataFrame) -> pd.DataFrame:
-        """drop redundant columns"""
-        cols_to_drop = []
-        
-        # Only need to drop year now (nuts_key already dropped during tokenization)
-        if 'year' in epipopdata.columns:
-            cols_to_drop.append('year')
-        
-        if self.config.verbose > 1:
-            dropped_msg = f'{checkmark} year column removed' if cols_to_drop else f'{checkmark} no redundant columns to remove'
-            print(dropped_msg)
-        
-        return epipopdata.drop(columns=cols_to_drop, errors='ignore')
-
     def _filter_dates(self, df) -> pd.DataFrame:
         # Use extended min date from temporal summary
         dfc     = df.copy()
@@ -439,26 +491,52 @@ class EpiDataProcessor:
 
         return dfc
     
+    def _filter_years(self, df) -> pd.DataFrame:
+        dfc = df.copy() 
+        minyear = self.temporal_summary.get_extended_dates()['min'].year
+        maxyear = self.temporal_summary.get_extended_dates()['max'].year + 1
+
+        dfc = dfc.loc[dfc['year'] <  maxyear].reset_index(drop=True)         
+        dfc = dfc.loc[dfc['year'] >= minyear].reset_index(drop=True)             
+
+        return dfc
+
     def orchestrate(self, harmonizeddata: 'HarmonizedData') -> 'ProcessedEpiData':
         
         time_start = time.time()
-        epipopdata = self._add_incidence_column(harmonizeddata.data.copy())
+        epipopdata = self._add_incidence_column(harmonizeddata.epidata.copy())
 
         if self.config.target_column != 'cases':
             epipopdata = self._drop_cases_column(epipopdata)        
 
         epipopdata = self._filter_dates(epipopdata)
-                
-        # Now drop redundant columns (including year and any nuts_key columns)
-        epipopdata = self._drop_cols(epipopdata)
 
+        # extra features
+        if self.config.feature_popdens:
+            if harmonizeddata.population_density is None: 
+                raise DataOrchestrationError('no population density found in rawdata')
+            population_density_data = self._filter_years(harmonizeddata.population_density)
+        else:
+            population_density_data = None
+
+        if self.config.feature_gisd:
+            if harmonizeddata.gisd is None: 
+                raise DataOrchestrationError('no population density found in rawdata')
+            gisd_data = self._filter_years(harmonizeddata.gisd)
+        else:
+            gisd_data = None            
+
+        processed_data = ProcessedEpiData(epidata           = epipopdata,
+                                          population_density= population_density_data,
+                                          gisd              = gisd_data
+                                          )
         time_end = time.time()
         if self.config.verbose > 2:
             print(f'Execution of EpiDataProcessor took {round(time_end - time_start,3)}s')    
         if self.config.verbose > 1:
             print("")
 
-        return ProcessedEpiData(data=epipopdata)
+        return processed_data
 
 # ============= FEATURE CLASS =============            
 class EpiFeatureBuilder:
@@ -591,8 +669,8 @@ class EpiFeatureBuilder:
         return df.dropna().reset_index(drop=True)
 
     def orchestrate(self, processed_data: 'ProcessedEpiData') -> 'FeatureEpiData':
-        time_start = time.time()
-        feature_data = processed_data.data.copy()
+        time_start   = time.time()
+        feature_data = processed_data.epidata.copy()
 
         # Feature: population_size
         if self.config.feature_population_size:
@@ -601,6 +679,27 @@ class EpiFeatureBuilder:
             feature_data = feature_data.drop(columns=['population_size'], errors='ignore')
             if self.config.verbose > 1:
                 print(f'{checkmark} population size removed')
+
+        if self.config.feature_popdens:
+            self.column_registration.add_column(
+                'population_density',
+                'feature',
+                needs_normalization=True,
+                transformation_group=None
+            )            
+            if processed_data.population_density is None:
+                raise DataOrchestrationError('no population density found in processor')
+            feature_data = pd.merge(feature_data, processed_data.population_density, on = [self.config.id_column, 'year'])
+
+        if self.config.feature_gisd:
+            self.column_registration.add_column(
+                f'gisd',
+                'feature',
+                needs_normalization=False
+            )               
+            if processed_data.gisd is None:
+                raise DataOrchestrationError('no population density found in processor')
+            feature_data = pd.merge(feature_data, processed_data.gisd, on = [self.config.id_column, 'year'])            
 
         # Delta transform: must happen before lags and target shift,
         # so that lag features and the forecast target are all in delta-space
@@ -628,7 +727,7 @@ class EpiFeatureBuilder:
         if self.config.verbose > 2:
             print(f'Execution of EpiFeatureBuilder took {round(time_end - time_start,3)}s')
 
-        return FeatureEpiData(data=feature_data)
+        return FeatureEpiData(epidata=feature_data)
 
 # ============= NORMALIZER CLASS ============= 
 class EpiNormalizer:
@@ -765,7 +864,7 @@ class EpiNormalizer:
 
     def orchestrate(self, feature_data: 'FeatureEpiData') -> 'NormalizedEpiData':
         time_start = time.time()
-        split_data      = self._set_splits(feature_data.data.copy())
+        split_data      = self._set_splits(feature_data.epidata.copy())
         cols_to_log     = []
 
         if self.config.log_transform:
@@ -794,7 +893,7 @@ class EpiNormalizer:
             print(f'Execution of EpiNormalizer took {round(time_end - time_start,3)}s')        
         if self.config.verbose > 1:
             print("")
-        return NormalizedEpiData(data=normalized_data)
+        return NormalizedEpiData(epidata=normalized_data)
 
 # ============= Finalize CLASS ============= 
 class EpiDataFinalizer:
@@ -924,7 +1023,7 @@ class EpiDataFinalizer:
 
     def orchestrate(self, normalized_data: NormalizedEpiData) -> 'FinalizedEpiData':
         time_start = time.time()
-        dfc         = normalized_data.data
+        dfc         = normalized_data.epidata
         base_lead   = self.config.horizon_leadtime
         dfc         = dfc.rename(columns={'target': f'target_lead{base_lead}'})
 
