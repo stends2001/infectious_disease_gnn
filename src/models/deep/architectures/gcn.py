@@ -105,15 +105,13 @@ class SimpleGCNModule(nn.Module):
 
         return output, debugging_report
 
-
-
 class SimpleGCNModel(DeepModel):
     """
     Simple spatial GCN model without temporal components.
     """
     def __init__(self, 
                  dataloadermanager: GraphDataLoaderManager, 
-                 name: Optional[str] = None,
+                 name:              Optional[str] = None,
                  verbose:           Literal[-1, 0, 1, 2] = -1):
         
         if not name:
@@ -122,10 +120,10 @@ class SimpleGCNModel(DeepModel):
         super().__init__(dataloadermanager, name=name, deepfamily='gnn' , verbose=verbose, strategy=StandardGNNStrategy())                 
 
     def set_model_hparams(self, 
-                          hidden_size: int = 64, 
-                          num_layers: int = 2,
-                          emb_size: int = 32,
-                          dropout: float = 0.2):
+                          hidden_size:  int = 64, 
+                          num_layers:   int = 2,
+                          emb_size:     int = 4,
+                          dropout:      float = 0.2):
         self.model_hparams_set = True
 
         _num_features   = len(self.column_registration.get_by_type('feature'))

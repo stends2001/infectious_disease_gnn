@@ -10,5 +10,6 @@ MODELSREGISTRY = {
         'NodeLSTMModel'         : 8,
         'LSTMModel'             : 8,
         'NodeBiLSTMModel'       : 9,
-        'NodeGRUModel'          : 10
+        'NodeGRUModel'          : 10,
+        'GCNLSTMModel'          : 10
     }    

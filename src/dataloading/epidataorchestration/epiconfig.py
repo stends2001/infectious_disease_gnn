@@ -40,6 +40,7 @@ class EpiConfig:
     horizon_leadtime:       int = 1
     sequence_length:        int = 1
     lag_num:                int = 1
+    num_quantiles:          int = 1
     prediction_mode:        Literal['regression','classification'] = 'regression'
     predict_difference:     bool = False
     
@@ -52,6 +53,7 @@ class EpiConfig:
     feature_population_size:bool = False      
     feature_popdens:        bool = False
     feature_gisd:           bool = False
+    feature_popage:         bool = False
     
     # ============= NORMALIZATION =============
     normalization_method:   Literal['minmax', 'zscore', 'none'] = 'zscore'
@@ -109,6 +111,12 @@ class EpiConfig:
         if self.target_column == 'incidence' and self.prediction_mode == 'classification':
             raise EpiConfigError(f'Invalid combination of target as incidence and prediction mode as classification. Please adjust')
         
+        if self.num_quantiles < 1:
+            raise EpiConfigError(f'Number of predicted quantiles must be at least 1')
+        
+        if self.num_quantiles != 1 and self.prediction_mode != 'regression':
+            raise EpiConfigError(f'when prediction task is not regression, num_quantiles will not be taken into account. Please adjust num_quantiles back to 1')
+        
         # time indices
         if self.time_index_d and self.disease != 'covid_daily':
             raise EpiConfigError(f'time_index_d is only relevant to disease covid_daily. Please adjust')
@@ -139,6 +147,14 @@ class EpiConfig:
             if self.split_berlin:
                 raise EpiConfigError('currently GISD data only exists for Berlin as entirety, not split. Please adjust.')        
 
+        if self.feature_popage:
+            if self.nuts_level != 'nuts3':
+                raise EpiConfigError('population age only available when nuts is nuts3')
+            
+        if self.feature_population_size:
+            if not self.feature_popage:
+                raise EpiConfigError('currently only popsize supported if popage is included as well')
+
     # ============= COMPUTED PROPERTIES =============
     @property
     def split_columns(self) -> list[str]:
@@ -167,6 +183,10 @@ class EpiConfig:
     def get_gisd_path(self) -> Path:
         """Path to gisd CSV file."""
         return self.data_path / f'processed/germany/sociodemography/gisd_{self.nuts_level}.csv'        
+
+    def get_population_age_path(self) -> Path:
+        """Path to population age CSV file."""
+        return self.data_path / f'processed/germany/sociodemography/population_age_{self.nuts_level}.csv'        
 
     def get_population_berlin_districts_path(self) -> Path:
         """Path to berlin - districts population (2024) CSV file."""

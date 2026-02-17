@@ -20,6 +20,7 @@ class RawEpiData:
 
     population_density: Optional[pd.DataFrame] = None
     gisd:               Optional[pd.DataFrame] = None
+    population_age:     Optional[pd.DataFrame] = None
     
     def __repr__(self):
         representation = (f"<{self.__class__.__name__}(disease {checkmark}, "
@@ -35,6 +36,9 @@ class RawEpiData:
 
         if self.gisd is not None:
             representation += f", gisd {checkmark}"
+
+        if self.population_age is not None:
+            representation += f", population_age {checkmark}"
 
         return representation +")>"
 
@@ -67,6 +71,7 @@ class HarmonizedData:
 
     population_density: Optional[pd.DataFrame] = None
     gisd:               Optional[pd.DataFrame] = None    
+    population_age:     Optional[pd.DataFrame] = None    
 
     def __repr__(self):
         representation = f"<{self.__class__.__name__}(epidata {checkmark}"
@@ -75,7 +80,10 @@ class HarmonizedData:
             representation += f", population_density {checkmark}, "
 
         if self.gisd is not None:
-            representation += f", gisd {checkmark}"            
+            representation += f", gisd {checkmark}"      
+
+        if self.population_age is not None:
+            representation += f", population_age {checkmark}"                  
                           
         representation += ")>"
         return representation
@@ -85,7 +93,8 @@ class ProcessedEpiData:
     epidata:     pd.DataFrame
 
     population_density: Optional[pd.DataFrame] = None
-    gisd:               Optional[pd.DataFrame] = None        
+    gisd:               Optional[pd.DataFrame] = None      
+    population_age:     Optional[pd.DataFrame] = None      
     
     def __repr__(self):
         representation = (f"<{self.__class__.__name__}(epidata {checkmark}")
@@ -95,6 +104,9 @@ class ProcessedEpiData:
 
         if self.gisd is not None:
             representation += f", gisd {checkmark}"      
+
+        if self.population_age is not None:
+            representation += f", population_age {checkmark}"            
 
         representation += ")>"
         return representation

@@ -152,6 +152,33 @@ class EpiDataReader:
         
         return df
 
+    def _load_population_age(self) -> pd.DataFrame:
+        """
+        loads population density data for the specified nuts level
+
+        df looks like:
+        _____________________________________________________________________________________________
+        | '{nuts_level}_key' | 'year' | 'age_group0' | ... | 'age_group16' | 'population_size' |
+
+        where '{nuts_level}' is self.nuts_level in epiconfig.
+        """          
+        filepath = self.config.get_population_age_path()
+        
+        df = pd.read_csv(
+            filepath,
+            dtype={f'{self.config.nuts_level}': str},
+            parse_dates=['timestamp']
+            )
+        
+        df = df.rename(columns = {self.config.nuts_level : f'{self.config.nuts_level}_key'})
+        df['year'] = df['timestamp'].dt.year
+        df.drop(columns = 'timestamp', inplace = True)
+
+        if self.config.verbose > 1:
+            print(f"{checkmark} Loaded population density")
+        
+        return df        
+
     def _load_gisd(self) -> pd.DataFrame:
         """
         loads population density data for the specified nuts level
@@ -182,9 +209,11 @@ class EpiDataReader:
             population          = self._load_population_data(),
             shapedata           = self._load_nuts_shapedata(),
             nuts_harm           = self._load_nuts_harm(),
-            population_berlin   = self._load_population_data_berlin_districts() if self.config.split_berlin else None,   
-            population_density  = self._load_population_density() if self.config.feature_popdens else None,
-            gisd                = self._load_gisd() if self.config.feature_gisd else None
+
+            population_berlin   = self._load_population_data_berlin_districts() if self.config.split_berlin     else None,   
+            population_density  = self._load_population_density()               if self.config.feature_popdens  else None,
+            gisd                = self._load_gisd()                             if self.config.feature_gisd     else None,
+            population_age      = self._load_population_age()                   if self.config.feature_popage   else None
         )
 
         time_end = time.time()
@@ -421,6 +450,13 @@ class Harmonizer:
         else:
             gisd_data = None
 
+        if self.config.feature_popage:
+            if rawdata.population_age is None: 
+                raise DataOrchestrationError('no population age found in rawdata')
+            population_age = self._apply_tokenization(rawdata.population_age, tokenization_map['nuts_node-idx'],f'{self.config.nuts_level}_key', self.config.id_column)            
+        else:
+            population_age = None            
+
         if isinstance(shapedata, pd.DataFrame):
             shapedata = gpd.GeoDataFrame(shapedata)
 
@@ -431,7 +467,8 @@ class Harmonizer:
             epidata             = epipopdata,
 
             population_density  = population_density_data,
-            gisd                = gisd_data
+            gisd                = gisd_data,
+            population_age      = population_age
         )
         
         ctxdata = ContextData(
@@ -521,14 +558,22 @@ class EpiDataProcessor:
 
         if self.config.feature_gisd:
             if harmonizeddata.gisd is None: 
-                raise DataOrchestrationError('no population density found in rawdata')
+                raise DataOrchestrationError('no gisd found in rawdata')
             gisd_data = self._filter_years(harmonizeddata.gisd)
         else:
             gisd_data = None            
 
+        if self.config.feature_popage:
+            if harmonizeddata.population_age is None: 
+                raise DataOrchestrationError('no population age found in rawdata')
+            population_age = self._filter_years(harmonizeddata.population_age)
+        else:
+            population_age = None                 
+
         processed_data = ProcessedEpiData(epidata           = epipopdata,
                                           population_density= population_density_data,
-                                          gisd              = gisd_data
+                                          gisd              = gisd_data,
+                                          population_age    = population_age
                                           )
         time_end = time.time()
         if self.config.verbose > 2:
@@ -673,12 +718,13 @@ class EpiFeatureBuilder:
         feature_data = processed_data.epidata.copy()
 
         # Feature: population_size
-        if self.config.feature_population_size:
-            raise DataOrchestrationError('currently only support the exclusion of population_size')
-        else:
-            feature_data = feature_data.drop(columns=['population_size'], errors='ignore')
-            if self.config.verbose > 1:
-                print(f'{checkmark} population size removed')
+        # if self.config.feature_population_size:
+        #     # raise DataOrchestrationError('currently only support the exclusion of population_size')
+        #     pass
+        # else:
+        feature_data = feature_data.drop(columns=['population_size'], errors='ignore')
+        if self.config.verbose > 1:
+            print(f'{checkmark} population size removed')
 
         if self.config.feature_popdens:
             self.column_registration.add_column(
@@ -699,7 +745,32 @@ class EpiFeatureBuilder:
             )               
             if processed_data.gisd is None:
                 raise DataOrchestrationError('no population density found in processor')
-            feature_data = pd.merge(feature_data, processed_data.gisd, on = [self.config.id_column, 'year'])            
+            feature_data = pd.merge(feature_data, processed_data.gisd, on = [self.config.id_column, 'year'])           
+
+        if self.config.feature_popage:
+            processed_feature_popage = processed_data.population_age
+
+            if processed_feature_popage is None:
+                raise DataOrchestrationError('no population age found in processor')
+
+            for cc in processed_feature_popage.columns:
+                if cc not in ['year',self.config.id_column,'population_size']:
+                    self.column_registration.add_column(
+                        cc,
+                        'feature',
+                        needs_normalization=False
+                    )         
+                elif cc == 'population_size':
+                    if self.config.feature_population_size:
+                        self.column_registration.add_column(
+                            cc,
+                            'feature',
+                            needs_normalization=True
+                        )  
+                    else:
+                        processed_feature_popage.drop(columns = ['population_size'], inplace = True)
+                                          
+            feature_data = pd.merge(feature_data, processed_feature_popage, on = [self.config.id_column, 'year'])               
 
         # Delta transform: must happen before lags and target shift,
         # so that lag features and the forecast target are all in delta-space

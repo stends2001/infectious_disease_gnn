@@ -40,7 +40,7 @@ class RegressionMetrics:
         self.pred_col       = pred_col
         self.id_col         = id_col
         self.temporal_col   = temporal_col
-        self.supported_metrics = ['mse','rmse','pearson_corr','spearman_corr','ccc','node_smape','mae','r2']
+        self.supported_metrics = ['mse','rmse','pearson','spearman','ccc','smape','mape','mae','r2']
 
     # =============== Node-level metrics =============== #
     def mse(self, df: pd.DataFrame) -> float:
@@ -62,7 +62,7 @@ class RegressionMetrics:
         """Root mean squared error."""
         return np.sqrt(self.mse(df))
 
-    def pearson_corr(self, df: pd.DataFrame) -> Union[float, NAType]:
+    def pearson(self, df: pd.DataFrame) -> Union[float, NAType]:
             """Pearson correlation, with check for zero variance"""
             
             # Check variance of both columns
@@ -74,7 +74,7 @@ class RegressionMetrics:
             
             return float(corr)  # type: ignore
 
-    def spearman_corr(self, df: pd.DataFrame) -> Union[float, NAType]:
+    def spearman(self, df: pd.DataFrame) -> Union[float, NAType]:
         """Spearman correlation, with check for zero variance"""
         
         # Check variance of both columns
@@ -107,7 +107,7 @@ class RegressionMetrics:
         else:
             return cast(float, numerator / denominator)
 
-    def node_smape(self, df, epsilon=1e-6):
+    def smape(self, df, epsilon=1e-6):
         # Mask rows where both true and predicted values are zero
         true_col = self.target_col
         pred_col  = self.pred_col
@@ -130,6 +130,26 @@ class RegressionMetrics:
         # Calculate SMAPE as a percentage
         smape = (numerator / denominator).mean() * 100
         return smape
+    
+    def mape(self, df, epsilon=1e-6):
+        true_col = self.target_col
+        pred_col = self.pred_col
+
+        # Mask rows where true value is zero (MAPE undefined there)
+        non_zero_mask = df[true_col] != 0
+        df_filtered = df[non_zero_mask]
+
+        # Replace 0's in true values with epsilon (extra safety)
+        true_values = df_filtered[true_col].replace(0, epsilon)
+        pred_values = df_filtered[pred_col]
+
+        # Compute absolute percentage error
+        numerator = abs(true_values - pred_values)
+        denominator = np.maximum(abs(true_values), epsilon)
+
+        mape = (numerator / denominator).mean() * 100
+        return mape
+
 
 class ClassificationMetrics:
     """

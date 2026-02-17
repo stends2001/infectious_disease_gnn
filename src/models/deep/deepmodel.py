@@ -73,10 +73,10 @@ class DeepModel(BaseModel, ABC):
         # if strategy suggests vanilla deepmodel:
         if self.deepfamily == 'vanilla':
             if self.dataloadermanager.__class__.__name__ != 'DeepDataLoaderManager':
-                raise ConflictingDataLoaderManager(self.name, 'deep-vanilla', self.dataloadermanager.__class__.__name__)
+                raise ConflictingDataLoaderManager(self, 'deep-vanilla', self.dataloadermanager.__class__.__name__)
         elif self.deepfamily == 'gnn':
             if self.dataloadermanager.__class__.__name__ != 'GraphDataLoaderManager':
-                raise ConflictingDataLoaderManager(self.name, 'deep-graph', self.dataloadermanager.__class__.__name__)    
+                raise ConflictingDataLoaderManager(self, 'deep-graph', self.dataloadermanager.__class__.__name__)    
         else:
             raise ValueError(f'Invalid input for attribute deepfamily found. Should be "vanilla" or "gnn" but received: {self.deepfamily}')        
 
