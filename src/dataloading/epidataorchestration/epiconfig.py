@@ -1,16 +1,13 @@
-from dataclasses import dataclass, field
-from src.utils.helpers import get_data_env
-from typing import Literal, Optional, Tuple, List
+from dataclasses import dataclass
+from typing import Literal, Optional, Dict, List
 from pathlib import Path
 import pandas as pd
 
-from ...utils.textformatting import warning_emoji
-from ...utils.exceptions import WissdatenMountingError
+from ...utils.helpers import get_data_env
+from ...utils.textformatting import align, return_header_line
+from ...issues.exceptions import WissdatenMountingError
+from .issues import EpiConfigWarning, EpiConfigError, CurrentEpiConfigError
 
-class EpiConfigError(Exception):
-    def __init__(self, explanation: str):
-        statement = "Epiconfig couldn't be loaded" + "\n" + explanation
-        super().__init__(statement)
 
 @dataclass
 class EpiConfig:
@@ -21,15 +18,15 @@ class EpiConfig:
     for proper dealing with timestamps, please refer to TemporalSummary   
     """
 
-    # ============= REQUIRED =============
+    # ============= MAIN =============
     disease:                str
     
     # ============= TEMPORAL =============
+    temporal_frequency:     Literal['m','w','d']= 'w'
     min_date:               str = '2011-01-01'
     max_date:               str = '2020-06-01'
     split_trainval:         str = '2018-06-01'
     split_valtest:          str = '2019-06-01'
-    temporal_frequency:     Literal['m','w','d']= 'w'
     
     # ============= GEOGRAPHY =============
     nuts_level:             Literal['nuts1', 'nuts2', 'nuts3'] = 'nuts3'
@@ -38,8 +35,6 @@ class EpiConfig:
     # ============= TASK CONFIG =============
     horizon_size:           int = 1
     horizon_leadtime:       int = 1
-    sequence_length:        int = 1
-    lag_num:                int = 1
     num_quantiles:          int = 1
     prediction_mode:        Literal['regression','classification'] = 'regression'
     predict_difference:     bool = False
@@ -49,8 +44,11 @@ class EpiConfig:
     time_index_w:           bool = True
     time_index_m:           bool = False
     lag_column:             str  = 'incidence'
+    lag_num:                int  = 1
+    sequence_length:        int  = 1
+    incidence_scalar:       int  = 10_000    
 
-    feature_population_size:bool = False      
+    feature_popsize:        bool = False      
     feature_popdens:        bool = False
     feature_gisd:           bool = False
     feature_popage:         bool = False
@@ -67,29 +65,20 @@ class EpiConfig:
     pred_column:            str = 'pred'
     
     # ============= OTHER =============
-    incidence_scalar:       int = 10_000    
     verbose:                Literal[0,1,2] = 0
 
+    # validate input
     def __post_init__(self):
 
         # Validate input
-        self._validate_horizon_inputs()
+        self._validate_input()
         self._validate_datapaths()
         self._validate_current_limitations()
+        self._validate_warnings()
+        self._classify_attributes()
 
     # ============= VALIDATION FUNCTIONS ==============
-    def _validate_horizon_inputs(self):
-        # Validate horizon config
-        if self.horizon_size < 1:
-            raise EpiConfigError(f"horizon_size must be >= 1, got {self.horizon_size}")
-        if self.horizon_leadtime < 1:
-            raise EpiConfigError(f"horizon_leadtime must be >= 1, got {self.horizon_leadtime}")
-        if self.sequence_length < 1:
-            raise EpiConfigError(f"sequence_length must be >= 1, got {self.sequence_length}")
-        if self.lag_num < 1:
-            raise EpiConfigError(f"number of lags must be >= 1, got {self.lag_num}")  
-        
-    def _validate_datapaths(self):
+    def _validate_datapaths(self) -> None:
 
         if not Path(get_data_env()).exists():
             raise WissdatenMountingError(get_data_env())
@@ -106,56 +95,110 @@ class EpiConfig:
             if not path.exists():
                 raise FileNotFoundError(f"{name} not found: {path}")
             
-    def _validate_current_limitations(self):
+    def _validate_input(self) -> None:
+        """
+        Validates discrepancies in the initialization of an EpiConfig instance. These represent
+        actual issues or errors, so an EpiConfigError is thrown suggesting to adjust the input.
+        """
+        # horizon stuff 
+        if self.horizon_size < 1:
+            raise EpiConfigError(f"horizon_size must be >= 1, got {self.horizon_size}")
+        if self.horizon_leadtime < 1:
+            raise EpiConfigError(f"horizon_leadtime must be >= 1, got {self.horizon_leadtime}")
+        if self.sequence_length < 1:
+            raise EpiConfigError(f"sequence_length must be >= 1, got {self.sequence_length}")
+        if self.lag_num < 1:
+            raise EpiConfigError(f"number of lags must be >= 1, got {self.lag_num}")  
+
         # validate task
         if self.target_column == 'incidence' and self.prediction_mode == 'classification':
-            raise EpiConfigError(f'Invalid combination of target as incidence and prediction mode as classification. Please adjust')
-        
+            raise EpiConfigError(f'Invalid combination of target == "incidence" prediction_mode as "classification". Please adjust')
+
         if self.num_quantiles < 1:
-            raise EpiConfigError(f'Number of predicted quantiles must be at least 1')
-        
-        if self.num_quantiles != 1 and self.prediction_mode != 'regression':
-            raise EpiConfigError(f'when prediction task is not regression, num_quantiles will not be taken into account. Please adjust num_quantiles back to 1')
+            raise EpiConfigError(f'Number of predicted quantiles must be at least 1. Got {self.num_quantiles}')
         
         # time indices
         if self.time_index_d and self.disease != 'covid_daily':
             raise EpiConfigError(f'time_index_d is only relevant to disease covid_daily. Please adjust')
 
+    def _validate_current_limitations(self) -> None:
+        """
+        Validates any issues in the initialization of an EpiConfig instance. 
+        These represent CURRENT limitations, which are also things for me to develop further.
+        An CurrentEpiConfigError is thrown suggesting to adjust the input.
+        """
         # temporal frequency
         if self.temporal_frequency not in ['m','w','d']:
-            print(f'{warning_emoji} Currently temporal frequency limited to ["m","w","d"]: {self.temporal_frequency} is invalid and will be reset to "w"')
-            self.temporal_frequency = "w" 
+            raise CurrentEpiConfigError(f'invalid valid for temporal_frequency (currently). Value must be in ["m","w","d"]')
 
+        # predicting deltas
         if self.predict_difference and self.horizon_leadtime > 1:
-            raise EpiConfigError(
-                f"predict_difference=True is only supported with horizon_leadtime=1. "
+            raise CurrentEpiConfigError(
+                f"predict_difference=True is only supported with horizon_leadtime=1 (currently) "
                 f"Got horizon_leadtime={self.horizon_leadtime}. "
                 f"For multi-step forecasting with deltas, set horizon_leadtime=1 and use horizon_size > 1 instead."
             )            
 
         # features
+        # population density
         if self.feature_popdens:
             if self.nuts_level != 'nuts3':
-                raise EpiConfigError('currently population-density-feature data only exists for nuts3. Please remove this feature, or switch to nuts3.')
+                raise CurrentEpiConfigError('Currently population-density-feature data only exists for nuts3. Please remove this feature, or switch to nuts3.')
             
             if self.split_berlin:
-                raise EpiConfigError('currently population-density-feature data only exists for Berlin as entirety, not split. Please adjust.')
-
+                raise CurrentEpiConfigError('Currently population-density-feature data only exists for Berlin as entirety, not split. Please adjust.')
+        # gisd
         if self.feature_gisd:
             if self.nuts_level not in ['nuts2','nuts3']:
-                raise EpiConfigError('GISD data only available for nuts2 or nuts3. Please adjust')
+                raise CurrentEpiConfigError('GISD data only available for nuts2 or nuts3. Please adjust')
             if self.split_berlin:
-                raise EpiConfigError('currently GISD data only exists for Berlin as entirety, not split. Please adjust.')        
-
+                raise CurrentEpiConfigError('Crrently GISD data only exists for Berlin as entirety, not split. Please adjust.')        
+            if pd.to_datetime(self.max_date) > pd.to_datetime('2021-12-31'):
+                raise CurrentEpiConfigError('Currently GISD data only available until 2021 while simulation max date exceeds that. Either remove the gisd data as feature, or decrease the timespawn.')                      
+        # population age
         if self.feature_popage:
             if self.nuts_level != 'nuts3':
-                raise EpiConfigError('population age only available when nuts is nuts3')
+                raise CurrentEpiConfigError('population age only available when nuts is nuts3')
             
-        if self.feature_population_size:
+        if self.feature_popsize:
             if not self.feature_popage:
-                raise EpiConfigError('currently only popsize supported if popage is included as well')
+                raise CurrentEpiConfigError('Currently only popsize supported if popage is included as well')
 
-    # ============= COMPUTED PROPERTIES =============
+    def _validate_warnings(self) -> None:
+        """
+        Validates some combinations of inputs that are likely not meant as such, and shouldn't disrupt the pipeline any further. 
+        A EpiConfigWarning is thrown
+        """
+        if self.prediction_mode != 'regression' and self.incidence_scalar != 10_000:
+            EpiConfigWarning('incidence_scalar will not be taken into account when using prediction_mode != "regression"')
+
+        if self.num_quantiles != 1 and self.prediction_mode != 'regression':
+            EpiConfigWarning('num_quantiles will not be taken into account when using prediction_mode != "regression"')                
+            
+    # ============= ATTRIBUTE ORGANIZATION ==============
+    def _classify_attributes(self) -> None:
+        """creates dictionaries of attributes and classifies those. Used for back-end and for interaction with repr/str dunders"""
+
+        self.attributes_dict = vars(self)
+
+        self.attributes_classified_dict = {
+            'main'          :   ['disease'],
+            'temporal'      :   ['temporal_frequency','min_date','max_date','split_trainval','split_valtest'],
+            'geography'     :   ['nuts_level','split_berlin'],
+            'task config'   :   ['horizon_size','horizon_leadtime','num_quantiles','prediction_mode','predict_difference'],
+            'features'      :   ['time_index_d','time_index_w','time_index_m','lag_column','lag_num','sequence_length','incidence_scalar', 'feature_popsize','feature_popdens','feature_gisd','feature_popage'],
+            'normalization' :   ['normalization_method','log_transform','log_shift'],    
+            'column names'  :   ['temporal_column','target_column','id_column','pred_column'],
+            'others'        :   ['verbose'],
+            'none'          :   ['attributes_dict', 'attributes_classified_dict']
+        }
+
+        for attribute in self.attributes_dict:
+            classified = any(attribute in value_list for value_list in self.attributes_classified_dict.values())
+            if not classified:
+                raise EpiConfigError(f'Attribute {attribute} not classified.\nLikely stems from an update in EpiConfig class, without incorporating it into the classification dict in _classify_attributes()')
+
+    # ============= PROPERTIES =============
     @property
     def split_columns(self) -> list[str]:
         """Names of split indicator columns."""
@@ -163,17 +206,16 @@ class EpiConfig:
     
     @property
     def data_path(self) -> Path:
-        """Path object for data directory."""
+        """Path object for data directory. This is the path to the data folder in my personal Wissdaten"""
         return Path(get_data_env())
     
-    # ============== Paths returning ===================
-
+    # ============== PATH-RETURNING ===================
     def get_disease_path(self) -> Path:
         """Path to disease CSV file."""
         return self.data_path / 'processed/germany/epidemiology/casedata/survstat' / f'{self.disease}.csv'
     
     def get_population_path(self) -> Path:
-        """Path to population CSV file."""
+        """Path to population size of nuts3 CSV file."""
         return self.data_path / 'processed/germany/sociodemography/population_size_03.csv'
     
     def get_population_density_path(self) -> Path:
@@ -193,27 +235,61 @@ class EpiConfig:
         return self.data_path / 'processed/germany/sociodemography/population_size_berlin_districts_03.csv'    
     
     def get_nuts_shapefile_path(self) -> Path:
-        """Path to shapefile."""
+        """Path to shapefile of specified nuts-level. Is to be tokenized."""
         return self.data_path / f'processed/germany/geospatial/shapefiles/shape_{self.nuts_level}.shp'
     
     def get_nuts_harmonization_path(self) -> Path:
         """Path to NUTS names file."""
         return self.data_path / 'processed/germany/geospatial/harmonization/nuts.tsv'
     
-    # ============= SUMMARY METHODS =============
+    def get_shapefile_paths(self) -> Dict[str,Path]:
+        """Path to all shapefiles of Germany -> to not be tokenized."""
+
+        return_dict = {
+            'nuts0':    self.data_path / f'processed/germany/geospatial/shapefiles/shape_nuts0.shp'  ,
+            'nuts1':    self.data_path / f'processed/germany/geospatial/shapefiles/shape_nuts1.shp'  ,
+            'nuts2':    self.data_path / f'processed/germany/geospatial/shapefiles/shape_nuts2.shp'  ,
+            'nuts3':    self.data_path / f'processed/germany/geospatial/shapefiles/shape_nuts3.shp'  ,
+        }
+
+        return return_dict  
     
-    def summary(self) -> str:
-        """Return formatted summary of configuration."""
-        return f"""
-"""
+    # ============= SUMMARIES =============
+    
+    def minimal_summary(self) -> str: 
+        """small - scale summary: selection of attributes displayed"""
+        summary =(
+            f"<{self.__class__.__name__}(disease={self.disease}, "
+                f"nuts_level={self.nuts_level}, "
+                f"min_date={self.min_date}, "
+                f"max_date={self.max_date}, "                
+                f"horizon_size={self.horizon_size}, "
+                f"sequence_length={self.sequence_length})"  
+        )      
+        return summary
+
+    def summary(self) -> str: 
+        """extensive - summary: all attributes are displayed"""
+        all_keys        = list(self.attributes_dict.keys())
+        width           = max(len(k) for k in all_keys)
+        indent          = 4
+        
+        lines = [f"<{self.__class__.__name__}"]     
+
+        for attr_class, attr_list in self.attributes_classified_dict.items():
+            if attr_class != 'none':
+                lines.append(return_header_line(attr_class, n_indent_chars=12, indent = indent))
+                for attr_name, attr_value in self.attributes_dict.items():
+                    if attr_name in attr_list:
+                        lines.append(align(attr_name, attr_value, width, indent = indent))
+                lines.append("")
+
+        lines.append(")>")
+        summary = '\n'.join(lines)
+        return summary
+    
+    def __repr__(self) -> str:
+        return self.minimal_summary()
     
     def __str__(self) -> str:
         return self.summary()
-    
-    def __repr__(self) -> str:
-        return (f"EpiConfig(disease={self.disease!r}, "
-                f"nuts_level={self.nuts_level!r}, "
-                f"min_date={self.min_date!r}, "
-                f"max_date={self.max_date!r}, "                
-                f"horizon_size={self.horizon_size}, "
-                f"sequence_length={self.sequence_length})")

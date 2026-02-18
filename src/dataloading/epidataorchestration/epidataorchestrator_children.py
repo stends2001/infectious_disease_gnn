@@ -93,7 +93,7 @@ class EpiDataReader:
         
         return df        
 
-    def _load_nuts_shapedata(self) -> gpd.GeoDataFrame:
+    def _load_node_shapedata(self) -> gpd.GeoDataFrame:
         """
         loads shapedata for the specified nuts level
 
@@ -112,6 +112,14 @@ class EpiDataReader:
         
         return gdf
     
+    def _load_shapedata_collection(self) -> Dict[str, gpd.GeoDataFrame]:
+
+        filepaths = self.config.get_shapefile_paths()
+
+        shapefiles= {key:  gpd.read_file(filepaths[key]).drop(columns=['level'], errors='ignore') for key in list(filepaths.keys())}
+
+        return shapefiles
+        
     def _load_nuts_harm(self) -> pd.DataFrame:
         """
         loads harmonization data for nuts divisions in Germany
@@ -207,7 +215,8 @@ class EpiDataReader:
         rawdata = RawEpiData(
             disease             = self._load_disease_data(),
             population          = self._load_population_data(),
-            shapedata           = self._load_nuts_shapedata(),
+            shapedata_node      = self._load_node_shapedata(),
+            shapedata_collection= self._load_shapedata_collection(),
             nuts_harm           = self._load_nuts_harm(),
 
             population_berlin   = self._load_population_data_berlin_districts() if self.config.split_berlin     else None,   
@@ -432,7 +441,7 @@ class Harmonizer:
         }
 
         epipopdata = self._apply_tokenization(epipopdata, tokenization_map['nuts_node-idx'],f'{self.config.nuts_level}_key',        self.config.id_column)
-        shapedata  = self._apply_tokenization(rawdata.shapedata, tokenization_map['nuts_node-idx'],f'{self.config.nuts_level}_key', self.config.id_column)
+        shapedata  = self._apply_tokenization(rawdata.shapedata_node, tokenization_map['nuts_node-idx'],f'{self.config.nuts_level}_key', self.config.id_column)
         nutsnames  = self._apply_tokenization(nutsnames, tokenization_map['nuts_node-idx'],f'{self.config.nuts_level}_key',         self.config.id_column)
 
         # extra features
@@ -473,7 +482,11 @@ class Harmonizer:
         
         ctxdata = ContextData(
             nuts_level          = self.config.nuts_level,
-            shapedata           = shapedata,
+            shapedata_node      = shapedata,
+            shapedata_nuts0     = rawdata.shapedata_collection['nuts0'],
+            shapedata_nuts1     = rawdata.shapedata_collection['nuts1'],
+            shapedata_nuts2     = rawdata.shapedata_collection['nuts2'],
+            shapedata_nuts3     = rawdata.shapedata_collection['nuts3'],
             nuts_harm           = nutsnames,
             tokenization_map    = tokenization_map,
             temporal_summary    = temporal_summary            

@@ -95,6 +95,11 @@ class ColumnRegistration:
         """Get target column names"""
         return self.get_by_type('target')
     
+    @property 
+    def pred_columns(self) -> List[str]:
+        """Get pred column names"""
+        return self.get_by_type('pred')        
+
     @property
     def feature_columns(self) -> List[str]:
         """Get feature column names"""
@@ -149,23 +154,9 @@ class ColumnRegistration:
     
     def __repr__(self):
         type_counts = {
-            'context': len(self.context_columns),
-            'target': len(self.target_columns),
-            'feature': len(self.feature_columns),
-            'split': len(self.split_columns)
+            'context'   : len(self.context_columns),
+            'target'    : len(self.target_columns),
+            'feature'   : len(self.feature_columns),
+            'split'     : len(self.split_columns)
         }
         return f"<ColumnRegistration(context={type_counts['context']}, target={type_counts['target']}, feature={type_counts['feature']}, split={type_counts['split']})>"
-    
-    def summary(self) -> str:
-        """Get a detailed summary of all columns"""
-        lines = ["Column Registration Summary:", "=" * 50]
-        for col_type in ['context', 'target', 'feature', 'split']:
-            entries = self.get_entries_by_type(col_type)
-            if entries:
-                lines.append(f"\n{col_type.upper()} ({len(entries)}):")
-                for entry in entries:
-                    lines.append(f"  - {entry.column_name}")
-                    if hasattr(entry, 'transformation_group'):
-                        norm_ref = entry.transformation_group or "independent"
-                        lines.append(f"    └─ normalization: {norm_ref}")
-        return "\n".join(lines)

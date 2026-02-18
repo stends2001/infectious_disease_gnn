@@ -43,6 +43,9 @@ def align(key: str, value: Any, width: int, indent: int = 4, newline: bool = Fal
 
     return line
 
+def return_header_line(header: str, indent_char: str = "=", n_indent_chars: int = 8, n_space: int = 3, indent: int = 0):
+    line = " "*indent + indent_char*n_indent_chars + " " *n_space + header.upper() + " "*n_space + indent_char*n_indent_chars
+    return line
 
 def section(title: str, 
             items: Union[Dict[str, Any], List[Tuple[str, Any]]], 
