@@ -1,16 +1,14 @@
-from dataclasses import dataclass 
 from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
 from typing import Dict, List, Literal
 import pandas as pd
 
-class TemporalError(Exception):
-    def __init__(self, message: str):
-        super().__init__(f'Invalid EpiDataTemporalSummary: {message}')
+from .issues import TemporalError
+
+# ==== helper functions ===== #
 
 def convert_to_next_monday(date: datetime, day_int = 0) -> datetime:
     """returns datetime object thats just shifted to the next version of day int where 0 means Monday"""
-
     if date.weekday() != day_int:
         days_ahead = (day_int - date.weekday()) % 7
         if days_ahead == 0:  # If we want same day, go to next week
@@ -25,7 +23,10 @@ def convert_to_month_start(date: datetime) -> datetime:
     return datetime(date.year, date.month, 1)
 
 class EpiDataTemporalSummary:
-    
+    """
+    Stores all the temporal information from EpiConfig, and deals with it in terms of splitting logic, extending dates, 
+    and shifting to the future vs past
+    """
     def __init__(self, 
                  temporal_frequency: str,
                  min_date:           str,
@@ -52,18 +53,12 @@ class EpiDataTemporalSummary:
         self.num_lags                = num_lags 
         self.sequence_length         = sequence_length
 
-        # resample: for weeks > mondays
         self._resample()
-
-        # extend time window for dataloading
         self._set_extended_timepoints()
         self._set_backwarded_timestamps()
-
-        # set forward-timestamps
         self._validate_dates_order()
-        self._validate_timepoints()
 
-    def _resample(self):
+    def _resample(self) -> None:
         """Align dates to temporal frequency (Mondays for weekly, 1st for monthly)"""
         if self.temporal_frequency == 'w':
             self.min_date = convert_to_next_monday(self.min_date)
@@ -76,7 +71,8 @@ class EpiDataTemporalSummary:
             self.split_valtest = convert_to_month_start(self.split_valtest)
             self.max_date = convert_to_month_start(self.max_date)
 
-    def _set_extended_timepoints(self):
+    def _set_extended_timepoints(self) -> None:
+        """extends timepoints based on all config input for the data loading / filtering"""
         # lookback periods for lags:
         self.lookback_periods = (self.num_lags - 1 )+ (self.sequence_length - 1) + (self.horizon_leadtime)
         self.forward_periods  = self.horizon_leadtime + (self.horizon_size - 1)
@@ -104,32 +100,7 @@ class EpiDataTemporalSummary:
         if not self.min_date < self.split_trainval < self.split_valtest < self.max_date:
             raise TemporalError('Incorrect order of date-values')
 
-    def _validate_timepoints(self):
-        pass
-
-    def _set_dataset_dates(self):
-        """Calculate date ranges for each split"""
-        # Calculate one-step delta
-        if self.temporal_frequency == 'd':
-            delta = timedelta(days=1)
-        elif self.temporal_frequency == 'w':
-            delta = timedelta(weeks=1)
-        elif self.temporal_frequency == 'm':
-            delta = relativedelta(months=1)
-        else:
-            raise TemporalError(f"Unknown frequency: {self.temporal_frequency}")
-
-        # Calculate max dates (one step before next split)
-        max_train = self.split_trainval - delta
-        max_val = self.split_valtest - delta
-
-        self.dataset_dates = {
-            'train': {'min': self.min_date, 'max': max_train},
-            'val': {'min': self.split_trainval, 'max': max_val},
-            'test': {'min': self.split_valtest, 'max': self.max_date},
-        }
-
-    # Getter methods for integration
+    # ======= GETTER METHODs ====== #
     def get_extended_dates(self) -> Dict[str, pd.Timestamp]:
         """Get extended min/max dates for initial data loading"""
         return {
@@ -170,9 +141,22 @@ class EpiDataTemporalSummary:
                          self._shift(max, steps = self.horizon_leadtime)]
         return daterange
 
-
-
+    def minimal_summary(self) -> str: 
+        """small - scale summary: selection of attributes displayed"""
+        summary =(
+            f"<{self.__class__.__name__}(temporal_frequency={self.temporal_frequency}, "
+                f"min_date={self.min_date.date()}, "             
+                f"max_date={self.max_date.date()}, "
+                f"min_date_extended={self.min_date_extended.date()}, "                   
+                f"max_date_extended={self.max_date_extended.date()}, "                   
+                f"split_trainval={self.split_trainval.date()}, "                
+                f"split_valtest={self.split_valtest.date()}, "
+                f"horizon_size={self.horizon_size}, "  
+                f"horizon_leadtime={self.horizon_leadtime}, "  
+                f"num_lags={self.num_lags}, "  
+                f"sequence_length={self.sequence_length})"                                                  
+        )      
+        return summary
 
     def __repr__(self) -> str: 
-        representation = f"<TemporalSummary()>"
-        return representation
+        return self.minimal_summary()

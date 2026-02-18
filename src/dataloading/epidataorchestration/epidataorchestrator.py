@@ -2,16 +2,15 @@ from .epiconfig import EpiConfig
 from .column_registry import ColumnRegistration
 from .epidataorchestrator_children import EpiDataReader, Harmonizer, EpiDataProcessor, EpiFeatureBuilder, EpiNormalizer, EpiDataFinalizer
 from .epidatacontainers import RawEpiData, HarmonizedData, ContextData, ProcessedEpiData, FeatureEpiData, NormalizedEpiData, FinalizedEpiData
-
+from .issues import DataOrchestrationContainerNotFound
 # ====================================================
 # ============ MAIN LOADER (ORCHESTRATOR) ============
 # ====================================================
-class DataOrchestrationContainerNotFound(Exception):
-    def __init__(self, datastage: str, previous_method: str):
-        super().__init__(f"No {datastage} attribute found for DataOrchestrator. Run {previous_method}() first")
 
 class EpiDataOrchestrator:
-   
+    """
+    Main Orchestrator class: directs work to the children classes that do the heavy lifting
+    """
     def __init__(self, config: 'EpiConfig'):
         self.config         = config
 
@@ -25,7 +24,6 @@ class EpiDataOrchestrator:
             self.config.id_column, 
             'context'
         )   
-
         self.column_registration.add_column(
             'target', 
             'target',
@@ -45,13 +43,13 @@ class EpiDataOrchestrator:
     def load_raw(self) -> 'EpiDataOrchestrator':
         """Load raw data from files"""
         self.reader         = EpiDataReader(self.config)
-        self._data_raw = self.reader.orchestrate()
+        self._data_raw      = self.reader.orchestrate()
         return self
     
     def harmonize_raw(self) -> 'EpiDataOrchestrator':
         """Harmonize data on NUTS-level"""     
-        self.harmonizer     = Harmonizer(self.config)   
-        self._data_harmonized, self._data_context = self.harmonizer.orchestrate(self.data_raw)        
+        self.harmonizer                             = Harmonizer(self.config)   
+        self._data_harmonized, self._data_context   = self.harmonizer.orchestrate(self.data_raw)        
         return self
     
     def process_data(self) -> 'EpiDataOrchestrator':
@@ -66,7 +64,7 @@ class EpiDataOrchestrator:
     def build_features(self) -> 'EpiDataOrchestrator':
         """build features. Note that this method adjusts self.column_registry."""
         self.feature_builder= EpiFeatureBuilder(self.config, self.column_registration, self.data_context.temporal_summary)
-        self._data_feature = self.feature_builder.orchestrate(self.data_processed)
+        self._data_feature  = self.feature_builder.orchestrate(self.data_processed)
         return self        
    
     def normalize(self) -> 'EpiDataOrchestrator':

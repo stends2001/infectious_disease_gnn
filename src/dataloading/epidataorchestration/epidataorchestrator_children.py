@@ -1,35 +1,39 @@
 import pandas as pd
 import geopandas as gpd
-from typing import Tuple, Dict, Union, Literal, TYPE_CHECKING
+from typing import Tuple, Dict, Literal, TYPE_CHECKING
 import numpy as np
-import seaborn as sns
-import matplotlib.pyplot as plt
 import time
 
 from ...utils.constants import berlin_district_ids, berlin_id
 from ...utils.textformatting import warning_emoji, checkmark
 
 from .temporal_summary import EpiDataTemporalSummary
-from .column_registry import ColumnRegistration, ColEntryMissingTransformationReferralError, ColEntryMissingTransformationError
+from .column_registry import ColumnRegistration
 from .epidatacontainers import RawEpiData, HarmonizedData, ContextData, ProcessedEpiData, FeatureEpiData, NormalizedEpiData, FinalizedEpiData
 from .normalization import apply_minmax_scaling, apply_zscore_scaling, pipeline_minmax_normalization, pipeline_zscore_normalization
 from .normalization import reverse_log, reverse_minmax_scaling, reverse_zscore_scaling
+from .issues import DataOrchestrationError, ColEntryMissingTransformationReferralError, ColEntryMissingTransformationError
 
 if TYPE_CHECKING:
     from .epiconfig import EpiConfig
 
-class DataOrchestrationError(Exception):
-    def __init__(self, explanation: str):
-        statement = "Data Orchestration couldn't be run" + "\n" + explanation
-        super().__init__(statement)    
-
 # ============= DATA IMPORTATION CLASS =============
 class EpiDataReader:
     """
+    Class to load all required dataframes
+
+    Parameters:
+    ----------
+    config: EpiConfig
+
+    Utility:
+    -------
+    the orchestrate method runs all required methods, based on EpiConfig and returns an
+    instance of RawEpiData
     """
     
-    def __init__(self, config: 'EpiConfig'):
-        self.config = config
+    def __init__(self, epiconfig: 'EpiConfig'):
+        self.epiconfig = epiconfig
     
     def _load_disease_data(self) -> pd.DataFrame:
         """
@@ -39,7 +43,7 @@ class EpiDataReader:
         __________________________________________________________
         | 'week' | 'nuts3_key' | 'cases' | 'year ' | 'timestamp' |
         """        
-        filepath = self.config.get_disease_path()
+        filepath = self.epiconfig.get_disease_path()
                 
         df = pd.read_csv(
             filepath,
@@ -48,7 +52,7 @@ class EpiDataReader:
                            'cases':     int}
         ).rename(columns={'kz_kreis': 'nuts3_key'})
         
-        if self.config.verbose > 1:
+        if self.epiconfig.verbose > 1:
             print(f"{checkmark} Loaded raw disease data")
         
         return df
@@ -61,14 +65,14 @@ class EpiDataReader:
         _____________________________________________
         | 'nuts3_key' | 'year ' | 'population_size' |
         """         
-        filepath = self.config.get_population_path()
+        filepath = self.epiconfig.get_population_path()
         
         df = pd.read_csv(
             filepath,
             dtype   = {'nuts3': str}
         ).rename(columns = {'nuts3':'nuts3_key'})
         
-        if self.config.verbose > 1:
+        if self.epiconfig.verbose > 1:
             print(f"{checkmark} Loaded raw population data")
         
         return df
@@ -81,14 +85,14 @@ class EpiDataReader:
         ___________________________________
         | 'nuts3_key' | 'population_size' |
         """          
-        filepath = self.config.get_population_berlin_districts_path()
+        filepath = self.epiconfig.get_population_berlin_districts_path()
         
         df = pd.read_csv(
             filepath,
             dtype={'nuts3': str}
             ).rename(columns = {'nuts3':'nuts3_key'})
         
-        if self.config.verbose > 1:
+        if self.epiconfig.verbose > 1:
             print(f"{checkmark} Loaded raw berlin districts population data")
         
         return df        
@@ -103,18 +107,21 @@ class EpiDataReader:
 
         where 'nuts{int}' is variable and depends on the input in epiconfig.
         """          
-        filepath = self.config.get_nuts_shapefile_path()
+        filepath = self.epiconfig.get_nuts_shapefile_path()
         
         gdf = gpd.read_file(filepath).drop(columns=['level'], errors='ignore')
         
-        if self.config.verbose > 1:
+        if self.epiconfig.verbose > 1:
             print(f"{checkmark} Loaded raw shapedata ({len(gdf)} regions)")
         
         return gdf
     
     def _load_shapedata_collection(self) -> Dict[str, gpd.GeoDataFrame]:
-
-        filepaths = self.config.get_shapefile_paths()
+        """
+        Loads all background shapedata: shapedata for all nuts levels, that won't be changed depending on nuts resolution in config
+        Returned in a dictionary with keys ['nuts0' - 'nuts3'] and the gdfs as values
+        """
+        filepaths = self.epiconfig.get_shapefile_paths()
 
         shapefiles= {key:  gpd.read_file(filepaths[key]).drop(columns=['level'], errors='ignore') for key in list(filepaths.keys())}
 
@@ -129,11 +136,11 @@ class EpiDataReader:
         | 'nuts3_key' | 'nuts2_key' | 'nuts1_key' | 'nuts3_name' | 'nuts2_name' | 'nuts1_name' |
         """  
         # main file, additions-file
-        filepath = self.config.get_nuts_harmonization_path()   
+        filepath = self.epiconfig.get_nuts_harmonization_path()   
         
         df = pd.read_csv(filepath, sep='\t', dtype=str)
         
-        if self.config.verbose > 1:
+        if self.epiconfig.verbose > 1:
             print(f"{checkmark} Loaded raw NUTS names")
         
         return df
@@ -148,14 +155,14 @@ class EpiDataReader:
 
         where '{nuts_level}' is self.nuts_level in epiconfig.
         """          
-        filepath = self.config.get_population_density_path()
+        filepath = self.epiconfig.get_population_density_path()
         
         df = pd.read_csv(
             filepath,
-            dtype={f'{self.config.nuts_level}_key': str}
+            dtype={f'{self.epiconfig.nuts_level}_key': str}
             )
         
-        if self.config.verbose > 1:
+        if self.epiconfig.verbose > 1:
             print(f"{checkmark} Loaded population density")
         
         return df
@@ -170,20 +177,21 @@ class EpiDataReader:
 
         where '{nuts_level}' is self.nuts_level in epiconfig.
         """          
-        filepath = self.config.get_population_age_path()
+        filepath = self.epiconfig.get_population_age_path()
         
         df = pd.read_csv(
             filepath,
-            dtype={f'{self.config.nuts_level}': str},
+            dtype={f'{self.epiconfig.nuts_level}': str},
             parse_dates=['timestamp']
             )
         
-        df = df.rename(columns = {self.config.nuts_level : f'{self.config.nuts_level}_key'})
-        df['year'] = df['timestamp'].dt.year
+        df = df.rename(columns = {self.epiconfig.nuts_level : f'{self.epiconfig.nuts_level}_key'})
+        timestamp: pd.Series[pd.Timestamp]  = df['timestamp']    
+        df['year'] = timestamp.dt.year
         df.drop(columns = 'timestamp', inplace = True)
 
-        if self.config.verbose > 1:
-            print(f"{checkmark} Loaded population density")
+        if self.epiconfig.verbose > 1:
+            print(f"{checkmark} Loaded population age")
         
         return df        
 
@@ -197,15 +205,15 @@ class EpiDataReader:
 
         where '{nuts_level}' is self.nuts_level in epiconfig.
         """          
-        filepath = self.config.get_gisd_path()
+        filepath = self.epiconfig.get_gisd_path()
         
         df = pd.read_csv(
             filepath,
-            dtype={f'{self.config.nuts_level}_key': str}
+            dtype={f'{self.epiconfig.nuts_level}_key': str}
             )
                 
-        if self.config.verbose > 1:
-            print(f"{checkmark} Loaded population density")
+        if self.epiconfig.verbose > 1:
+            print(f"{checkmark} Loaded gisd")
         
         return df
 
@@ -219,24 +227,37 @@ class EpiDataReader:
             shapedata_collection= self._load_shapedata_collection(),
             nuts_harm           = self._load_nuts_harm(),
 
-            population_berlin   = self._load_population_data_berlin_districts() if self.config.split_berlin     else None,   
-            population_density  = self._load_population_density()               if self.config.feature_popdens  else None,
-            gisd                = self._load_gisd()                             if self.config.feature_gisd     else None,
-            population_age      = self._load_population_age()                   if self.config.feature_popage   else None
+            # optional data
+            _population_berlin   = self._load_population_data_berlin_districts() if self.epiconfig.split_berlin     else None,   
+            _population_density  = self._load_population_density()               if self.epiconfig.feature_popdens  else None,
+            _gisd                = self._load_gisd()                             if self.epiconfig.feature_gisd     else None,
+            _population_age      = self._load_population_age()                   if self.epiconfig.feature_popage   else None
         )
 
         time_end = time.time()
-        if self.config.verbose > 2:
+        if self.epiconfig.verbose > 2:
             print(f'Execution of EpiDataReader took {round(time_end - time_start,3)}s')
 
-        if self.config.verbose > 1:
+        if self.epiconfig.verbose > 1:
             print("")
         return rawdata
             
 # ============= HARMONIZATION CLASS =============
 class Harmonizer:
-    def __init__(self, config: 'EpiConfig'):
-        self.config = config    
+    """
+    Harmonizes the raw data in space and time
+
+    Parameters:
+    -----------
+    epiconfig: EpiConfig
+
+    Utility:
+    -------
+    the orchestrate method runs all required methods, based on EpiConfig and returns an
+    instance of HarmonizedData and one of ContextData    
+    """
+    def __init__(self, epiconfig: 'EpiConfig'):
+        self.epiconfig = epiconfig    
 
     def _add_berlin_districts(self, population_nuts3: pd.DataFrame, population_berlin_districts: pd.DataFrame) -> pd.DataFrame:
         """
@@ -264,7 +285,7 @@ class Harmonizer:
         result_df = pd.concat(yearly_dfs, ignore_index=True)
         combined  = pd.concat([population_nuts3, result_df], ignore_index=True)
 
-        if self.config.verbose > 1:
+        if self.epiconfig.verbose > 1:
             print(f'{checkmark} berlin districts - population data included')          
         return combined
 
@@ -273,32 +294,32 @@ class Harmonizer:
         When berlin not to be split -> mutate all nuts3 values of the districts into
         berlin ones (11000) for the subsequent aggregation onto nuts3/nuts2/nuts1 levels.
         """
-        epidemiology_df.loc[epidemiology_df['nuts3_key'].isin(berlin_district_ids), 'nuts3_key'] = '11000'
+        epidemiology_df.loc[epidemiology_df['nuts3_key'].isin(berlin_district_ids), 'nuts3_key'] = berlin_id
         
-        if self.config.verbose > 1:
+        if self.epiconfig.verbose > 1:
             print(f'{checkmark} berlin districts renamed into berlin city')  
 
         return epidemiology_df
 
     def _aggregate_by_nuts(self, epidemiology_df: pd.DataFrame, population_df: pd.DataFrame) -> Tuple[pd.DataFrame,pd.DataFrame]:
         """aggregates epidemiology and population data per nuts level"""
-        epi_df_aggr = epidemiology_df.groupby(['timestamp', f'{self.config.nuts_level}_key']).aggregate({'cases':'sum'}).reset_index()     
-        pop_df_aggr = population_df.groupby(['year', f'{self.config.nuts_level}_key']).aggregate({'population_size':'sum'}).reset_index() 
+        epi_df_aggr = epidemiology_df.groupby(['timestamp', f'{self.epiconfig.nuts_level}_key']).aggregate({'cases':'sum'}).reset_index()     
+        pop_df_aggr = population_df.groupby(['year', f'{self.epiconfig.nuts_level}_key']).aggregate({'population_size':'sum'}).reset_index() 
 
-        if self.config.verbose > 1:
+        if self.epiconfig.verbose > 1:
             print(f'{checkmark} epidemiology and population data aggregated on nuts')    
 
         return epi_df_aggr, pop_df_aggr
 
     def _add_nuts_column(self, df: pd.DataFrame) -> pd.DataFrame:
         """adds nuts-level column"""
-        if self.config.nuts_level == "nuts1":
+        if self.epiconfig.nuts_level == "nuts1":
             df['nuts1_key']= df['nuts3_key'].str[:2]     
 
-        elif self.config.nuts_level =='nuts2':
+        elif self.epiconfig.nuts_level =='nuts2':
             df['nuts2_key']= df['nuts3_key'].str[:3]
 
-        if self.config.verbose > 1:
+        if self.epiconfig.verbose > 1:
             print(f'{checkmark} nuts column added')  
         return df
 
@@ -311,10 +332,10 @@ class Harmonizer:
             timestamp: pd.Series[pd.Timestamp]  = epidemiology_df['timestamp']
             epidemiology_df['year']             = timestamp.dt.year      #typing: ignore
 
-        if self.config.verbose > 1:
+        if self.epiconfig.verbose > 1:
             print(f'{checkmark} epidemiological- and population data merged')  
 
-        return pd.merge(epidemiology_df, population_df, on = [f'{self.config.nuts_level}_key','year'])
+        return pd.merge(epidemiology_df, population_df, on = [f'{self.epiconfig.nuts_level}_key','year'])
 
     def _get_nuts_data(self, raw_nuts_names: pd.DataFrame) -> pd.DataFrame:
         """
@@ -322,10 +343,10 @@ class Harmonizer:
         Initially the raw_nuts_names is a df of all nuts3/nuts2/nuts1 levels.
         So if nuts_level is 2 or 1, many entries can be dropped.
         """
-        columns     = [f'{self.config.nuts_level}_key',f'{self.config.nuts_level}_name']
+        columns     = [f'{self.epiconfig.nuts_level}_key',f'{self.epiconfig.nuts_level}_name']
         unique_nuts = raw_nuts_names[columns].drop_duplicates().reset_index(drop=True)
 
-        if self.config.verbose > 1:
+        if self.epiconfig.verbose > 1:
             print(f'{checkmark} nuts levels extracted')  
 
         return unique_nuts
@@ -349,6 +370,11 @@ class Harmonizer:
         return colvalue_token, token_colvalue
     
     def _apply_tokenization(self, df: pd.DataFrame, tokenization_map: Dict[str, int], col_to_tokenize: str, token_colname):
+        """
+        applies tokeninization found in tokenization map, through:
+
+        dfc[token_colname]   = dfc[col_to_tokenize].map(tokenization_map).astype('Int64')
+        """
         dfc                  = df.copy()
         dfc[token_colname]   = dfc[col_to_tokenize].map(tokenization_map).astype('Int64')
         dfc.reset_index(drop = True, inplace = True)   
@@ -357,20 +383,22 @@ class Harmonizer:
         return dfc  
 
     def _resample(self, epi_df: pd.DataFrame, temporal_freq: Literal['m','w','d']) -> pd.DataFrame:
-
+        """ 
+        resamples timestamp to requested temporal frequency
+        """
+        # the only disease with temp freq below w is covid_daily
         if temporal_freq == 'd':
-            if self.config.disease == 'covid_daily':
+            if self.epiconfig.disease == 'covid_daily':
                 resampled_df = epi_df
             else:
-                raise DataOrchestrationError(f'temporal_freq == "d" is only valid for disease "covid_daily" not for {self.config.disease}')
-        
-        # the only disease with temp freq below w is covid_daily
+                raise DataOrchestrationError(f'temporal_freq == "d" is only valid for disease "covid_daily" not for {self.epiconfig.disease}')
+                
         elif temporal_freq == 'w':
-            if self.config.disease == 'covid_daily':
+            if self.epiconfig.disease == 'covid_daily':
                 resampled_df = (
-                    epi_df.set_index(self.config.temporal_column)
-                    .groupby(f'{self.config.nuts_level}_key')
-                    .resample('W-MON')
+                    epi_df.set_index(self.epiconfig.temporal_column)
+                    .groupby(f'{self.epiconfig.nuts_level}_key')
+                    .resample('W-MON')                                  # survstat system reports weekly data on mondays!
                     .agg({
                         'cases':            'sum',
                         'population_size':  'mean',
@@ -383,8 +411,8 @@ class Harmonizer:
         # else temporal freq  == m. has been established in epiconfig validation methods
         else:
             resampled_df = (
-                    epi_df.set_index(self.config.temporal_column)
-                    .groupby(f'{self.config.nuts_level}_key')
+                    epi_df.set_index(self.epiconfig.temporal_column)
+                    .groupby(f'{self.epiconfig.nuts_level}_key')
                     .resample('MS')
                     .agg({
                         'cases':            'sum',
@@ -395,19 +423,20 @@ class Harmonizer:
             
         timestamps: pd.Series[pd.Timestamp] = resampled_df['timestamp']
         resampled_df['year']                = timestamps.dt.year
-        resampled_df                        = resampled_df[[self.config.temporal_column,f'{self.config.nuts_level}_key','cases','year','population_size']]
+        resampled_df                        = resampled_df[[self.epiconfig.temporal_column,f'{self.epiconfig.nuts_level}_key','cases','year','population_size']]
         return resampled_df
 
     def _return_temporal_summary(self) -> 'EpiDataTemporalSummary':
-        return EpiDataTemporalSummary(self.config.temporal_frequency,
-                                    str(self.config.min_date), 
-                                    str(self.config.max_date),
-                                    self.config.split_trainval,
-                                    self.config.split_valtest,
-                                    self.config.horizon_size,
-                                    self.config.horizon_leadtime,
-                                    self.config.lag_num,
-                                    self.config.sequence_length)        
+        """returns an instance of EpiDataTemporalSummary, based on EpiConfig"""
+        return EpiDataTemporalSummary(self.epiconfig.temporal_frequency,
+                                    str(self.epiconfig.min_date), 
+                                    str(self.epiconfig.max_date),
+                                    self.epiconfig.split_trainval,
+                                    self.epiconfig.split_valtest,
+                                    self.epiconfig.horizon_size,
+                                    self.epiconfig.horizon_leadtime,
+                                    self.epiconfig.lag_num,
+                                    self.epiconfig.sequence_length)        
 
     def orchestrate(self, rawdata: 'RawEpiData') -> Tuple['HarmonizedData', 'ContextData']:
         """
@@ -415,7 +444,7 @@ class Harmonizer:
         """
         time_start = time.time()
 
-        if self.config.split_berlin:
+        if self.epiconfig.split_berlin:
             if rawdata.population_berlin is None:
                 raise DataOrchestrationError("'population_berlin' attribute is not found in rawdata")
             
@@ -431,57 +460,66 @@ class Harmonizer:
         epipopdata          = self._merge_epipopdata(aggregated_dfs[0], aggregated_dfs[1])
         nutsnames           = self._get_nuts_data(rawdata.nuts_harm)
 
-        epipopdata          = self._resample(epipopdata, self.config.temporal_frequency)
+        epipopdata          = self._resample(epipopdata, self.epiconfig.temporal_frequency)
 
-        tokenization_map_id = self._return_tokenization_map(epipopdata, f'{self.config.nuts_level}_key')
+        tokenization_map_id = self._return_tokenization_map(epipopdata, f'{self.epiconfig.nuts_level}_key')
 
         tokenization_map    = {
             'nuts_node-idx' : tokenization_map_id[0],    
             'idx-nuts_node' : tokenization_map_id[1],    
         }
 
-        epipopdata = self._apply_tokenization(epipopdata, tokenization_map['nuts_node-idx'],f'{self.config.nuts_level}_key',        self.config.id_column)
-        shapedata  = self._apply_tokenization(rawdata.shapedata_node, tokenization_map['nuts_node-idx'],f'{self.config.nuts_level}_key', self.config.id_column)
-        nutsnames  = self._apply_tokenization(nutsnames, tokenization_map['nuts_node-idx'],f'{self.config.nuts_level}_key',         self.config.id_column)
+        # apply tokens
+        epipopdata = self._apply_tokenization(epipopdata, 
+                                              tokenization_map['nuts_node-idx'],
+                                              f'{self.epiconfig.nuts_level}_key',
+                                              self.epiconfig.id_column)
+        shapedata  = self._apply_tokenization(rawdata.shapedata_node, 
+                                              tokenization_map['nuts_node-idx'],
+                                              f'{self.epiconfig.nuts_level}_key', 
+                                              self.epiconfig.id_column)
+        nutsnames  = self._apply_tokenization(nutsnames, 
+                                              tokenization_map['nuts_node-idx'],
+                                              f'{self.epiconfig.nuts_level}_key',         
+                                              self.epiconfig.id_column)
 
         # extra features
-        if self.config.feature_popdens:
-            if rawdata.population_density is None: 
-                raise DataOrchestrationError('no population density found in rawdata')
-            population_density_data = self._apply_tokenization(rawdata.population_density, tokenization_map['nuts_node-idx'],f'{self.config.nuts_level}_key', self.config.id_column)
-        else:
-            population_density_data = None
+        population_density_data = None
+        gisd_data               = None
+        population_age          = None   
 
-        if self.config.feature_gisd:
-            if rawdata.gisd is None: 
-                raise DataOrchestrationError('no gisd found in rawdata')
-            gisd_data = self._apply_tokenization(rawdata.gisd, tokenization_map['nuts_node-idx'],f'{self.config.nuts_level}_key', self.config.id_column)            
-        else:
-            gisd_data = None
 
-        if self.config.feature_popage:
-            if rawdata.population_age is None: 
-                raise DataOrchestrationError('no population age found in rawdata')
-            population_age = self._apply_tokenization(rawdata.population_age, tokenization_map['nuts_node-idx'],f'{self.config.nuts_level}_key', self.config.id_column)            
-        else:
-            population_age = None            
+        if self.epiconfig.feature_popdens:
+            population_density_data = self._apply_tokenization(rawdata.population_density, 
+                                                               tokenization_map['nuts_node-idx'],
+                                                               f'{self.epiconfig.nuts_level}_key', 
+                                                               self.epiconfig.id_column)
+            
+        if self.epiconfig.feature_gisd:
+            gisd_data = self._apply_tokenization(rawdata.gisd, 
+                                                 tokenization_map['nuts_node-idx'],
+                                                 f'{self.epiconfig.nuts_level}_key', 
+                                                 self.epiconfig.id_column)                        
+
+        if self.epiconfig.feature_popage:
+            population_age = self._apply_tokenization(rawdata.population_age, 
+                                                      tokenization_map['nuts_node-idx'],
+                                                      f'{self.epiconfig.nuts_level}_key', 
+                                                      self.epiconfig.id_column)                  
 
         if isinstance(shapedata, pd.DataFrame):
             shapedata = gpd.GeoDataFrame(shapedata)
 
-        # temporal summary
-        temporal_summary = self._return_temporal_summary()
-
         harmdata = HarmonizedData(
             epidata             = epipopdata,
 
-            population_density  = population_density_data,
-            gisd                = gisd_data,
-            population_age      = population_age
+            _population_density  = population_density_data,
+            _gisd                = gisd_data,
+            _population_age      = population_age
         )
         
         ctxdata = ContextData(
-            nuts_level          = self.config.nuts_level,
+            nuts_level          = self.epiconfig.nuts_level,
             shapedata_node      = shapedata,
             shapedata_nuts0     = rawdata.shapedata_collection['nuts0'],
             shapedata_nuts1     = rawdata.shapedata_collection['nuts1'],
@@ -489,19 +527,32 @@ class Harmonizer:
             shapedata_nuts3     = rawdata.shapedata_collection['nuts3'],
             nuts_harm           = nutsnames,
             tokenization_map    = tokenization_map,
-            temporal_summary    = temporal_summary            
+            temporal_summary    = self._return_temporal_summary()            
         )
 
         time_end = time.time()
-        if self.config.verbose > 2:
+        if self.epiconfig.verbose > 2:
             print(f'Execution of Harmonizer took {round(time_end - time_start,3)}s')  
-        if self.config.verbose > 1:
+        if self.epiconfig.verbose > 1:
             print("")              
 
         return harmdata, ctxdata
 
 # ============= PREPROCESSING CLASS =============
 class EpiDataProcessor:     
+    """
+    Processes the harmonzied data
+
+    Parameters:
+    -----------
+    epiconfig: EpiConfig
+    temporal_summary: EpiDataTemporalSummary
+
+    Utility:
+    -------
+    the orchestrate method runs all required methods, based on EpiConfig and returns an
+    instance of ProcessedEpiData    
+    """
     def __init__(self, 
                  config: 'EpiConfig', 
                  temporal_summary: EpiDataTemporalSummary):
@@ -526,13 +577,14 @@ class EpiDataProcessor:
 
         return epipopdata.drop(columns=['cases']) 
        
-    def _filter_dates(self, df) -> pd.DataFrame:
+    def _filter_dates(self, df: pd.DataFrame) -> pd.DataFrame:
+        """using the timestamp column, filter on min/max date => using those determined in the temporal summary"""
+        
         # Use extended min date from temporal summary
         dfc     = df.copy()
         mindate = self.temporal_summary.get_extended_dates()['min']
         maxdate = self.temporal_summary.get_extended_dates()['max']
              
-        
         dfc = dfc.loc[dfc['timestamp'] <  maxdate].reset_index(drop=True)         
         dfc = dfc.loc[dfc['timestamp'] >= mindate].reset_index(drop=True)     
 
@@ -541,9 +593,13 @@ class EpiDataProcessor:
 
         return dfc
     
-    def _filter_years(self, df) -> pd.DataFrame:
+    def _filter_years(self, df: pd.DataFrame) -> pd.DataFrame:
+        """using the year column, filter on min/max date => using those determined in the temporal summary"""        
         dfc = df.copy() 
         minyear = self.temporal_summary.get_extended_dates()['min'].year
+
+        # for max year its different in year => when max date '2021-02-01' 
+        # we still need the data at '2021-01-01' so we can only include year < max_year+1
         maxyear = self.temporal_summary.get_extended_dates()['max'].year + 1
 
         dfc = dfc.loc[dfc['year'] <  maxyear].reset_index(drop=True)         
@@ -561,32 +617,25 @@ class EpiDataProcessor:
 
         epipopdata = self._filter_dates(epipopdata)
 
-        # extra features
+        # extra features; initiating them on None
+        population_density_data = None
+        gisd_data               = None      
+        population_age          = None   
+
         if self.config.feature_popdens:
-            if harmonizeddata.population_density is None: 
-                raise DataOrchestrationError('no population density found in rawdata')
             population_density_data = self._filter_years(harmonizeddata.population_density)
-        else:
-            population_density_data = None
 
         if self.config.feature_gisd:
-            if harmonizeddata.gisd is None: 
-                raise DataOrchestrationError('no gisd found in rawdata')
             gisd_data = self._filter_years(harmonizeddata.gisd)
-        else:
-            gisd_data = None            
-
+                   
         if self.config.feature_popage:
-            if harmonizeddata.population_age is None: 
-                raise DataOrchestrationError('no population age found in rawdata')
-            population_age = self._filter_years(harmonizeddata.population_age)
-        else:
-            population_age = None                 
+            population_age = self._filter_years(harmonizeddata.population_age)                       
 
-        processed_data = ProcessedEpiData(epidata           = epipopdata,
-                                          population_density= population_density_data,
-                                          gisd              = gisd_data,
-                                          population_age    = population_age
+        processed_data = ProcessedEpiData(epidata            = epipopdata,
+                                          
+                                          _population_density= population_density_data,
+                                          _gisd              = gisd_data,
+                                          _population_age    = population_age
                                           )
         time_end = time.time()
         if self.config.verbose > 2:
@@ -598,19 +647,37 @@ class EpiDataProcessor:
 
 # ============= FEATURE CLASS =============            
 class EpiFeatureBuilder:
+    """
+    Builds the features based on the processed data
+
+    Parameters:
+    -----------
+    epiconfig: EpiConfig
+    column_registration: ColumnRegistration,
+    temporal_summary: EpiDataTemporalSummary
+    
+    Utility:
+    -------
+    the orchestrate method runs all required methods, based on EpiConfig and returns an
+    instance of FeatureEpiData    
+    """    
     def __init__(self, 
-                 config: 'EpiConfig', 
+                 epiconfig: 'EpiConfig', 
                  column_registration: ColumnRegistration,
                  temporal_summary: EpiDataTemporalSummary):
         
-        self.config             = config
+        self.epiconfig          = epiconfig
         self.column_registration= column_registration
         self.temporal_summary   = temporal_summary
 
     def _add_time_index(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        adds all time indices depending on epiconfig: 
+        can be any combination of time_index_d/w/m 
+        """
         
         dfc                                 = df.copy()
-        timestamps: pd.Series[pd.Timestamp] = dfc[self.config.temporal_column]
+        timestamps: pd.Series[pd.Timestamp] = dfc[self.epiconfig.temporal_column]
         iso_calendar                        = timestamps.dt.isocalendar()
 
         years           = iso_calendar['year']
@@ -622,7 +689,7 @@ class EpiFeatureBuilder:
         cos_col_basis = f'tt_cos'
 
         # ============ day in week ===========
-        if self.config.time_index_d: 
+        if self.epiconfig.time_index_d: 
             if self.temporal_summary.temporal_frequency != 'd':
                 raise DataOrchestrationError(f"can't put temporal index for day in week for data that has no daily temporal frequency")
             days_in_week = 7
@@ -637,7 +704,7 @@ class EpiFeatureBuilder:
             self.column_registration.add_column(cos_col_d, 'feature', needs_normalization=False, transformation_group=None)     
 
         # ============ week in year ===========
-        if self.config.time_index_w:         
+        if self.epiconfig.time_index_w:         
             if self.temporal_summary.temporal_frequency not in ['d','w']:
                 raise DataOrchestrationError(f"can't put temporal index for week in year data that has no daily or weekly temporal frequency")
 
@@ -659,7 +726,7 @@ class EpiFeatureBuilder:
             self.column_registration.add_column(cos_col_w, 'feature', needs_normalization=False, transformation_group=None)     
 
         # ============ month in year ===========
-        if self.config.time_index_m:
+        if self.epiconfig.time_index_m:
 
             months_in_year = 12
 
@@ -675,16 +742,21 @@ class EpiFeatureBuilder:
         return dfc 
     
     def _lag_variable(self, df: pd.DataFrame) -> pd.DataFrame:
+        """ 
+        lag variable according to epiconfig
+        """
         dfc = df.copy()
         
-        if self.config.lag_column != self.config.target_column:
+        # if lag = target => normalize lag onto target
+        if self.epiconfig.lag_column != self.epiconfig.target_column:
             reference_normalization = None
+
         else:
             reference_normalization = 'target'
 
-        for lag in range(0, self.config.lag_num):
-            feature     = f'{self.config.lag_column}_lag{lag}'
-            dfc[feature]= dfc.groupby(self.config.id_column)[self.config.lag_column].shift(lag)
+        for lag in range(0, self.epiconfig.lag_num):
+            feature     = f'{self.epiconfig.lag_column}_lag{lag}'
+            dfc[feature]= dfc.groupby(self.epiconfig.id_column)[self.epiconfig.lag_column].shift(lag)
             
             self.column_registration.add_column(
                 feature, 
@@ -693,36 +765,37 @@ class EpiFeatureBuilder:
                 transformation_group =reference_normalization
             )
             
-        if self.config.verbose > 1:
+        if self.epiconfig.verbose > 1:
             print(f'{checkmark} lags added') 
 
         return dfc.dropna().reset_index(drop = True)
   
     def _shift_target(self, df: pd.DataFrame) -> pd.DataFrame:
+        """shift target by horizon_leadtime (but into the future => negative)"""
         dfc          = df.copy()
-        dfc['target']= dfc.groupby(self.config.id_column)[self.config.target_column].shift(-(self.config.horizon_leadtime))
+        dfc['target']= dfc.groupby(self.epiconfig.id_column)[self.epiconfig.target_column].shift(-(self.epiconfig.horizon_leadtime))
         return dfc
 
     def _rename_target(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Rename future target to 'target'"""
-        if self.config.verbose > 1:
+        """Rename target column to 'target'"""
+        if self.epiconfig.verbose > 1:
             print(f'{checkmark} target column renamed as such') 
-        return df.rename(columns={f'{self.config.target_column}_future': 'target'})
+        return df.rename(columns={f'{self.epiconfig.target_column}_future': 'target'})
 
     def _reorder_df(self, df: pd.DataFrame) -> pd.DataFrame:
         """Rearrange columns in predefined order"""
         dfc          = df.copy()
 
-        if self.config.verbose > 1:
+        if self.epiconfig.verbose > 1:
             print(f'{checkmark} columns reordered') 
 
         return dfc[self.column_registration.registered_columns]
 
     def _add_delta_column(self, df: pd.DataFrame) -> pd.DataFrame:
         """Compute first difference of target column, store t-1 anchor for reversal."""
-        col = self.config.target_column
-        df[f'{col}_anchor'] = df.groupby(self.config.id_column)[col].shift(1)
-        df[col] = df.groupby(self.config.id_column)[col].diff()
+        col = self.epiconfig.target_column
+        df[f'{col}_anchor'] = df.groupby(self.epiconfig.id_column)[col].shift(1)
+        df[col] = df.groupby(self.epiconfig.id_column)[col].diff()
 
         return df.dropna().reset_index(drop=True)
 
@@ -730,51 +803,39 @@ class EpiFeatureBuilder:
         time_start   = time.time()
         feature_data = processed_data.epidata.copy()
 
-        # Feature: population_size
-        # if self.config.feature_population_size:
-        #     # raise DataOrchestrationError('currently only support the exclusion of population_size')
-        #     pass
-        # else:
         feature_data = feature_data.drop(columns=['population_size'], errors='ignore')
-        if self.config.verbose > 1:
+        if self.epiconfig.verbose > 1:
             print(f'{checkmark} population size removed')
 
-        if self.config.feature_popdens:
+        if self.epiconfig.feature_popdens:
             self.column_registration.add_column(
                 'population_density',
                 'feature',
                 needs_normalization=True,
                 transformation_group=None
             )            
-            if processed_data.population_density is None:
-                raise DataOrchestrationError('no population density found in processor')
-            feature_data = pd.merge(feature_data, processed_data.population_density, on = [self.config.id_column, 'year'])
+            feature_data = pd.merge(feature_data, processed_data.population_density, on = [self.epiconfig.id_column, 'year'])
 
-        if self.config.feature_gisd:
+        if self.epiconfig.feature_gisd:
             self.column_registration.add_column(
                 f'gisd',
                 'feature',
                 needs_normalization=False
             )               
-            if processed_data.gisd is None:
-                raise DataOrchestrationError('no population density found in processor')
-            feature_data = pd.merge(feature_data, processed_data.gisd, on = [self.config.id_column, 'year'])           
+            feature_data = pd.merge(feature_data, processed_data.gisd, on = [self.epiconfig.id_column, 'year'])           
 
-        if self.config.feature_popage:
+        if self.epiconfig.feature_popage:
             processed_feature_popage = processed_data.population_age
 
-            if processed_feature_popage is None:
-                raise DataOrchestrationError('no population age found in processor')
-
             for cc in processed_feature_popage.columns:
-                if cc not in ['year',self.config.id_column,'population_size']:
+                if cc not in ['year',self.epiconfig.id_column,'population_size']:
                     self.column_registration.add_column(
                         cc,
                         'feature',
                         needs_normalization=False
                     )         
                 elif cc == 'population_size':
-                    if self.config.feature_population_size:
+                    if self.epiconfig.feature_popsize:
                         self.column_registration.add_column(
                             cc,
                             'feature',
@@ -783,22 +844,22 @@ class EpiFeatureBuilder:
                     else:
                         processed_feature_popage.drop(columns = ['population_size'], inplace = True)
                                           
-            feature_data = pd.merge(feature_data, processed_feature_popage, on = [self.config.id_column, 'year'])               
+            feature_data = pd.merge(feature_data, processed_feature_popage, on = [self.epiconfig.id_column, 'year'])               
 
         # Delta transform: must happen before lags and target shift,
         # so that lag features and the forecast target are all in delta-space
-        if self.config.predict_difference:
+        if self.epiconfig.predict_difference:
             feature_data = self._add_delta_column(feature_data)
             self.column_registration.update_transformation(
                 'target',
-                {'delta': {'anchor_col': f'{self.config.target_column}_anchor'}}
+                {'delta': {'anchor_col': f'{self.epiconfig.target_column}_anchor'}}
             )
             self.column_registration.add_column(
-                f'{self.config.target_column}_anchor',
+                f'{self.epiconfig.target_column}_anchor',
                 'context',
                 needs_normalization=False
             )
-            if self.config.verbose > 1:
+            if self.epiconfig.verbose > 1:
                 print(f'{checkmark} delta transform applied')
 
         feature_data = self._add_time_index(feature_data)
@@ -808,15 +869,33 @@ class EpiFeatureBuilder:
         feature_data = self._reorder_df(feature_data)
 
         time_end = time.time()
-        if self.config.verbose > 2:
+        if self.epiconfig.verbose > 2:
             print(f'Execution of EpiFeatureBuilder took {round(time_end - time_start,3)}s')
 
         return FeatureEpiData(epidata=feature_data)
 
 # ============= NORMALIZER CLASS ============= 
 class EpiNormalizer:
-    def __init__(self, config: 'EpiConfig', column_registration: ColumnRegistration, temporal_summary: EpiDataTemporalSummary):
-        self.config                 = config 
+    """
+    Normalizes the FeatureData
+
+    Parameters:
+    -----------
+    epiconfig: EpiConfig
+    column_registration: ColumnRegistration,
+    temporal_summary: EpiDataTemporalSummary
+    
+    Utility:
+    -------
+    the orchestrate method runs all required methods, based on EpiConfig and returns an
+    instance of NormalizedEpiData    
+    """      
+    def __init__(self, 
+                 epiconfig: 'EpiConfig', 
+                 column_registration: ColumnRegistration, 
+                 temporal_summary: EpiDataTemporalSummary):
+        
+        self.epiconfig              = epiconfig 
         self.temporal_summary       = temporal_summary
         self.column_registration    = column_registration
         self.normalization_functions= {
@@ -825,49 +904,89 @@ class EpiNormalizer:
         }
 
     def _set_splits(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Create split columns using INPUT splits from temporal summary"""
+        """set split columns based on temporal_summary"""
         splits = self.temporal_summary.get_target_splits()
         
-        df['train'] = df[self.config.temporal_column] < splits['trainval']
-        df['val']   = (df[self.config.temporal_column] >= splits['trainval']) & (df[self.config.temporal_column] < splits['valtest'])
-        df['test']  = df[self.config.temporal_column] >= splits['valtest']
+        df['train'] = df[self.epiconfig.temporal_column] < splits['trainval']
+        df['val']   = (df[self.epiconfig.temporal_column] >= splits['trainval']) & (df[self.epiconfig.temporal_column] < splits['valtest'])
+        df['test']  = df[self.epiconfig.temporal_column] >= splits['valtest']
         
         for split_col in ['train', 'val', 'test']:
             self.column_registration.add_column(split_col, 'split')
         
-        if self.config.verbose > 1:
+        if self.epiconfig.verbose > 1:
             print(f'{checkmark} split columns added (input timeline)')
         
         return df
 
-    def _log_transform(self, df: pd.DataFrame, col: str) -> pd.DataFrame:
-        """log_transform columns specified"""
+    def _apply_log_transform(self, df: pd.DataFrame, col: str) -> pd.DataFrame:
+        """log_transform the columns specified"""
         df_transformed                              = df.copy()
            
         if col not in df_transformed.columns:
             raise DataOrchestrationError(f"{col} not found in df. Couldn't be log-transformed")
 
-        df_transformed[col]                         = np.log(df_transformed[col] + self.config.log_shift)
+        df_transformed[col]                         = np.log(df_transformed[col] + self.epiconfig.log_shift)
       
-        if self.config.verbose > 1:
+        if self.epiconfig.verbose > 1:
             print(f'{checkmark} {col} logged')     
 
         return df_transformed
 
+    def _update_colregistry_postlog(self, col:str) -> None:
+            """register the logging in colregistry"""
+            self.column_registration.update_transformation(
+                col, 
+                {'log': self.epiconfig.log_shift}
+            )           
+
+    def _orchestrate_logging(self, split_data: pd.DataFrame) -> pd.DataFrame:
+        """if nothing to log, then return origional df"""
+        if self.epiconfig.log_transform:
+            cols_to_log     = []
+            for col in self.epiconfig.log_transform:
+
+                # if col == future target then register log for target
+                if col == self.epiconfig.target_column:
+                    cols_to_log += ['target']
+                    self._update_colregistry_postlog('target')
+
+                # if col == lag column then do the log for all lagged columns, but only register in transformation for lag0
+                # not in combination with previous condition. If target == lag, the lag column follows the normalization of target
+                elif col == self.epiconfig.lag_column:
+                    cols_to_log += [f'{self.epiconfig.lag_column}_lag{lag}' for lag in range(0, self.epiconfig.lag_num)]
+                    if self.column_registration.get_by_name(f'{self.epiconfig.lag_column}_lag0').transformation_group is None:
+                        self._update_colregistry_postlog(f'{self.epiconfig.lag_column}_lag0')
+
+                # else register log column-specifically
+                else:
+                    cols_to_log += [col]
+                    self._update_colregistry_postlog(col)
+
+            for col in cols_to_log:
+                split_data = self._apply_log_transform(split_data, col)    
+
+        return split_data   
+
     def _normalize(self, df: pd.DataFrame) -> pd.DataFrame:
-        """normalizes data and stores information in column_registration"""
+        """
+        normalizes data and stores information in column_registration
+        NOTE: not only the target is normalized based on the training data: that goes for all features!
+        I haven't figured out if this is an issue, but I imagine.
+        For what it's worth, it's an easy fix.     
+        """
         train_df        = df[df['train']]
         normalized_df   = df.copy()
 
-        if self.config.normalization_method == 'none':
+        # if normalization_method is excplicity set to None then return df not-normalized
+        if not self.epiconfig.normalization_method:
             return normalized_df
 
-        elif self.config.normalization_method not in self.normalization_functions['apply']:
-            raise DataOrchestrationError(f'No normalization function {self.config.normalization_method} found.')
+        elif self.epiconfig.normalization_method not in self.normalization_functions['apply']:
+            raise DataOrchestrationError(f'No normalization function {self.epiconfig.normalization_method} found.')
 
         ### First pass ###
-        # Calculate normalization parameters for columns that need independent normalization,
-        # that is, for col-registration entries where transformation_group = None
+        # get all transformation parameters per group (.transformation_group = None)
         for col_entry in self.column_registration.columns:
             
             # Skip columns that don't have normalization attribute
@@ -876,7 +995,7 @@ class EpiNormalizer:
             
             # Only calculate params for columns with independent normalization (normalization_group is None)
             if col_entry.transformation_group is None:
-                _, norm_parameters = self.normalization_functions['pipeline'][self.config.normalization_method](
+                _, norm_parameters = self.normalization_functions['pipeline'][self.epiconfig.normalization_method](
                     train_df, 
                     [col_entry.column_name]
                 )
@@ -887,15 +1006,11 @@ class EpiNormalizer:
                     {'normalization': norm_parameters[col_entry.column_name]}
                 )
 
-        if self.config.verbose > 1:
+        if self.epiconfig.verbose > 1:
             print(f'{checkmark} normalization parameters retrieved and stored')     
             
         ### Second pass ###
-        # Apply normalization to all columns based on parameters stored
-        # or based on the reference -> for example, in the col-registry entry
-        # for 'incidence_lag3' the attribute transformation_group = 'target'
-        # meaning the variable is normalized using the normalization parameters
-        # of 'target'
+        # apply those parameters to all columns with the relevant transformation group - reference
         for col_entry in self.column_registration.columns:
             
             # Skip columns that don't have normalization attribute
@@ -905,11 +1020,11 @@ class EpiNormalizer:
             # Determine which normalization parameters to use
             # independent transformation
             if col_entry.transformation_group is None:
-
+                
+                # Use own normalization
                 if col_entry.transformation:
-                    # Use own normalization
                     params = {col_entry.column_name: col_entry.transformation['normalization']}
-                    if self.config.verbose > 2:
+                    if self.epiconfig.verbose > 2:
                         print(f"{col_entry.column_name} normalized independently")
 
                 else:
@@ -924,76 +1039,77 @@ class EpiNormalizer:
                     raise ColEntryMissingTransformationReferralError(col_entry.column_name, ref_col_entry.column_name)
                 
                 params = {col_entry.column_name: ref_col_entry.transformation['normalization']}
-                if self.config.verbose > 2:
+                if self.epiconfig.verbose > 2:
                     print(f"{col_entry.column_name} normalized based on {ref_col_entry.column_name}")
             
             # Apply normalization
-            normalized_df = self.normalization_functions['apply'][self.config.normalization_method](
+            normalized_df = self.normalization_functions['apply'][self.epiconfig.normalization_method](
                 normalized_df, 
                 [col_entry.column_name], 
                 params
             )
 
-        
-        if self.config.verbose > 1:
+        if self.epiconfig.verbose > 1:
             print(f'{checkmark} normalization applied')     
 
         return normalized_df
 
-    def _update_colregistry_postlog(self, col:str):
-            self.column_registration.update_transformation(
-                col, 
-                {'log': self.config.log_shift}
-            )           
-
     def orchestrate(self, feature_data: 'FeatureEpiData') -> 'NormalizedEpiData':
-        time_start = time.time()
+        time_start      = time.time()
         split_data      = self._set_splits(feature_data.epidata.copy())
-        cols_to_log     = []
 
-        if self.config.log_transform:
-            for col in self.config.log_transform:
-
-                if col == self.config.target_column:
-                    cols_to_log += ['target']
-                    self._update_colregistry_postlog('target')
-
-                if col == self.config.lag_column:
-                    cols_to_log += [f'{self.config.lag_column}_lag{lag}' for lag in range(0, self.config.lag_num)]
-                    if self.column_registration.get_by_name(f'{self.config.lag_column}_lag0').transformation_group is None:
-                        self._update_colregistry_postlog(f'{self.config.lag_column}_lag0')
-
-                else:
-                    cols_to_log += [col]
-                    self._update_colregistry_postlog(col)
-
-        for col in cols_to_log:
-            split_data = self._log_transform(split_data, col)
-        
+        # depending on config, logging may not be done
+        split_data      = self._orchestrate_logging(split_data)
         normalized_data = self._normalize(split_data)
 
         time_end = time.time()
-        if self.config.verbose > 2:
+        if self.epiconfig.verbose > 2:
             print(f'Execution of EpiNormalizer took {round(time_end - time_start,3)}s')        
-        if self.config.verbose > 1:
+        if self.epiconfig.verbose > 1:
             print("")
         return NormalizedEpiData(epidata=normalized_data)
 
 # ============= Finalize CLASS ============= 
 class EpiDataFinalizer:
- 
-    def __init__(self, config: 'EpiConfig', column_registration: ColumnRegistration):
-        self.config = config 
+    """
+    Finalizes the data
+
+    Parameters:
+    -----------
+    epiconfig: EpiConfig
+    column_registration: ColumnRegistration
+    
+    Utility:
+    -------
+    the orchestrate method runs all required methods, based on EpiConfig and returns an
+    instance of FinalizedEpiData    
+    """   
+    def __init__(self, 
+                 epiconfig: 'EpiConfig', 
+                 column_registration: ColumnRegistration):
+        self.config = epiconfig 
         self.column_registration = column_registration
 
+    def _create_pred_col_entry(self) -> None:
+        """
+        while pred doesn't exist in the data, models will end up with these columns.
+        """
+        self.column_registration.add_column(
+            'pred',
+            'pred',
+            transformation_group='target',
+            needs_normalization=True
+        )      
+
     def _add_horizons(self, df: pd.DataFrame) -> pd.DataFrame:
+        """adds target columns when horizon_size>1"""
         base_lead = self.config.horizon_leadtime
-        for additional_steps in range(1, self.config.horizon_size):
+        for additional_steps in range(0, self.config.horizon_size):
             steps_ahead = base_lead + additional_steps
             target_col = f'target_lead{steps_ahead}'
             
             # Shift from the base target
-            df[target_col] = df.groupby(self.config.id_column)[f'target_lead{base_lead}'].shift(-additional_steps)
+            df[target_col] = df.groupby(self.config.id_column)[f'target'].shift(-additional_steps)
             
             # Register in column registry
             self.column_registration.add_column(
@@ -1005,53 +1121,52 @@ class EpiDataFinalizer:
         
         if self.config.verbose > 1:
             print(f'{checkmark} targets for all horizons added')              
-        return df
+        return df.drop(columns = ['target'])
 
     def _drop_nans(self, df: pd.DataFrame) -> pd.DataFrame:
+        """drop nans"""
         if self.config.verbose > 1:
             print(f"{checkmark} nans dropped")
         return df.dropna()
 
-    def _set_targettype_integer(self, df: pd.DataFrame) -> pd.DataFrame:
+    def _set_target_type(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Return df with columns containing 'target' as int
-        Required when predicting casenumbers instead of incidence rates
+        There's two special cases for which we adjust the type of target
+        - target == 'cases' & prediction_mode == 'regression'       =>  set target type to int
+        - target == 'cases' & prediction_mode == 'classification'   =>  set target type to int(0,1)       
         """
-        for col in df.columns:
-            if 'target' in col and 'timestamp' not in col:
-                df[col] = df[col].astype(int)
-       
-        if self.config.verbose > 1:
-            print(f"{checkmark} target columns set as integer")
+        if self.config.target_column == 'cases':
+            if self.config.prediction_mode == 'regression':
+                for col in self.column_registration.target_columns:
+                    df[col] = df[col].astype(int)     
 
-        return df
+                if self.config.verbose > 1:
+                    print(f"{checkmark} target column(s) set as integer")    
 
-    def _set_targettype_class(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Return df with columns containing 'target' as binary
-        Required when target is casenumber and prediction_mode is classification
-        """
-        for col in df.columns:
-            if 'target' in col and 'timestamp' not in col:
-                df.loc[df[col] > 0, col] = 1
-       
-        if self.config.verbose > 1:
-            print(f"{checkmark} target columns set as class")
+            elif self.config.prediction_mode == 'classification':
+                for col in self.column_registration.target_columns:
+                    df.loc[df[col] > 0, col] = 1  
+                    df[col] = df[col].astype(int)
 
-        return df
+                if self.config.verbose > 1:
+                    print(f"{checkmark} target column(s) set as class")        
 
-    # TODO: CLEAN UP
+        return df   
+
     def _denormalize(self, normalized_df: pd.DataFrame) -> pd.DataFrame:
+            """after shifting around and renaming columns, perform a denormalization for baseline models"""
             dfc = normalized_df.copy()
             
             # Get normalization method
             norm_method = self.config.normalization_method
             
-            if norm_method == 'none':
+            if not norm_method:
                 return dfc
             
             # Reverse transformations for each column
             for col_entry in self.column_registration.columns:
+                
+                # skip registrered 'pred'
                 if col_entry.column_name not in dfc.columns:
                     continue
                     
@@ -1059,21 +1174,20 @@ class EpiDataFinalizer:
                 if col_entry.transformation_group == 'NA':
                     continue
                 
-                # Get transformation parameters
+                # if self-normalization
                 if col_entry.transformation_group is None:
-                    # Independent normalization
                     if col_entry.transformation:
                         params = col_entry.transformation
                     else:
-                        continue           
+                        raise ColEntryMissingTransformationError(col_entry.column_name)        
                 
+                # if referral-based normalization
                 else:
-                    # Use reference column's parameters
-                    ref_entry = self.column_registration.get_by_name(col_entry.transformation_group)
-                    if ref_entry.transformation:
-                        params = ref_entry.transformation
+                    refeference_entry = self.column_registration.get_by_name(col_entry.transformation_group)
+                    if refeference_entry.transformation:
+                        params = refeference_entry.transformation
                     else:
-                        continue
+                        raise ColEntryMissingTransformationReferralError(col_entry.column_name, refeference_entry.column_name)
                 
                 # Reverse normalization
                 if 'normalization' in params:
@@ -1084,55 +1198,24 @@ class EpiDataFinalizer:
                 
                 # Reverse log transform
                 if 'log' in params:
-                    dfc = reverse_log(dfc, params['log'], column=col_entry.column_name)
-
-            # now to target
-            target_columns = [f'target_lead{steps_ahead+self.config.horizon_leadtime}' for steps_ahead in range(self.config.horizon_size)]   
-            params          = self.column_registration.get_by_name('target').transformation      
-
-            for colname in target_columns:
-                # Reverse normalization
-                if 'normalization' in params:
-                    if norm_method == 'minmax':
-                        dfc = reverse_minmax_scaling(dfc, params['normalization'], column=colname)
-                    elif norm_method == 'zscore':
-                        dfc = reverse_zscore_scaling(dfc, params['normalization'], column=colname)
-                
-                # Reverse log transform
-                if 'log' in params:
-                    dfc = reverse_log(dfc, params['log'], column=colname)                 
-
+                    dfc = reverse_log(dfc, params['log'], column=col_entry.column_name)               
 
             return dfc
 
     def orchestrate(self, normalized_data: NormalizedEpiData) -> 'FinalizedEpiData':
         time_start = time.time()
         dfc         = normalized_data.epidata
-        base_lead   = self.config.horizon_leadtime
-        dfc         = dfc.rename(columns={'target': f'target_lead{base_lead}'})
 
-        # Create additional horizons if needed
-        if self.config.horizon_size > 1:
-            dfc = self._add_horizons(dfc)
-            
-        # For predictions (will be generated during training)
-        self.column_registration.add_column(
-            'pred',
-            'pred',
-            transformation_group='target',
-            needs_normalization=True
-        )      
-
-        dfc_nanfree         = self._drop_nans(dfc)
-        dfc_denormalized    = self._denormalize(dfc_nanfree)
-
+        dfc = self._add_horizons(dfc)
+        self._create_pred_col_entry()
+    
+        dfc_normalized_nanfree      = self._drop_nans(dfc)
+        dfc_denormalized_nanfree    = self._denormalize(dfc_normalized_nanfree)
 
         # If target == 'cases' => target columns should be integers
-        if self.config.target_column == 'cases':
-            if self.config.prediction_mode == 'regression':
-                dfc_nanfree = self._set_targettype_integer(dfc_nanfree)
-            elif self.config.prediction_mode == 'classification':
-                dfc_nanfree = self._set_targettype_class(dfc_nanfree)                
+        dfc_normalized_nanfree      = self._set_target_type(dfc_normalized_nanfree) 
+        dfc_denormalized_nanfree    = self._set_target_type(dfc_denormalized_nanfree)        
+
         time_end = time.time()
         if self.config.verbose > 2:
             print(f'Execution of EpiFinalizer took {round(time_end - time_start,3)}s')  
@@ -1141,8 +1224,7 @@ class EpiDataFinalizer:
         if self.config.verbose > 1:
             print("")
 
-
         return FinalizedEpiData(
-            data        = dfc_nanfree,
-            data_denorm = dfc_denormalized,
+            data        = dfc_normalized_nanfree,
+            data_denorm = dfc_denormalized_nanfree,
         )

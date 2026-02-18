@@ -2,7 +2,7 @@ from typing import Optional, Literal, List
 from abc import abstractmethod
 import numpy as np
 import pandas as pd
-from ...dataloading.epidataorchestration.column_registry import ColEntryMissingTransformationError
+from ...dataloading.epidataorchestration.issues import ColEntryMissingTransformationError
 
 from ..base import BaseModel
 from ...dataloading import BaseLineDataLoaderManager 

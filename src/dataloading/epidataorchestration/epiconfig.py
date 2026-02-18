@@ -8,7 +8,6 @@ from ...utils.textformatting import align, return_header_line
 from ...issues.exceptions import WissdatenMountingError
 from .issues import EpiConfigWarning, EpiConfigError, CurrentEpiConfigError
 
-
 @dataclass
 class EpiConfig:
     """ 
@@ -54,7 +53,7 @@ class EpiConfig:
     feature_popage:         bool = False
     
     # ============= NORMALIZATION =============
-    normalization_method:   Literal['minmax', 'zscore', 'none'] = 'zscore'
+    normalization_method:   Optional[Literal['minmax', 'zscore']] = 'zscore'
     log_transform:          Optional[List[str]] = None
     log_shift:              float = 1.0        
             
@@ -138,6 +137,9 @@ class EpiConfig:
                 f"Got horizon_leadtime={self.horizon_leadtime}. "
                 f"For multi-step forecasting with deltas, set horizon_leadtime=1 and use horizon_size > 1 instead."
             )            
+        
+        if self.num_quantiles > 1:
+            raise CurrentEpiConfigError('num_quantiles isnt implemented yet. Wont be used further into pipeline.')
 
         # features
         # population density
@@ -274,7 +276,7 @@ class EpiConfig:
         width           = max(len(k) for k in all_keys)
         indent          = 4
         
-        lines = [f"<{self.__class__.__name__}"]     
+        lines = [f"<{self.__class__.__name__}("]     
 
         for attr_class, attr_list in self.attributes_classified_dict.items():
             if attr_class != 'none':

@@ -1,6 +1,8 @@
 import pandas as pd
-from typing import List, Tuple, Dict, Union
+from typing import List, Tuple, Dict
 import numpy as np
+
+# MINMAX Normalization Functions
 
 def pipeline_minmax_normalization(train_df: pd.DataFrame, 
                             columns: List[str]) -> Tuple[pd.DataFrame, Dict[str, Dict[str, float]]]:
