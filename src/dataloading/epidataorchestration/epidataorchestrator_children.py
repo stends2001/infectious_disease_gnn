@@ -5,14 +5,14 @@ import numpy as np
 import time
 
 from ...utils.constants import berlin_district_ids, berlin_id
-from ...utils.textformatting import warning_emoji, checkmark
+from ...utils.textformatting import checkmark
 
 from .temporal_summary import EpiDataTemporalSummary
 from .column_registry import ColumnRegistration
 from .epidatacontainers import RawEpiData, HarmonizedData, ContextData, ProcessedEpiData, FeatureEpiData, NormalizedEpiData, FinalizedEpiData
 from .normalization import apply_minmax_scaling, apply_zscore_scaling, pipeline_minmax_normalization, pipeline_zscore_normalization
 from .normalization import reverse_log, reverse_minmax_scaling, reverse_zscore_scaling
-from .issues import DataOrchestrationError, ColEntryMissingTransformationReferralError, ColEntryMissingTransformationError
+from .issues import DataOrchestrationError
 
 if TYPE_CHECKING:
     from .epiconfig import EpiConfig
@@ -812,7 +812,7 @@ class EpiFeatureBuilder:
                 'population_density',
                 'feature',
                 needs_normalization=True,
-                transformation_group=None
+                transformation_group='self'
             )            
             feature_data = pd.merge(feature_data, processed_data.population_density, on = [self.epiconfig.id_column, 'year'])
 
@@ -839,7 +839,8 @@ class EpiFeatureBuilder:
                         self.column_registration.add_column(
                             cc,
                             'feature',
-                            needs_normalization=True
+                            needs_normalization=True,
+                            transformation_group='self'
                         )  
                     else:
                         processed_feature_popage.drop(columns = ['population_size'], inplace = True)
@@ -972,7 +973,7 @@ class EpiNormalizer:
         """
         normalizes data and stores information in column_registration
         NOTE: not only the target is normalized based on the training data: that goes for all features!
-        I haven't figured out if this is an issue, but I imagine.
+        I haven't figured out if this is an issue, but I imagine it is not.
         For what it's worth, it's an easy fix.     
         """
         train_df        = df[df['train']]
@@ -986,15 +987,15 @@ class EpiNormalizer:
             raise DataOrchestrationError(f'No normalization function {self.epiconfig.normalization_method} found.')
 
         ### First pass ###
-        # get all transformation parameters per group (.transformation_group = None)
+        # get all transformation parameters per group (.transformation_group = 'self')
         for col_entry in self.column_registration.columns:
             
             # Skip columns that don't have normalization attribute
-            if col_entry.transformation_group == 'NA':
-                continue
+            if not col_entry.transformation:
+                continue # continue with next col_entry
             
-            # Only calculate params for columns with independent normalization (normalization_group is None)
-            if col_entry.transformation_group is None:
+            # Only calculate params for columns with independent normalization (normalization_group == 'self')
+            if col_entry.transformation_group == 'self':
                 _, norm_parameters = self.normalization_functions['pipeline'][self.epiconfig.normalization_method](
                     train_df, 
                     [col_entry.column_name]
@@ -1014,31 +1015,23 @@ class EpiNormalizer:
         for col_entry in self.column_registration.columns:
             
             # Skip columns that don't have normalization attribute
-            if col_entry.transformation_group == 'NA':
-                continue
+            if not col_entry.transformation:
+                continue # continue with next col_entry
                   
             # Determine which normalization parameters to use
-            # independent transformation
-            if col_entry.transformation_group is None:
+            # independent transformation first
+            if col_entry.transformation_group == 'self':
                 
-                # Use own normalization
-                if col_entry.transformation:
-                    params = {col_entry.column_name: col_entry.transformation['normalization']}
-                    if self.epiconfig.verbose > 2:
-                        print(f"{col_entry.column_name} normalized independently")
-
-                else:
-                    raise ColEntryMissingTransformationError(col_entry.column_name)
+                params = {col_entry.column_name: col_entry.transformation_params['normalization']}
+                if self.epiconfig.verbose > 2:
+                    print(f"{col_entry.column_name} normalized independently")
             
             # dependent transformation: expect a referral
             else:
                 # Use reference column's normalization
                 ref_col_entry = self.column_registration.get_by_name(col_entry.transformation_group)
                 
-                if ref_col_entry.transformation is None:
-                    raise ColEntryMissingTransformationReferralError(col_entry.column_name, ref_col_entry.column_name)
-                
-                params = {col_entry.column_name: ref_col_entry.transformation['normalization']}
+                params = {col_entry.column_name: ref_col_entry.transformation_params['normalization']}
                 if self.epiconfig.verbose > 2:
                     print(f"{col_entry.column_name} normalized based on {ref_col_entry.column_name}")
             
@@ -1093,12 +1086,13 @@ class EpiDataFinalizer:
     def _create_pred_col_entry(self) -> None:
         """
         while pred doesn't exist in the data, models will end up with these columns.
+        TODO: fix this depending on quantile - predictions
         """
         self.column_registration.add_column(
             'pred',
             'pred',
-            transformation_group='target',
-            needs_normalization=True
+            needs_normalization=True,
+            transformation_group='target'
         )      
 
     def _add_horizons(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -1165,40 +1159,32 @@ class EpiDataFinalizer:
             
             # Reverse transformations for each column
             for col_entry in self.column_registration.columns:
+
+                if col_entry.transformation:
                 
-                # skip registrered 'pred'
-                if col_entry.column_name not in dfc.columns:
-                    continue
+                    # skip registrered 'pred' columns
+                    if col_entry.column_name not in dfc.columns:
+                        continue
+            
+                    # if self-normalization
+                    if col_entry.transformation_group == 'self':
+                        params = col_entry.transformation_params
+                
+                    # if referral-based normalization
+                    else:
+                        reference_entry = self.column_registration.get_by_name(col_entry.transformation_group)
+                        params = reference_entry.transformation_params
+                
+                    # Reverse normalization
+                    if 'normalization' in params:
+                        if norm_method == 'minmax':
+                            dfc = reverse_minmax_scaling(dfc, params['normalization'], column=col_entry.column_name)
+                        elif norm_method == 'zscore':
+                            dfc = reverse_zscore_scaling(dfc, params['normalization'], column=col_entry.column_name)
                     
-                # Skip context columns
-                if col_entry.transformation_group == 'NA':
-                    continue
-                
-                # if self-normalization
-                if col_entry.transformation_group is None:
-                    if col_entry.transformation:
-                        params = col_entry.transformation
-                    else:
-                        raise ColEntryMissingTransformationError(col_entry.column_name)        
-                
-                # if referral-based normalization
-                else:
-                    refeference_entry = self.column_registration.get_by_name(col_entry.transformation_group)
-                    if refeference_entry.transformation:
-                        params = refeference_entry.transformation
-                    else:
-                        raise ColEntryMissingTransformationReferralError(col_entry.column_name, refeference_entry.column_name)
-                
-                # Reverse normalization
-                if 'normalization' in params:
-                    if norm_method == 'minmax':
-                        dfc = reverse_minmax_scaling(dfc, params['normalization'], column=col_entry.column_name)
-                    elif norm_method == 'zscore':
-                        dfc = reverse_zscore_scaling(dfc, params['normalization'], column=col_entry.column_name)
-                
-                # Reverse log transform
-                if 'log' in params:
-                    dfc = reverse_log(dfc, params['log'], column=col_entry.column_name)               
+                    # Reverse log transform
+                    if 'log' in params:
+                        dfc = reverse_log(dfc, params['log'], column=col_entry.column_name)               
 
             return dfc
 

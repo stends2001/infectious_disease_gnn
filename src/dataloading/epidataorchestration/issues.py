@@ -25,6 +25,12 @@ class ColEntryError(Exception):
         self.message    = message
         super().__init__(f"{self.__class__.__name__} - {self.message}")
 
+class InvalidColEntryError(ColEntryError):
+    """Raised when a column entry is invalid."""
+    def __init__(self, entryname: str, explanation: str):
+        message = f"Column Registration entry '{entryname}' is invalid. {explanation}"
+        super().__init__(entryname, message)    
+
 class ColEntryMissingError(ColEntryError):
     """Raised when a column entry is missing."""
     def __init__(self, entryname: str):

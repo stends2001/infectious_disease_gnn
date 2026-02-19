@@ -157,15 +157,16 @@ class PredictionManager:
         
         if self.epiconfig.target_column == 'incidence':
             col_entry_target    = self.column_registration.get_by_name('target')
-            transformation_dict = col_entry_target.transformation
+            transformation_dict = col_entry_target.transformation_params
 
             if transformation_dict is None:
                 raise ColEntryMissingTransformationError(entryname='target')
             
             for col in ['target', 'pred']:
-                df_denorm = self.reverse_transformations[normalization_method](
-                    df_denorm, transformation_dict['normalization'], column=col
-                )
+                if normalization_method:
+                    df_denorm = self.reverse_transformations[normalization_method](
+                        df_denorm, transformation_dict['normalization'], column=col
+                    )
                 
                 if 'log' in transformation_dict:
                     df_denorm = self.reverse_transformations['log'](

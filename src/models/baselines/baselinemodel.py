@@ -61,14 +61,12 @@ class BaseLineModel(BaseModel):
         df_norm               = df.copy()       
         if self.dataloadermanager.dataorchestrator.config.target_column == 'incidence':
             col_entry_target        = self.column_registration.get_by_name('target')
-            transformation_dict     = col_entry_target.transformation
-
-            if transformation_dict is None:
-                raise ColEntryMissingTransformationError(entryname = 'target')
+            transformation_dict     = col_entry_target.transformation_params
 
             if 'log' in transformation_dict:
                 df_norm = self.transformations['log'](df_norm, cols=['target','pred'], eps=transformation_dict['log'])
 
-            df_norm = self.transformations[normalization_method](df_norm, params = {col: transformation_dict['normalization'] for col in ['target','pred']}, columns = ['target','pred'])
-            
+            if normalization_method:
+                df_norm = self.transformations[normalization_method](df_norm, params = {col: transformation_dict['normalization'] for col in ['target','pred']}, columns = ['target','pred'])
+                        
         return df_norm           

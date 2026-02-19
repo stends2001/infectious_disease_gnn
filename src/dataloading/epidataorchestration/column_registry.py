@@ -1,33 +1,77 @@
 from dataclasses import dataclass, field
-from typing import Optional, List, Dict, Any
-from .issues import ColEntryMissingError
+from typing import Optional, List, Dict, Any, Literal
+from .issues import ColEntryMissingError, ColEntryMissingTransformationError, InvalidColEntryError, ColEntryMissingTransformationReferralError
 from ...utils.textformatting import align
 
 @dataclass
 class ColEntry:
     """
     Entry for a single column into the column registry
+
+    Parameters:
+    ----------
+    column_name: str
+        name of column, as appearing in the final df of the EpiDataOrchestrator
+    column_type: Literal['context','feature','target','pred','split']
+        type of column
+    transformation: bool
+        whether or not column requires a transformation
+    transformation_group: Optional[str]
+        what directs the transformation of this column. There's three options:
+        - transformation_group == 'self'    => individual transformation (based on parameters from itself)
+        - transformation_group == {column_name} of another ColEntry
+        - transformation_group == None      => only possible when self.transformation == False
+    _transformation_params: Optional[Dict[str,Any]]
+        transformation parameters. Only possible when self.transformation is True, and when self.transformation_group == 'self'
+        NOTE: to be accesed with attribute `self.transformation_params`. Allows for the checking of absence: error is thrown.
     """
     column_name:            str
-    column_type:            str
-    transformation_group:   Optional[str] = 'NA'
-    transformation:         Optional[Dict[str, Any]] = None    
+    column_type:            Literal['context','feature','target','pred','split']
+    transformation:         bool 
+    _transformation_group:  Optional[str]            = None
+    _transformation_params: Optional[Dict[str, Any]] = None    
     
+    def __post_init__(self):
+        # lower case input
+        self.column_name = self.column_name.lower()
+        self.column_type = self.column_type.lower()  # type: ignore[assignment]
+        if self._transformation_group:
+            self._transformation_group = self._transformation_group.lower()
+
+        # validate against impossible states
+        self._validate_input()
+
+    def _validate_input(self) -> None:
+        """to be run post init: validate whether combination of input makes sense or not"""
+        allowed_types = ['context','feature','target','pred','split']
+        if self.column_type not in allowed_types:
+                raise InvalidColEntryError(self.column_name, f'got unsupported value for column_type ({self.column_type}). Supported values are: {allowed_types}') 
+
     @property
-    def has_transformation(self) -> bool:
-        """Check if this column should be normalized"""
-        return self.transformation_group != 'NA'
+    def transformation_group(self) -> str:
+        if self._transformation_group:
+            return self._transformation_group
+        else:
+            raise ColEntryMissingTransformationError(self.column_name)        
+
+    @property
+    def transformation_params(self) -> Dict[str, Any]:
+        if self._transformation_params:
+            return self._transformation_params
+        else:
+            raise ColEntryMissingTransformationError(self.column_name)
     
     def __repr__(self) -> str:
         representation = (
             f"<{self.__class__.__name__}("+
             f"column_name = {self.column_name}, " +
-            f"column_type = {self.column_type}, " +
-            f"transformation_group = {self.transformation_group}"
+            f"column_type = {self.column_type}, "
         )
         
-        if self.has_transformation:
+        if self.transformation:
             representation += f", transformation = {self.transformation}"
+            representation += f", transformation_group = {self.transformation_group}"            
+            representation += f", transformation_params = {self.transformation_params}"                 
         
         representation += ")>"
         return representation
@@ -42,29 +86,37 @@ class ColumnRegistration:
     
     # ========= ADJUSTING / UPDATING COLUMNREGISTRATION ======= #
     def add_column(self, 
-                   column_name: str, 
-                   column_type: str, 
-                   transformation_group: Optional[str] = None, 
-                   needs_normalization: bool = False,
-                   transformation: Optional[dict] = None):
-        """Add a column to the registry"""
-        
-        if not needs_normalization:
-            transformation_group = 'NA'                     # normalization is not needed, mark as 'NA'
-        
+                   column_name:             str, 
+                   column_type:             Literal['context','feature','target','pred','split'], 
+                   needs_normalization:     bool = False,                   
+                   transformation_group:    Optional[str] = None, 
+                   transformation_params:   Optional[dict] = None):
+        """Add a column to the registry. Please see ColEntry for more information"""
+
+        # if transformation is guided by another column, check whether that column 
+        # already exists in registry
+        if transformation_group and transformation_group != 'self' and transformation_group not in self.registered_columns:
+                raise ColEntryMissingTransformationReferralError(column_name, transformation_group)
+
         # Create the column entry
-        entry = ColEntry(column_name,column_type,transformation_group,transformation)
+        entry = ColEntry(column_name            = column_name,
+                         column_type            = column_type,
+                         transformation         = needs_normalization,
+                         _transformation_group  = transformation_group,
+                         _transformation_params = transformation_params)
         
         # Append to the registry
         self.columns.append(entry)
     
-    def update_transformation(self, column_name: str, transformation: dict):
+    def update_transformation(self, column_name: str, transformation_params: dict):
         """Update transformation info for a column"""
         col = self.get_by_name(column_name)
-        if col.transformation is None:
-            col.transformation = transformation
+        # if transformation params are not yet initiated for this col, then insert the dict
+        if col._transformation_params is None:
+            col._transformation_params = transformation_params
+        # if transformation params are initiated for this col, then simply update the dict            
         else:
-            col.transformation.update(transformation)
+            col._transformation_params.update(transformation_params)
         
     # ========= INTERACTING ======= #        
     def get_by_type(self, column_type: str) -> List[str]:
@@ -82,14 +134,14 @@ class ColumnRegistration:
         Returns:
         --------
         dict : {normalization_group: [column_names]}
-            Keys are the reference columns (or column name itself if None)
+            Keys are the reference columns (or column name itself if ColEntry.transformation_group == 'self')
             Values are lists of columns that share that normalization
         """
         groups = {}
         for col in self.columns:
-            if col.transformation_group != 'NA':
-                # Use the column itself as key if normalization_group is None
-                key = col.transformation_group if col.transformation_group else col.column_name
+            if col.transformation:
+                # Use the column itself as key if normalization_group is 'self'
+                key = col.transformation_group if col.transformation_group != 'self' else col.column_name
                 if key not in groups:
                     groups[key] = []
                 groups[key].append(col.column_name)

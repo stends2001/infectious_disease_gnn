@@ -28,7 +28,7 @@ class EpiDataOrchestrator:
             'target', 
             'target',
             needs_normalization  = False if self.config.target_column == 'cases' else True,
-            transformation_group = None
+            transformation_group = 'self'
         )   
 
         # Store results at each stage
