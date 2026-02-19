@@ -1,7 +1,7 @@
 from .epiconfig import EpiConfig
 from .column_registry import ColumnRegistration
 from .epidataorchestrator_children import EpiDataReader, EpiDataHarmonizer, EpiDataProcessor, EpiFeatureBuilder, EpiNormalizer, EpiDataFinalizer
-from .epidatacontainers import RawEpiData, HarmonizedData, ContextData, ProcessedEpiData, FeatureEpiData, NormalizedEpiData, FinalizedEpiData
+from .epidatacontainers import RawEpiData, HarmonizedEpiData, ContextEpiData, ProcessedEpiData, FeatureEpiData, NormalizedEpiData, FinalizedEpiData
 from .issues import DataOrchestrationContainerNotFound
 # ====================================================
 # ============ MAIN LOADER (ORCHESTRATOR) ============
@@ -118,14 +118,14 @@ class EpiDataOrchestrator:
         return self._data_raw    
     
     @property
-    def data_context(self) -> ContextData:
+    def data_context(self) -> ContextEpiData:
         if not self._data_context:
             raise DataOrchestrationContainerNotFound(datastage = 'data_context', previous_method = 'harmonize_raw')
 
         return self._data_context      
 
     @property
-    def data_harmonized(self) -> HarmonizedData:
+    def data_harmonized(self) -> HarmonizedEpiData:
         if not self._data_harmonized:
             raise DataOrchestrationContainerNotFound(datastage = 'data_harmonized', previous_method = 'harmonize_raw')
 

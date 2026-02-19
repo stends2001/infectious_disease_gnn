@@ -78,8 +78,6 @@ class EpiConfig:
 
         self._classify_attributes()
 
-
-
     # ============= VALIDATION FUNCTIONS ==============
     def _validate_datapaths(self) -> None:
 

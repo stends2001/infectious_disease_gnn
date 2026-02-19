@@ -9,7 +9,7 @@ from ...utils.textformatting import checkmark
 
 from .temporal_summary import EpiDataTemporalSummary
 from .column_registry import ColumnRegistration
-from .epidatacontainers import RawEpiData, HarmonizedData, ContextData, ProcessedEpiData, FeatureEpiData, NormalizedEpiData, FinalizedEpiData
+from .epidatacontainers import RawEpiData, HarmonizedEpiData, ContextEpiData, ProcessedEpiData, FeatureEpiData, NormalizedEpiData, FinalizedEpiData
 from .normalization import apply_minmax_scaling, apply_zscore_scaling, pipeline_minmax_normalization, pipeline_zscore_normalization
 from .normalization import reverse_log, reverse_minmax_scaling, reverse_zscore_scaling
 from .issues import DataOrchestrationError
@@ -254,7 +254,7 @@ class EpiDataHarmonizer:
     Utility:
     -------
     the orchestrate method runs all required methods, based on EpiConfig and returns an
-    instance of HarmonizedData and one of ContextData    
+    instance of HarmonizedEpiData and one of ContextEpiData    
     """
     def __init__(self, epiconfig: 'EpiConfig'):
         self.epiconfig = epiconfig    
@@ -438,7 +438,7 @@ class EpiDataHarmonizer:
                                     self.epiconfig.lag_num,
                                     self.epiconfig.sequence_length)        
 
-    def orchestrate(self, rawdata: 'RawEpiData') -> Tuple['HarmonizedData', 'ContextData']:
+    def orchestrate(self, rawdata: 'RawEpiData') -> Tuple['HarmonizedEpiData', 'ContextEpiData']:
         """
         The function that orchestrates all others
         """
@@ -510,7 +510,7 @@ class EpiDataHarmonizer:
         if isinstance(shapedata, pd.DataFrame):
             shapedata = gpd.GeoDataFrame(shapedata)
 
-        harmdata = HarmonizedData(
+        harmdata = HarmonizedEpiData(
             epidata             = epipopdata,
 
             _population_density  = population_density_data,
@@ -518,7 +518,7 @@ class EpiDataHarmonizer:
             _population_age      = population_age
         )
         
-        ctxdata = ContextData(
+        ctxdata = ContextEpiData(
             nuts_level          = self.epiconfig.nuts_level,
             shapedata_node      = shapedata,
             shapedata_nuts0     = rawdata.shapedata_collection['nuts0'],
@@ -607,7 +607,7 @@ class EpiDataProcessor:
 
         return dfc
 
-    def orchestrate(self, harmonizeddata: 'HarmonizedData') -> 'ProcessedEpiData':
+    def orchestrate(self, harmonizeddata: 'HarmonizedEpiData') -> 'ProcessedEpiData':
         
         time_start = time.time()
         epipopdata = self._add_incidence_column(harmonizeddata.epidata.copy())

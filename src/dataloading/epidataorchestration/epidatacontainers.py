@@ -101,9 +101,9 @@ class RawEpiData:
         return representation +")>"
 
 @dataclass 
-class ContextData:
+class ContextEpiData:
     """
-    Datacontainer for context-data
+    Datacontainer for context-epidata
 
     Parameters:
     ----------
@@ -160,7 +160,7 @@ class ContextData:
         return representation
 
 @dataclass
-class HarmonizedData:
+class HarmonizedEpiData:
     """
     Datacontainer for harmonized-data, both in space and time (that is to say: resampled when necessary)
 
