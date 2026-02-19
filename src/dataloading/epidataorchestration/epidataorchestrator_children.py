@@ -243,7 +243,7 @@ class EpiDataReader:
         return rawdata
             
 # ============= HARMONIZATION CLASS =============
-class Harmonizer:
+class EpiDataHarmonizer:
     """
     Harmonizes the raw data in space and time
 
@@ -1062,7 +1062,7 @@ class EpiNormalizer:
             print("")
         return NormalizedEpiData(epidata=normalized_data)
 
-# ============= Finalize CLASS ============= 
+# ============= FINALIZER CLASS ============= 
 class EpiDataFinalizer:
     """
     Finalizes the data

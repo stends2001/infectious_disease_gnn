@@ -34,7 +34,7 @@ class EpiConfig:
     # ============= TASK CONFIG =============
     horizon_size:           int = 1
     horizon_leadtime:       int = 1
-    num_quantiles:          int = 1
+    quantiles:              Optional[List[float]] = None
     prediction_mode:        Literal['regression','classification'] = 'regression'
     predict_difference:     bool = False
     
@@ -68,7 +68,7 @@ class EpiConfig:
 
     # validate input
     def __post_init__(self):
-
+        self._num_quantiles = len(self.quantiles) if self.quantiles else 0
         # Validate input
         self._validate_input()
         self._validate_datapaths()
@@ -112,9 +112,6 @@ class EpiConfig:
         # validate task
         if self.target_column == 'incidence' and self.prediction_mode == 'classification':
             raise EpiConfigError(f'Invalid combination of target == "incidence" prediction_mode as "classification". Please adjust')
-
-        if self.num_quantiles < 1:
-            raise EpiConfigError(f'Number of predicted quantiles must be at least 1. Got {self.num_quantiles}')
         
         # time indices
         if self.time_index_d and self.disease != 'covid_daily':
@@ -138,9 +135,6 @@ class EpiConfig:
                 f"For multi-step forecasting with deltas, set horizon_leadtime=1 and use horizon_size > 1 instead."
             )            
         
-        if self.num_quantiles > 1:
-            raise CurrentEpiConfigError('num_quantiles isnt implemented yet. Wont be used further into pipeline.')
-
         # features
         # population density
         if self.feature_popdens:
@@ -174,8 +168,8 @@ class EpiConfig:
         if self.prediction_mode != 'regression' and self.incidence_scalar != 10_000:
             EpiConfigWarning('incidence_scalar will not be taken into account when using prediction_mode != "regression"')
 
-        if self.num_quantiles != 1 and self.prediction_mode != 'regression':
-            EpiConfigWarning('num_quantiles will not be taken into account when using prediction_mode != "regression"')                
+        if self.quantiles is not None and self.prediction_mode != 'regression':
+            EpiConfigWarning('quantiles will not be taken into account when using prediction_mode != "regression"')                
             
     # ============= ATTRIBUTE ORGANIZATION ==============
     def _classify_attributes(self) -> None:
@@ -187,7 +181,7 @@ class EpiConfig:
             'main'          :   ['disease'],
             'temporal'      :   ['temporal_frequency','min_date','max_date','split_trainval','split_valtest'],
             'geography'     :   ['nuts_level','split_berlin'],
-            'task config'   :   ['horizon_size','horizon_leadtime','num_quantiles','prediction_mode','predict_difference'],
+            'task config'   :   ['horizon_size','horizon_leadtime','quantiles','prediction_mode','predict_difference'],
             'features'      :   ['time_index_d','time_index_w','time_index_m','lag_column','lag_num','sequence_length','incidence_scalar', 'feature_popsize','feature_popdens','feature_gisd','feature_popage'],
             'normalization' :   ['normalization_method','log_transform','log_shift'],    
             'column names'  :   ['temporal_column','target_column','id_column','pred_column'],
@@ -196,6 +190,10 @@ class EpiConfig:
         }
 
         for attribute in self.attributes_dict:
+            # hidden attributes are not of interest
+            if attribute.startswith("_"):
+                continue
+
             classified = any(attribute in value_list for value_list in self.attributes_classified_dict.values())
             if not classified:
                 raise EpiConfigError(f'Attribute {attribute} not classified.\nLikely stems from an update in EpiConfig class, without incorporating it into the classification dict in _classify_attributes()')

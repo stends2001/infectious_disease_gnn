@@ -1,6 +1,6 @@
 from .epiconfig import EpiConfig
 from .column_registry import ColumnRegistration
-from .epidataorchestrator_children import EpiDataReader, Harmonizer, EpiDataProcessor, EpiFeatureBuilder, EpiNormalizer, EpiDataFinalizer
+from .epidataorchestrator_children import EpiDataReader, EpiDataHarmonizer, EpiDataProcessor, EpiFeatureBuilder, EpiNormalizer, EpiDataFinalizer
 from .epidatacontainers import RawEpiData, HarmonizedData, ContextData, ProcessedEpiData, FeatureEpiData, NormalizedEpiData, FinalizedEpiData
 from .issues import DataOrchestrationContainerNotFound
 # ====================================================
@@ -48,7 +48,7 @@ class EpiDataOrchestrator:
     
     def harmonize_raw(self) -> 'EpiDataOrchestrator':
         """Harmonize data on NUTS-level"""     
-        self.harmonizer                             = Harmonizer(self.config)   
+        self.harmonizer                             = EpiDataHarmonizer(self.config)   
         self._data_harmonized, self._data_context   = self.harmonizer.orchestrate(self.data_raw)        
         return self
     
