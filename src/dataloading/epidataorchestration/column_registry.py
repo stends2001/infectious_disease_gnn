@@ -188,8 +188,9 @@ class ColumnRegistration:
     def __repr__(self) -> str:
         type_counts = {
             'context'   : len(self.context_columns),
+            'feature'   : len(self.feature_columns),            
             'target'    : len(self.target_columns),
-            'feature'   : len(self.feature_columns),
+            'pred'      : len(self.pred_columns),
             'split'     : len(self.split_columns)
         }
 
@@ -210,9 +211,9 @@ class ColumnRegistration:
         lines = [f"<{self.__class__.__name__}("]     
         lines.append(align('context', self.context_columns, width, indent))
         lines.append(align('feature', self.feature_columns, width, indent))
-        lines.append(align('split',   self.split_columns,   width, indent))
         lines.append(align('target',  self.target_columns,  width, indent))
         lines.append(align('pred',    self.pred_columns,    width, indent))
+        lines.append(align('split',   self.split_columns,   width, indent))        
         
         lines.append(")>")
         representation = '\n'.join(lines)

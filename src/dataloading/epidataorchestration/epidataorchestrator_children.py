@@ -1080,13 +1080,13 @@ class EpiDataFinalizer:
     def __init__(self, 
                  epiconfig: 'EpiConfig', 
                  column_registration: ColumnRegistration):
-        self.config = epiconfig 
+        self.epiconfig = epiconfig 
         self.column_registration = column_registration
 
     def _create_pred_col_entry(self) -> None:
         """
         while pred doesn't exist in the data, models will end up with these columns.
-        TODO: fix this depending on quantile - predictions
+        if prediction_quantiles are inputted in EpiConfig, these will be created here.
         """
         self.column_registration.add_column(
             'pred',
@@ -1094,16 +1094,26 @@ class EpiDataFinalizer:
             needs_normalization=True,
             transformation_group='target'
         )      
+        quantiles = self.epiconfig.quantiles
+
+        if quantiles:
+            for quantile_idx, quantile in enumerate(quantiles):
+                self.column_registration.add_column(
+                    f'pred_q{quantile_idx}',
+                    'pred',
+                    needs_normalization=True,
+                    transformation_group='target'
+                )                     
 
     def _add_horizons(self, df: pd.DataFrame) -> pd.DataFrame:
         """adds target columns when horizon_size>1"""
-        base_lead = self.config.horizon_leadtime
-        for additional_steps in range(0, self.config.horizon_size):
+        base_lead = self.epiconfig.horizon_leadtime
+        for additional_steps in range(0, self.epiconfig.horizon_size):
             steps_ahead = base_lead + additional_steps
             target_col = f'target_lead{steps_ahead}'
             
             # Shift from the base target
-            df[target_col] = df.groupby(self.config.id_column)[f'target'].shift(-additional_steps)
+            df[target_col] = df.groupby(self.epiconfig.id_column)[f'target'].shift(-additional_steps)
             
             # Register in column registry
             self.column_registration.add_column(
@@ -1113,13 +1123,13 @@ class EpiDataFinalizer:
                 needs_normalization=True
             )
         
-        if self.config.verbose > 1:
+        if self.epiconfig.verbose > 1:
             print(f'{checkmark} targets for all horizons added')              
         return df.drop(columns = ['target'])
 
     def _drop_nans(self, df: pd.DataFrame) -> pd.DataFrame:
         """drop nans"""
-        if self.config.verbose > 1:
+        if self.epiconfig.verbose > 1:
             print(f"{checkmark} nans dropped")
         return df.dropna()
 
@@ -1129,20 +1139,20 @@ class EpiDataFinalizer:
         - target == 'cases' & prediction_mode == 'regression'       =>  set target type to int
         - target == 'cases' & prediction_mode == 'classification'   =>  set target type to int(0,1)       
         """
-        if self.config.target_column == 'cases':
-            if self.config.prediction_mode == 'regression':
+        if self.epiconfig.target_column == 'cases':
+            if self.epiconfig.prediction_mode == 'regression':
                 for col in self.column_registration.target_columns:
                     df[col] = df[col].astype(int)     
 
-                if self.config.verbose > 1:
+                if self.epiconfig.verbose > 1:
                     print(f"{checkmark} target column(s) set as integer")    
 
-            elif self.config.prediction_mode == 'classification':
+            elif self.epiconfig.prediction_mode == 'classification':
                 for col in self.column_registration.target_columns:
                     df.loc[df[col] > 0, col] = 1  
                     df[col] = df[col].astype(int)
 
-                if self.config.verbose > 1:
+                if self.epiconfig.verbose > 1:
                     print(f"{checkmark} target column(s) set as class")        
 
         return df   
@@ -1152,7 +1162,7 @@ class EpiDataFinalizer:
             dfc = normalized_df.copy()
             
             # Get normalization method
-            norm_method = self.config.normalization_method
+            norm_method = self.epiconfig.normalization_method
             
             if not norm_method:
                 return dfc
@@ -1203,11 +1213,11 @@ class EpiDataFinalizer:
         dfc_denormalized_nanfree    = self._set_target_type(dfc_denormalized_nanfree)        
 
         time_end = time.time()
-        if self.config.verbose > 2:
+        if self.epiconfig.verbose > 2:
             print(f'Execution of EpiFinalizer took {round(time_end - time_start,3)}s')  
-        if self.config.verbose:
+        if self.epiconfig.verbose:
             print(f'{checkmark}{checkmark} All data finalized with correct timestamp alignment') 
-        if self.config.verbose > 1:
+        if self.epiconfig.verbose > 1:
             print("")
 
         return FinalizedEpiData(
