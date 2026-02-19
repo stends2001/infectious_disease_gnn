@@ -66,15 +66,19 @@ class EpiConfig:
     # ============= OTHER =============
     verbose:                Literal[0,1,2] = 0
 
-    # validate input
     def __post_init__(self):
-        self._num_quantiles = len(self.quantiles) if self.quantiles else 0
+
         # Validate input
         self._validate_input()
         self._validate_datapaths()
         self._validate_current_limitations()
         self._validate_warnings()
+
+        self._set_hidden_attributes()
+
         self._classify_attributes()
+
+
 
     # ============= VALIDATION FUNCTIONS ==============
     def _validate_datapaths(self) -> None:
@@ -99,24 +103,34 @@ class EpiConfig:
         Validates discrepancies in the initialization of an EpiConfig instance. These represent
         actual issues or errors, so an EpiConfigError is thrown suggesting to adjust the input.
         """
-        # horizon stuff 
+        # temporal-related 
         if self.horizon_size < 1:
             raise EpiConfigError(f"horizon_size must be >= 1, got {self.horizon_size}")
+        
         if self.horizon_leadtime < 1:
             raise EpiConfigError(f"horizon_leadtime must be >= 1, got {self.horizon_leadtime}")
+        
         if self.sequence_length < 1:
             raise EpiConfigError(f"sequence_length must be >= 1, got {self.sequence_length}")
+        
         if self.lag_num < 1:
             raise EpiConfigError(f"number of lags must be >= 1, got {self.lag_num}")  
-
-        # validate task
-        if self.target_column == 'incidence' and self.prediction_mode == 'classification':
-            raise EpiConfigError(f'Invalid combination of target == "incidence" prediction_mode as "classification". Please adjust')
         
-        # time indices
         if self.time_index_d and self.disease != 'covid_daily':
             raise EpiConfigError(f'time_index_d is only relevant to disease covid_daily. Please adjust')
 
+        # task-related
+        if self.target_column == 'incidence' and self.prediction_mode == 'classification':
+            raise EpiConfigError(f'Invalid combination of target == "incidence" prediction_mode as "classification". Please adjust')
+        
+        if self.quantiles:
+            if not isinstance(self.quantiles, List):
+                raise EpiConfigError(f'Invalid input for quantiles ({self.quantiles}). Must be a List[float]. Please adjust')
+            
+            for quantile in self.quantiles:
+                if quantile >= 1 or quantile <= 0:
+                    raise EpiConfigError(f'Invalid input for quantiles ({self.quantiles}). Must be a List of values 0 < quantile < 1. Please adjust')
+        
     def _validate_current_limitations(self) -> None:
         """
         Validates any issues in the initialization of an EpiConfig instance. 
@@ -172,6 +186,10 @@ class EpiConfig:
             EpiConfigWarning('quantiles will not be taken into account when using prediction_mode != "regression"')                
             
     # ============= ATTRIBUTE ORGANIZATION ==============
+    def _set_hidden_attributes(self) -> None:
+        """post validation, sets hidden attributes that should be accessed (and are not available in representation)"""
+        self._num_quantiles = len(self.quantiles) if self.quantiles else 0
+
     def _classify_attributes(self) -> None:
         """creates dictionaries of attributes and classifies those. Used for back-end and for interaction with repr/str dunders"""
 
