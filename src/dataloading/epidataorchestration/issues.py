@@ -1,66 +1,79 @@
-from ...issues.warnings import Warning
+from typing import List, Type
+from ...issues import Warning, Error
 
 # ======= EPICONFIG ======= #
-
 class EpiConfigWarning(Warning):
-    def __init__(self, statement: str):
-        super().__init__(statement)
+    """
+    warnings are to be printed! 
+    """
+    def __init__(self, message: str, *, code: str | None = None, context: str | None = None):
+        super().__init__(message, code=code, context=context)       
 
-class EpiConfigError(Exception):
-    def __init__(self, explanation: str):
-        statement = "Epiconfig couldn't be loaded" + "\n" + explanation
-        super().__init__(statement)
+class EpiConfigValidationError(Error):
+    """
+    errors are to be raised!
+    """    
+    def __init__(self, message: str, *, code: str | None = None, context: str | None = None):
+        super().__init__(message, code=code, context=context)
 
-class CurrentEpiConfigError(Exception):
-    def __init__(self, explanation: str):
-        statement = "Epiconfig couldn't be loaded" + "\n" + explanation
-        super().__init__(statement)
-
+class EpiConfigLimitationError(Error):
+    """
+    """    
+    def __init__(self, message: str, *, code: str | None = None, context: str | None = None):
+        super().__init__(message, code=code, context=context)        
 # ======== COLUMN_REGISTRY ====== #
 
-class ColEntryError(Exception):
-    """Base class for all column entry related errors."""
-    def __init__(self, entryname: str, message: str):
-        self.entryname  = entryname
-        self.message    = message
-        super().__init__(f"{self.__class__.__name__} - {self.message}")
+class ColumnRegistryError(Error):
+    """
+    Base class for all ColumnRegistry-related errors
+    """
+    def __init__(self, message: str, *, code: str | None = None, context: str | None = None):
+        super().__init__(message, code=code, context=context)       
 
-class InvalidColEntryError(ColEntryError):
-    """Raised when a column entry is invalid."""
+class InvalidColEntry(ColumnRegistryError):
+    """
+    Raised when a column entry is invalid
+    """
     def __init__(self, entryname: str, explanation: str):
-        message = f"Column Registration entry '{entryname}' is invalid. {explanation}"
-        super().__init__(entryname, message)    
+        message = f"Entry '{entryname}' is invalid. {explanation}"
+        super().__init__(message)    
 
-class ColEntryMissingError(ColEntryError):
-    """Raised when a column entry is missing."""
+class MissingColEntry(ColumnRegistryError):
+    """
+    Raised when looking for a column entry that doesn't exist
+    """
     def __init__(self, entryname: str):
-        message = f"Column Registration entry '{entryname}' is missing."
-        super().__init__(entryname, message)
+        message = f"Entry '{entryname}' doesn't exist."
+        super().__init__(message)        
 
-class ColEntryMissingTransformationError(ColEntryError):
-    """Raised when a transformation is invalid."""
+class MissingTransformation(ColumnRegistryError):
+    """
+    Raised when a transformation is invalid
+    """
     def __init__(self, entryname: str):
-        message = f"Column Registration entry '{entryname}' has transformation_group None (independent) but no transformation attribute was found."
-        super().__init__(entryname, message)
+        message = f"Entry'{entryname}' has transformation_group 'self' (independent) but no transformation attribute was found."
+        super().__init__(message)
 
-class ColEntryMissingTransformationReferralError(ColEntryError):
-    """Raised when a transformation referral is invalid."""
+class MissingTransformationReferral(ColumnRegistryError):
+    """
+    Raised when a transformation referral is invalid
+    """
     def __init__(self, entryname: str, referral: str):
-        message = f"Column Registration entry '{entryname}' has transformation_group {referral} for which no transformation attribute was found."
-        super().__init__(entryname, message)
+        message = f"Entry '{entryname}' has transformation_group {referral} for which no transformation attribute was found."
+        super().__init__(message)
 
-# ======== DATAORCHESTRATION =========== #
+# ======== EPIDATAORCHESTRATION =========== #
 
-class DataOrchestrationError(Exception):
-    def __init__(self, explanation: str):
-        statement = "Data Orchestration couldn't be run" + "\n" + explanation
+class EpiDataOrchestrationError(Error):
+    def __init__(self, message: str):
+        statement = f"Data Orchestration couldn't be run; {message}"
         super().__init__(statement)    
 
-class DataOrchestrationContainerNotFound(Exception):
+class MissingEpiDataContainer(Error):
     def __init__(self, datastage: str, previous_method: str):
         super().__init__(f"No {datastage} attribute found for DataOrchestrator. Run {previous_method}() first")        
 
 # ======= TEMPORAL SUMMARY ==== #
-class TemporalError(Exception):
+class TemporalError(Error):
     def __init__(self, message: str):
         super().__init__(f'Invalid EpiDataTemporalSummary: {message}')

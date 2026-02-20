@@ -89,7 +89,7 @@ class BaseModel:
                        horizon:     int                             = 0,
                        transformed: bool                            = False,
                        ) -> ManagedFigure:
-        
+                
         predictioncollection = self.predictions.get_preds(dataset)
         xlimits              = self.temporal_summary.get_daterange_dataset(dataset, reference = 'target')
         xlimits              = [self.temporal_summary._shift(xlimits[0], -1), self.temporal_summary._shift(xlimits[1], 1)]
@@ -109,7 +109,7 @@ class BaseModel:
         if isinstance(node_idx, int):
             node_idx = [node_idx]
 
-        
+
 
         if plot_type == 'line':
 
@@ -122,25 +122,52 @@ class BaseModel:
                 axes        = axes.flatten()           
             else:
                 axes = [axes]
-        
+
             for counter, id in enumerate(node_idx):
                 ax = axes[counter]
                 nodename = self.nutsnames[self.nutsnames[f'{self.epiconfig.id_column}'] == id][f'{self.nutslevel}_name'].iloc[0]
 
                 evaluation_df_node  = evaluation_df[evaluation_df[self.epiconfig.id_column] == id]
-
                 sns.lineplot(data   = evaluation_df_node, x = self.epiconfig.temporal_column, y = 'target',    color = testcolor,          marker = 'o',   label = 'ground truth', ax = ax, linewidth = 2)
 
-                # if the luminence of the color is too high for a white background we give a black outline of line and marker
-                if color_is_light(self.model_color):                  
-                    sns.lineplot(data   = evaluation_df_node, x = self.epiconfig.temporal_column, y = 'pred',      color = self.model_color,   marker = 'o',   label = f'predictions {self.name}',    ax = ax, linewidth = 2, markeredgecolor = 'black', markeredgewidth=0.2)
-                else:
-                    sns.lineplot(data   = evaluation_df_node, x = self.epiconfig.temporal_column, y = 'pred',      color = self.model_color,   marker = 'o',   label = f'predictions {self.name}',    ax = ax, linewidth = 2)
+                quantiles = self.epiconfig.quantiles
 
-                ax.set_xlabel("")   
-                ax.set_xlim(xlimits)     
-                ax.set_title(f'{nodename} [node: {id}]')    
-                ax.grid()   
+                if quantiles:
+                    # find the index of the quantile closest to 0.5
+                    median_idx  = min(range(len(quantiles)), key=lambda i: abs(quantiles[i] - 0.5))
+                    center_col  = f'pred_q{median_idx}'
+                    bottom_col  = 'pred_q0'
+                    top_col     = f'pred_q{len(quantiles) - 1}'
+                else:
+                    center_col  = 'pred'
+                    bottom_col  = None
+                    top_col     = None
+
+                # center line
+                if color_is_light(self.model_color):
+                    sns.lineplot(data=evaluation_df_node, x=self.epiconfig.temporal_column, y=center_col,
+                                color=self.model_color, marker='o', label=f'predictions {self.name}',
+                                ax=ax, linewidth=2, markeredgecolor='black', markeredgewidth=0.2)
+                else:
+                    sns.lineplot(data=evaluation_df_node, x=self.epiconfig.temporal_column, y=center_col,
+                                color=self.model_color, marker='o', label=f'predictions {self.name}',
+                                ax=ax, linewidth=2)
+
+                # quantile band
+                if bottom_col and top_col:
+                    ax.fill_between(
+                        evaluation_df_node[self.epiconfig.temporal_column],
+                        evaluation_df_node[bottom_col],
+                        evaluation_df_node[top_col],
+                        color=self.model_color,
+                        alpha=0.2,
+                        label=f'{quantiles[0]}–{quantiles[-1]} interval'
+                    )
+
+                    ax.set_xlabel("")   
+                    ax.set_xlim(xlimits)     
+                    ax.set_title(f'{nodename} [node: {id}]')    
+                    ax.grid()   
 
             title = f'{self.dataloadermanager.dataorchestrator.config.target_column} predictions by {self.name}, {timesteps_ahead}{self.dataloadermanager.dataorchestrator.config.temporal_frequency} ahead' 
 
@@ -153,9 +180,6 @@ class BaseModel:
             plt.suptitle(title)
             plt.close()
             return fig
-        
-        else:
-            raise ValueError('currently no other plots than lineplots supported') 
 
     # @abstractmethod
     def save_model(self):

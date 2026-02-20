@@ -3,7 +3,7 @@ import geopandas as gpd
 from dataclasses import dataclass
 from typing import Literal, Dict, Optional, TYPE_CHECKING
 
-from .issues import DataOrchestrationError
+from .issues import EpiDataOrchestrationError
 from ...utils.textformatting import checkmark
 
 if TYPE_CHECKING:
@@ -55,28 +55,28 @@ class RawEpiData:
     def population_berlin(self) -> pd.DataFrame:
         df = self._population_berlin
         if df is None: 
-            raise DataOrchestrationError(f'Attempted to access population_berlin at {self.__class__.__name__} but no such data found')
+            raise EpiDataOrchestrationError(f'Attempted to access population_berlin at {self.__class__.__name__} but no such data found')
         return df
 
     @property
     def population_density(self) -> pd.DataFrame:
         df = self._population_density
         if df is None: 
-            raise DataOrchestrationError(f'Attempted to access population_density at {self.__class__.__name__} but no such data found')
+            raise EpiDataOrchestrationError(f'Attempted to access population_density at {self.__class__.__name__} but no such data found')
         return df   
 
     @property
     def gisd(self) -> pd.DataFrame:
         df = self._gisd
         if df is None: 
-            raise DataOrchestrationError(f'Attempted to access gisd at {self.__class__.__name__} but no such data found')
+            raise EpiDataOrchestrationError(f'Attempted to access gisd at {self.__class__.__name__} but no such data found')
         return df
 
     @property
     def population_age(self) -> pd.DataFrame:
         df = self._population_age
         if df is None: 
-            raise DataOrchestrationError(f'Attempted to access population_age at {self.__class__.__name__} but no such data found')
+            raise EpiDataOrchestrationError(f'Attempted to access population_age at {self.__class__.__name__} but no such data found')
         return df         
 
     def __repr__(self):
@@ -186,21 +186,21 @@ class HarmonizedEpiData:
     def population_density(self) -> pd.DataFrame:
         df = self._population_density
         if df is None: 
-            raise DataOrchestrationError(f'Attempted to access population_density at {self.__class__.__name__} but no such data found')
+            raise EpiDataOrchestrationError(f'Attempted to access population_density at {self.__class__.__name__} but no such data found')
         return df         
 
     @property
     def gisd(self) -> pd.DataFrame:
         df = self._gisd
         if df is None: 
-            raise DataOrchestrationError(f'Attempted to access gisd at {self.__class__.__name__} but no such data found')
+            raise EpiDataOrchestrationError(f'Attempted to access gisd at {self.__class__.__name__} but no such data found')
         return df         
 
     @property
     def population_age(self) -> pd.DataFrame:
         df = self._population_age
         if df is None: 
-            raise DataOrchestrationError(f'Attempted to access population_age at {self.__class__.__name__} but no such data found')
+            raise EpiDataOrchestrationError(f'Attempted to access population_age at {self.__class__.__name__} but no such data found')
         return df                     
 
     def __repr__(self):
@@ -245,28 +245,28 @@ class ProcessedEpiData:
     def population_size(self) -> pd.DataFrame:
         df = self._population_size
         if df is None: 
-            raise DataOrchestrationError(f'Attempted to access population_size at {self.__class__.__name__} but no such data found')
+            raise EpiDataOrchestrationError(f'Attempted to access population_size at {self.__class__.__name__} but no such data found')
         return df      
     
     @property
     def population_density(self) -> pd.DataFrame:
         df = self._population_density
         if df is None: 
-            raise DataOrchestrationError(f'Attempted to access population_density at {self.__class__.__name__} but no such data found')
+            raise EpiDataOrchestrationError(f'Attempted to access population_density at {self.__class__.__name__} but no such data found')
         return df      
     
     @property
     def gisd(self) -> pd.DataFrame:
         df = self._gisd
         if df is None: 
-            raise DataOrchestrationError(f'Attempted to access gisd at {self.__class__.__name__} but no such data found')
+            raise EpiDataOrchestrationError(f'Attempted to access gisd at {self.__class__.__name__} but no such data found')
         return df      
     
     @property
     def population_age(self) -> pd.DataFrame:
         df = self._population_age
         if df is None: 
-            raise DataOrchestrationError(f'Attempted to access population_age at {self.__class__.__name__} but no such data found')
+            raise EpiDataOrchestrationError(f'Attempted to access population_age at {self.__class__.__name__} but no such data found')
         return df      
 
     def __repr__(self):

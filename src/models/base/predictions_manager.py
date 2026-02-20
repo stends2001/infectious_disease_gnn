@@ -57,6 +57,7 @@ class PredictionManager:
         self.column_registration= column_registration
         self.temporal_summary   = temporal_summary
         self._setup_reverse_transformations()
+        self._setup_required_columns()
 
     def _setup_reverse_transformations(self):
         self.reverse_transformations = {
@@ -64,6 +65,17 @@ class PredictionManager:
             'zscore': reverse_zscore_scaling,
             'log'   : reverse_log
         }
+
+    def _setup_required_columns(self):
+        cols        = [self.epiconfig.temporal_column, self.epiconfig.id_column, 'target']
+
+        if self.epiconfig._num_quantiles == 0:
+            pred_cols= ['pred']
+        else:
+            pred_cols= [c for c in self.column_registration.pred_columns if c != 'pred']
+
+        self.pred_cols      = pred_cols
+        self.required_columns = cols + pred_cols
 
     def _shift_prediction_timestamp(self, df: pd.DataFrame) -> pd.DataFrame:
         dfc                                 = df.copy()
@@ -113,7 +125,7 @@ class PredictionManager:
             if transf == 'poisson_sampling':
                 if 'sampling_mode' in transf_args.keys():
                     sampling_mode = transf_args['sampling_mode'] 
-                    df_filtered['pred'] = convert_poisson_predictions(df_filtered['pred'], sampling_mode)
+                    df_filtered[self.pred_cols] = convert_poisson_predictions(df_filtered[self.pred_cols], sampling_mode)
                 else:
                     raise ValueError('When using poisson_sampling, please supply "sampling_mode"')
             else:
@@ -162,21 +174,23 @@ class PredictionManager:
             if transformation_dict is None:
                 raise ColEntryMissingTransformationError(entryname='target')
             
-            for col in ['target', 'pred']:
-                if normalization_method:
-                    df_denorm = self.reverse_transformations[normalization_method](
-                        df_denorm, transformation_dict['normalization'], column=col
-                    )
-                
-                if 'log' in transformation_dict:
-                    df_denorm = self.reverse_transformations['log'](
-                        df_denorm, transformation_dict['log'], column=col
-                    )
+            for col in self.column_registration.pred_columns + ['target']:
+                if col in df.columns:
+                    if normalization_method:
+                        df_denorm = self.reverse_transformations[normalization_method](
+                            df_denorm, transformation_dict['normalization'], column=col
+                        )
+                    
+                    if 'log' in transformation_dict:
+                        df_denorm = self.reverse_transformations['log'](
+                            df_denorm, transformation_dict['log'], column=col
+                        )
 
             if self.epiconfig.predict_difference and 'delta' in transformation_dict:
                 anchor_col = transformation_dict['delta']['anchor_col']
-                for col in ['target', 'pred']:
-                    df_denorm[col] = df_denorm[col] + df_denorm[anchor_col]
+                for col in self.column_registration.pred_columns + ['target']:
+                    if col in df.columns:
+                        df_denorm[col] = df_denorm[col] + df_denorm[anchor_col]
                 df_denorm = df_denorm.drop(columns=[anchor_col])
         
         return df_denorm
@@ -187,11 +201,10 @@ class PredictionManager:
         return df
     
     def _get_prediction_df_cols(self, df: pd.DataFrame) -> pd.DataFrame:
-        cols = [self.epiconfig.temporal_column, self.epiconfig.id_column, 'target', 'pred']
-        return df[cols].copy()    
+        return df[self.required_columns].copy()    
         
     def _validate_columns(self, data: pd.DataFrame) -> pd.DataFrame:
-        essential_columns = [self.epiconfig.temporal_column, self.epiconfig.id_column, 'target', 'pred']
+        essential_columns = self.required_columns
         
         for cc in essential_columns:
             if cc not in data.columns.tolist():

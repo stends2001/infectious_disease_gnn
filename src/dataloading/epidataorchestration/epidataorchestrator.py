@@ -2,10 +2,7 @@ from .epiconfig import EpiConfig
 from .column_registry import ColumnRegistration
 from .epidataorchestrator_children import EpiDataReader, EpiDataHarmonizer, EpiDataProcessor, EpiFeatureBuilder, EpiNormalizer, EpiDataFinalizer
 from .epidatacontainers import RawEpiData, HarmonizedEpiData, ContextEpiData, ProcessedEpiData, FeatureEpiData, NormalizedEpiData, FinalizedEpiData
-from .issues import DataOrchestrationContainerNotFound
-# ====================================================
-# ============ MAIN LOADER (ORCHESTRATOR) ============
-# ====================================================
+from .issues import MissingEpiDataContainer
 
 class EpiDataOrchestrator:
     """
@@ -114,47 +111,47 @@ class EpiDataOrchestrator:
     @property
     def data_raw(self) -> RawEpiData:
         if not self._data_raw:
-            raise DataOrchestrationContainerNotFound(datastage = 'data_raw', previous_method = 'load_raw')
+            raise MissingEpiDataContainer(datastage = 'data_raw', previous_method = 'load_raw')
         return self._data_raw    
     
     @property
     def data_context(self) -> ContextEpiData:
         if not self._data_context:
-            raise DataOrchestrationContainerNotFound(datastage = 'data_context', previous_method = 'harmonize_raw')
+            raise MissingEpiDataContainer(datastage = 'data_context', previous_method = 'harmonize_raw')
 
         return self._data_context      
 
     @property
     def data_harmonized(self) -> HarmonizedEpiData:
         if not self._data_harmonized:
-            raise DataOrchestrationContainerNotFound(datastage = 'data_harmonized', previous_method = 'harmonize_raw')
+            raise MissingEpiDataContainer(datastage = 'data_harmonized', previous_method = 'harmonize_raw')
 
         return self._data_harmonized        
            
     @property
     def data_processed(self) -> ProcessedEpiData:
         if not self._data_processed:
-            raise DataOrchestrationContainerNotFound(datastage = 'data_processed', previous_method = 'harmonize_raw')
+            raise MissingEpiDataContainer(datastage = 'data_processed', previous_method = 'harmonize_raw')
 
         return self._data_processed    
 
     @property 
     def data_feature(self) -> FeatureEpiData:
         if not self._data_feature:
-            raise DataOrchestrationContainerNotFound(datastage = 'data_feature', previous_method = 'data_processed')        
+            raise MissingEpiDataContainer(datastage = 'data_feature', previous_method = 'data_processed')        
 
         return self._data_feature    
     
     @property
     def data_normalized(self) -> NormalizedEpiData:
         if not self._data_normalized:
-            raise DataOrchestrationContainerNotFound(datastage = 'data_normalized', previous_method = 'build_features')        
+            raise MissingEpiDataContainer(datastage = 'data_normalized', previous_method = 'build_features')        
 
         return self._data_normalized    
 
     @property
     def data_final(self) -> FinalizedEpiData:
         if not self._data_final:
-            raise DataOrchestrationContainerNotFound(datastage = 'data_final', previous_method = 'normalize')        
+            raise MissingEpiDataContainer(datastage = 'data_final', previous_method = 'normalize')        
 
         return self._data_final         

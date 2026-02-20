@@ -1,10 +1,8 @@
-"""
-This will be my very own warning module. I'm using the same type of classes as Exceptions, with the difference that these don't disturb runtime.
-"""
+from .base import IssueBase
 
-from ..utils.textformatting import warning_emoji
+class Warning(IssueBase):
+    def __init__(self, message: str, *, code: str | None = None, context: str | None = None):
+        super().__init__(message, code=code, context=context)
 
-# Parent class
-class Warning:
-    def __init__(self, statement: str):
-        print(f'{warning_emoji} {self.__class__.__name__}: {statement}')
+    def __str__(self) -> str:
+        return f'{self.__class__.__name__}: {self.message}'

@@ -5,8 +5,10 @@ import pandas as pd
 
 from ...utils.helpers import get_data_env
 from ...utils.textformatting import align, return_header_line
-from ...issues.exceptions import WissdatenMountingError
-from .issues import EpiConfigWarning, EpiConfigError, CurrentEpiConfigError
+from ...issues.errors import WissdatenMountingError
+from ...issues import IssueReport
+from .issues import EpiConfigWarning, EpiConfigValidationError, EpiConfigLimitationError
+
 
 @dataclass
 class EpiConfig:
@@ -101,33 +103,37 @@ class EpiConfig:
         Validates discrepancies in the initialization of an EpiConfig instance. These represent
         actual issues or errors, so an EpiConfigError is thrown suggesting to adjust the input.
         """
+        validation_errors = []
         # temporal-related 
         if self.horizon_size < 1:
-            raise EpiConfigError(f"horizon_size must be >= 1, got {self.horizon_size}")
+            validation_errors.append(EpiConfigValidationError(f"horizon_size must be >= 1, got {self.horizon_size}"))
         
         if self.horizon_leadtime < 1:
-            raise EpiConfigError(f"horizon_leadtime must be >= 1, got {self.horizon_leadtime}")
+            validation_errors.append(EpiConfigValidationError(f"horizon_leadtime must be >= 1, got {self.horizon_leadtime}"))
         
         if self.sequence_length < 1:
-            raise EpiConfigError(f"sequence_length must be >= 1, got {self.sequence_length}")
+            validation_errors.append(EpiConfigValidationError(f"sequence_length must be >= 1, got {self.sequence_length}"))
         
         if self.lag_num < 1:
-            raise EpiConfigError(f"number of lags must be >= 1, got {self.lag_num}")  
+            validation_errors.append(EpiConfigValidationError(f"number of lags must be >= 1, got {self.lag_num}"))
         
         if self.time_index_d and self.disease != 'covid_daily':
-            raise EpiConfigError(f'time_index_d is only relevant to disease covid_daily. Please adjust')
+            validation_errors.append(EpiConfigValidationError(f'time_index_d is only relevant to disease covid_daily'))
 
         # task-related
         if self.target_column == 'incidence' and self.prediction_mode == 'classification':
-            raise EpiConfigError(f'Invalid combination of target == "incidence" prediction_mode as "classification". Please adjust')
+            validation_errors.append(EpiConfigValidationError(f'Invalid combination of target == "incidence" prediction_mode as "classification"'))
         
         if self.quantiles:
             if not isinstance(self.quantiles, List):
-                raise EpiConfigError(f'Invalid input for quantiles ({self.quantiles}). Must be a List[float]. Please adjust')
+               validation_errors.append(EpiConfigValidationError(f'Invalid input for quantiles ({self.quantiles}). Must be a List[float]'))
             
             for quantile in self.quantiles:
                 if quantile >= 1 or quantile <= 0:
-                    raise EpiConfigError(f'Invalid input for quantiles ({self.quantiles}). Must be a List of values 0 < quantile < 1. Please adjust')
+                   validation_errors.append(EpiConfigValidationError(f'Invalid input for quantiles ({self.quantiles}). Must be a List of values 0 < quantile < 1'))
+        
+        if len(validation_errors):
+            raise IssueReport(validation_errors, context = "EpiConfig could not be created")
         
     def _validate_current_limitations(self) -> None:
         """
@@ -135,42 +141,48 @@ class EpiConfig:
         These represent CURRENT limitations, which are also things for me to develop further.
         An CurrentEpiConfigError is thrown suggesting to adjust the input.
         """
+
+        limitation_errors = []
+
         # temporal frequency
         if self.temporal_frequency not in ['m','w','d']:
-            raise CurrentEpiConfigError(f'invalid valid for temporal_frequency (currently). Value must be in ["m","w","d"]')
+            limitation_errors.append(EpiConfigLimitationError(f'invalid valid for temporal_frequency (currently). Value must be in ["m","w","d"]'))
 
         # predicting deltas
         if self.predict_difference and self.horizon_leadtime > 1:
-            raise CurrentEpiConfigError(
+            limitation_errors.append(EpiConfigLimitationError(
                 f"predict_difference=True is only supported with horizon_leadtime=1 (currently) "
                 f"Got horizon_leadtime={self.horizon_leadtime}. "
                 f"For multi-step forecasting with deltas, set horizon_leadtime=1 and use horizon_size > 1 instead."
-            )            
+            ))            
         
         # features
         # population density
         if self.feature_popdens:
             if self.nuts_level != 'nuts3':
-                raise CurrentEpiConfigError('Currently population-density-feature data only exists for nuts3. Please remove this feature, or switch to nuts3.')
+                limitation_errors.append(EpiConfigLimitationError('Currently population-density-feature data only exists for nuts3. Please remove this feature, or switch to nuts3.'))
             
             if self.split_berlin:
-                raise CurrentEpiConfigError('Currently population-density-feature data only exists for Berlin as entirety, not split. Please adjust.')
+                limitation_errors.append(EpiConfigLimitationError('Currently population-density-feature data only exists for Berlin as entirety, not split. Please adjust.'))
         # gisd
         if self.feature_gisd:
             if self.nuts_level not in ['nuts2','nuts3']:
-                raise CurrentEpiConfigError('GISD data only available for nuts2 or nuts3. Please adjust')
+                limitation_errors.append(EpiConfigLimitationError('GISD data only available for nuts2 or nuts3. Please adjust'))
             if self.split_berlin:
-                raise CurrentEpiConfigError('Crrently GISD data only exists for Berlin as entirety, not split. Please adjust.')        
+                limitation_errors.append(EpiConfigLimitationError('Crrently GISD data only exists for Berlin as entirety, not split. Please adjust.'))
             if pd.to_datetime(self.max_date) > pd.to_datetime('2021-12-31'):
-                raise CurrentEpiConfigError('Currently GISD data only available until 2021 while simulation max date exceeds that. Either remove the gisd data as feature, or decrease the timespawn.')                      
+                limitation_errors.append(EpiConfigLimitationError('Currently GISD data only available until 2021 while simulation max date exceeds that. Either remove the gisd data as feature, or decrease the timespawn.'))
         # population age
         if self.feature_popage:
             if self.nuts_level != 'nuts3':
-                raise CurrentEpiConfigError('population age only available when nuts is nuts3')
+                limitation_errors.append(EpiConfigLimitationError('population age only available when nuts is nuts3'))
             
         if self.feature_popsize:
             if not self.feature_popage:
-                raise CurrentEpiConfigError('Currently only popsize supported if popage is included as well')
+                limitation_errors.append(EpiConfigLimitationError('Currently only popsize supported if popage is included as well'))
+        
+        if len(limitation_errors):
+            raise IssueReport(limitation_errors, 'EpiConfig couldnt be created')
 
     def _validate_warnings(self) -> None:
         """
@@ -178,10 +190,12 @@ class EpiConfig:
         A EpiConfigWarning is thrown
         """
         if self.prediction_mode != 'regression' and self.incidence_scalar != 10_000:
-            EpiConfigWarning('incidence_scalar will not be taken into account when using prediction_mode != "regression"')
+            w = EpiConfigWarning('incidence_scalar will not be taken into account when using prediction_mode != "regression"')
+            print(w)
 
         if self.quantiles is not None and self.prediction_mode != 'regression':
-            EpiConfigWarning('quantiles will not be taken into account when using prediction_mode != "regression"')                
+            w = EpiConfigWarning('quantiles will not be taken into account when using prediction_mode != "regression"')                
+            print(w)
             
     # ============= ATTRIBUTE ORGANIZATION ==============
     def _set_hidden_attributes(self) -> None:
@@ -212,7 +226,7 @@ class EpiConfig:
 
             classified = any(attribute in value_list for value_list in self.attributes_classified_dict.values())
             if not classified:
-                raise EpiConfigError(f'Attribute {attribute} not classified.\nLikely stems from an update in EpiConfig class, without incorporating it into the classification dict in _classify_attributes()')
+                raise EpiConfigValidationError(f'Attribute {attribute} not classified.\nLikely stems from an update in EpiConfig class, without incorporating it into the classification dict in _classify_attributes()')
 
     # ============= PROPERTIES =============
     @property

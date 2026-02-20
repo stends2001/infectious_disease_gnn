@@ -12,7 +12,7 @@ from .column_registry import ColumnRegistration
 from .epidatacontainers import RawEpiData, HarmonizedEpiData, ContextEpiData, ProcessedEpiData, FeatureEpiData, NormalizedEpiData, FinalizedEpiData
 from .normalization import apply_minmax_scaling, apply_zscore_scaling, pipeline_minmax_normalization, pipeline_zscore_normalization
 from .normalization import reverse_log, reverse_minmax_scaling, reverse_zscore_scaling
-from .issues import DataOrchestrationError
+from .issues import EpiDataOrchestrationError, MissingEpiDataContainer
 
 if TYPE_CHECKING:
     from .epiconfig import EpiConfig
@@ -276,7 +276,7 @@ class EpiDataHarmonizer:
 
         for year, base_pop in df_11000['population_size'].items():
             yearly_rows = relative_population_size_berlin_districts.copy()
-            yearly_rows['year'] = year
+            yearly_rows['year'] = int(year) # type: ignore[assignment]
             yearly_rows['population_size'] = yearly_rows['population_size'] * base_pop
             yearly_rows['population_size'] = yearly_rows['population_size'].astype(int)
             
@@ -391,7 +391,7 @@ class EpiDataHarmonizer:
             if self.epiconfig.disease == 'covid_daily':
                 resampled_df = epi_df
             else:
-                raise DataOrchestrationError(f'temporal_freq == "d" is only valid for disease "covid_daily" not for {self.epiconfig.disease}')
+                raise EpiDataOrchestrationError(f'temporal_freq == "d" is only valid for disease "covid_daily" not for {self.epiconfig.disease}')
                 
         elif temporal_freq == 'w':
             if self.epiconfig.disease == 'covid_daily':
@@ -446,7 +446,7 @@ class EpiDataHarmonizer:
 
         if self.epiconfig.split_berlin:
             if rawdata.population_berlin is None:
-                raise DataOrchestrationError("'population_berlin' attribute is not found in rawdata")
+                raise EpiDataOrchestrationError("'population_berlin' attribute is not found in rawdata")
             
             population_data = self._add_berlin_districts(rawdata.population, rawdata.population_berlin)
             raw_epidata     = rawdata.disease
@@ -691,7 +691,7 @@ class EpiFeatureBuilder:
         # ============ day in week ===========
         if self.epiconfig.time_index_d: 
             if self.temporal_summary.temporal_frequency != 'd':
-                raise DataOrchestrationError(f"can't put temporal index for day in week for data that has no daily temporal frequency")
+                raise EpiDataOrchestrationError(f"can't put temporal index for day in week for data that has no daily temporal frequency")
             days_in_week = 7
 
             sin_col_d = sin_col_basis+"_d"
@@ -706,7 +706,7 @@ class EpiFeatureBuilder:
         # ============ week in year ===========
         if self.epiconfig.time_index_w:         
             if self.temporal_summary.temporal_frequency not in ['d','w']:
-                raise DataOrchestrationError(f"can't put temporal index for week in year data that has no daily or weekly temporal frequency")
+                raise EpiDataOrchestrationError(f"can't put temporal index for week in year data that has no daily or weekly temporal frequency")
 
             def _year_has_53_weeks(year: int) -> bool:
                 dec_28 = pd.Timestamp(year=year, month=12, day=28)
@@ -925,7 +925,7 @@ class EpiNormalizer:
         df_transformed                              = df.copy()
            
         if col not in df_transformed.columns:
-            raise DataOrchestrationError(f"{col} not found in df. Couldn't be log-transformed")
+            raise EpiDataOrchestrationError(f"{col} not found in df. Couldn't be log-transformed")
 
         df_transformed[col]                         = np.log(df_transformed[col] + self.epiconfig.log_shift)
       
@@ -984,7 +984,7 @@ class EpiNormalizer:
             return normalized_df
 
         elif self.epiconfig.normalization_method not in self.normalization_functions['apply']:
-            raise DataOrchestrationError(f'No normalization function {self.epiconfig.normalization_method} found.')
+            raise EpiDataOrchestrationError(f'No normalization function {self.epiconfig.normalization_method} found.')
 
         ### First pass ###
         # get all transformation parameters per group (.transformation_group = 'self')

@@ -25,7 +25,11 @@ class ConstantModel(BaseLineModel):
         self.val_losses             = []
         
     def train(self):
-        print("This naive model doesn't train")
+        # compute residuals on training data
+        train_df        = self.dataloadermanager.dataloader_collections[self.dataloadermanager.dataloader_collections['train']]
+        residuals       = train_df['target'] - self.constant_value
+        self._residuals = residuals
+        self._update_status('trained')
 
     def set_global_hparams(self):
         print("This naive model doesn't require global hparams")
@@ -39,18 +43,25 @@ class ConstantModel(BaseLineModel):
         """
         Forecast for set dataset
         """
+        self._check_state(['model_hparams_set','trained'])
 
-        self._check_state(['model_hparams_set'])
+        quantiles = self.dataloadermanager.dataorchestrator.config.quantiles
         
         for hh in range(self.dataloadermanager.dataorchestrator.config.horizon_size):
             evaluation_df               = self.dataloadermanager.dataloader_collections[self.dataloadermanager.dataloader_collections[dataset]]
             evaluation_df               = evaluation_df[[self.epiconfig.id_column,self.epiconfig.temporal_column,'target']]
-            evaluation_df['pred']       = self.constant_value
+            
+            if quantiles:
+                for i, q in enumerate(quantiles):
+                    evaluation_df[f'pred_q{i}'] = self.constant_value + self._residuals.quantile(q)            
+            else:
+                evaluation_df['pred']       = self.constant_value
                         
             self.predictions.add_horizon_predictions(dataset, self._normalize(evaluation_df), hh)
             
         self._update_status('forecasted')   
         return self  
+
         
     def __str__(self):
         # Calculate width

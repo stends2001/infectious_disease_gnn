@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from typing import Optional, List, Dict, Any, Literal
-from .issues import ColEntryMissingError, ColEntryMissingTransformationError, InvalidColEntryError, ColEntryMissingTransformationReferralError
+from .issues import InvalidColEntry, MissingColEntry, MissingTransformation, MissingTransformationReferral
 from ...utils.textformatting import align
 
 @dataclass
@@ -44,22 +44,23 @@ class ColEntry:
     def _validate_input(self) -> None:
         """to be run post init: validate whether combination of input makes sense or not"""
         allowed_types = ['context','feature','target','pred','split']
+        
         if self.column_type not in allowed_types:
-                raise InvalidColEntryError(self.column_name, f'got unsupported value for column_type ({self.column_type}). Supported values are: {allowed_types}') 
+                raise InvalidColEntry(self.column_name, f'got unsupported value for column_type ({self.column_type}). Supported values are: {allowed_types}') 
 
     @property
     def transformation_group(self) -> str:
         if self._transformation_group:
             return self._transformation_group
         else:
-            raise ColEntryMissingTransformationError(self.column_name)        
+            raise MissingTransformation(self.column_name)        
 
     @property
     def transformation_params(self) -> Dict[str, Any]:
         if self._transformation_params:
             return self._transformation_params
         else:
-            raise ColEntryMissingTransformationError(self.column_name)
+            raise MissingTransformation(self.column_name)
     
     def __repr__(self) -> str:
         representation = (
@@ -96,7 +97,7 @@ class ColumnRegistration:
         # if transformation is guided by another column, check whether that column 
         # already exists in registry
         if transformation_group and transformation_group != 'self' and transformation_group not in self.registered_columns:
-                raise ColEntryMissingTransformationReferralError(column_name, transformation_group)
+                raise MissingTransformationReferral(column_name, transformation_group)
 
         # Create the column entry
         entry = ColEntry(column_name            = column_name,
@@ -152,7 +153,7 @@ class ColumnRegistration:
         for col in self.columns:
             if col.column_name == column_name:
                 return col
-        raise ColEntryMissingError(column_name)
+        raise MissingColEntry(column_name)
 
     # ========= PROPERTIES ======= #
     @property

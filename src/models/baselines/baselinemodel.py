@@ -24,6 +24,12 @@ class BaseLineModel(BaseModel):
 
         super().__init__(dataloadermanager=dataloadermanager, name= name, verbose=verbose)
 
+        if self.epiconfig._num_quantiles == 0:
+            pred_cols= ['pred']
+        else:
+            pred_cols= [c for c in self.column_registration.pred_columns if c != 'pred']
+        self.pred_cols = pred_cols
+
         self._setup_transformations()
 
     def train(self, dataset: Literal['train','val','test'] = 'test'):
@@ -64,9 +70,9 @@ class BaseLineModel(BaseModel):
             transformation_dict     = col_entry_target.transformation_params
 
             if 'log' in transformation_dict:
-                df_norm = self.transformations['log'](df_norm, cols=['target','pred'], eps=transformation_dict['log'])
+                df_norm = self.transformations['log'](df_norm, cols=(['target'] + self.pred_cols), eps=transformation_dict['log'])
 
             if normalization_method:
-                df_norm = self.transformations[normalization_method](df_norm, params = {col: transformation_dict['normalization'] for col in ['target','pred']}, columns = ['target','pred'])
+                df_norm = self.transformations[normalization_method](df_norm, params = {col: transformation_dict['normalization'] for col in (['target'] + self.pred_cols)}, columns = (['target'] + self.pred_cols))
                         
         return df_norm           
