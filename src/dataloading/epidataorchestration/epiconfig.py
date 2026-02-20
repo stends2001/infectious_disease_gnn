@@ -9,7 +9,6 @@ from ...issues.errors import WissdatenMountingError
 from ...issues import IssueReport
 from .issues import EpiConfigWarning, EpiConfigValidationError, EpiConfigLimitationError
 
-
 @dataclass
 class EpiConfig:
     """ 
@@ -125,13 +124,29 @@ class EpiConfig:
             validation_errors.append(EpiConfigValidationError(f'Invalid combination of target == "incidence" prediction_mode as "classification"'))
         
         if self.quantiles:
-            if not isinstance(self.quantiles, List):
+            if not isinstance(self.quantiles, list):
                validation_errors.append(EpiConfigValidationError(f'Invalid input for quantiles ({self.quantiles}). Must be a List[float]'))
             
+            middle_idx = int(len(self.quantiles) / 2)
+
             for quantile in self.quantiles:
                 if quantile >= 1 or quantile <= 0:
                    validation_errors.append(EpiConfigValidationError(f'Invalid input for quantiles ({self.quantiles}). Must be a List of values 0 < quantile < 1'))
-        
+
+            if not len(self.quantiles) % 2:
+                validation_errors.append(EpiConfigValidationError(f'Invalid input for quantiles ({self.quantiles}). Must be of odd length'))
+            
+            if self.quantiles[int(len(self.quantiles) / 2)] != 0.5:
+                validation_errors.append(EpiConfigValidationError(f'Invalid input for quantiles ({self.quantiles}). Must be symmetric around quantile 0.5'))       
+
+            if len(self.quantiles) > 1:
+
+                for idx_l in range(0,middle_idx):
+                    idx_r = len(self.quantiles) - idx_l - 1
+
+                    if self.quantiles[idx_l] + self.quantiles[idx_r] != 1.0:                 
+                        validation_errors.append(EpiConfigValidationError(f'Invalid input for quantiles ({self.quantiles}). Must be symmetric around quantile 0.5'))                                   
+
         if len(validation_errors):
             raise IssueReport(validation_errors, context = "EpiConfig could not be created")
         

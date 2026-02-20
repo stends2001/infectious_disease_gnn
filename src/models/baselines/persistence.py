@@ -27,7 +27,7 @@ class PersistenceModel(BaseLineModel):
         quantiles = self.dataloadermanager.dataorchestrator.config.quantiles
 
         if quantiles:
-            train_df        = self.dataloadermanager.dataloader_collections
+            train_df        = self.dataloadermanager.dataloader_main
             train_df        = train_df[train_df['train']].sort_values([self.epiconfig.id_column, self.epiconfig.temporal_column]).copy()
             timeshift_num   = self.dataloadermanager.dataorchestrator.config.horizon_leadtime
             persistence_pred= train_df.groupby(self.epiconfig.id_column)['target'].shift(timeshift_num)
@@ -63,7 +63,7 @@ class PersistenceModel(BaseLineModel):
 
         for hh in range(self.dataloadermanager.dataorchestrator.config.horizon_size):
             timeshift_num   = int(hh + self.dataloadermanager.dataorchestrator.config.horizon_leadtime)
-            evaluation_df   = self.dataloadermanager.dataloader_collections
+            evaluation_df   = self.dataloadermanager.dataloader_main
             evaluation_df   = evaluation_df.sort_values([self.epiconfig.id_column, self.epiconfig.temporal_column]).copy()
 
             persistence_pred = evaluation_df.groupby(self.epiconfig.id_column)['target'].shift(timeshift_num)

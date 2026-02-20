@@ -18,7 +18,7 @@ class ClimateologyModel(BaseLineModel):
             name = f'Climateology Model'
 
         super().__init__(dataloadermanager=dataloadermanager, name=name, verbose=verbose)
-        self.seasonal_averages = self._get_temporal_averages(dataloadermanager.dataloader_collections)
+        self.seasonal_averages = self._get_temporal_averages(dataloadermanager.dataloader_main)
 
     def _add_seasonal_index(self, df: pd.DataFrame) -> pd.DataFrame:
         """Adds t_number column based on temporal frequency"""
@@ -48,7 +48,7 @@ class ClimateologyModel(BaseLineModel):
         quantiles = self.dataloadermanager.dataorchestrator.config.quantiles
 
         if quantiles:
-            train_df = self.dataloadermanager.dataloader_collections
+            train_df = self.dataloadermanager.dataloader_main
             train_df = train_df[train_df['train']]
             train_df = self._add_seasonal_index(train_df)
             merged   = pd.merge(train_df, self.seasonal_averages, on=[self.epiconfig.id_column, 't_number'])
@@ -72,7 +72,7 @@ class ClimateologyModel(BaseLineModel):
         quantiles = self.dataloadermanager.dataorchestrator.config.quantiles
 
         for hh in range(self.dataloadermanager.dataorchestrator.config.horizon_size):
-            evaluation_df = self.dataloadermanager.dataloader_collections[self.dataloadermanager.dataloader_collections[dataset]]
+            evaluation_df = self.dataloadermanager.dataloader_main[self.dataloadermanager.dataloader_main[dataset]]
             evaluation_df = evaluation_df[[self.epiconfig.id_column, self.epiconfig.temporal_column, 'target']]
             evaluation_df = self._add_seasonal_index(evaluation_df)
             evaluation_df = pd.merge(evaluation_df, self.seasonal_averages, on=[self.epiconfig.id_column, 't_number'])

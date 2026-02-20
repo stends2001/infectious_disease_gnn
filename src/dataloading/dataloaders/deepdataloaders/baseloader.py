@@ -1,34 +1,63 @@
-import torch
+from abc import ABC, abstractmethod
+from torch import Tensor
+import torch 
 import pandas as pd
 import numpy as np 
-from typing import List, Tuple
+from typing import List, Tuple, TYPE_CHECKING, Optional
+
+from ....utils.textformatting import checkmark
+
+if TYPE_CHECKING:
+    from .datacontainers import DeepData, GraphData, DeepDataList, GraphDataList
+    from .deepdataloader import DeepDataLoaderManager 
+    from .graphdataloader import GraphDataLoaderManager
+
+    DataObject = DeepData | GraphData    
+    DataList= DeepDataList | GraphDataList
+    DataLoaderManager = DeepDataLoaderManager | GraphDataLoaderManager
 
 from ...epidataorchestration import EpiDataOrchestrator
 
-
-class DeepBaseDataLoaderManager:
+class DeepBaseDataLoaderManager(ABC):
     """
-    Base class for creating dataloaders from EpiDataOrchestrator.
+    Base class for creating deep-dataloaders from EpiDataOrchestrator.
     Handles X/y construction and temporal splitting.
     """
-    def __init__(self, dataorchestrator: EpiDataOrchestrator):
+    def __init__(self, 
+                 dataorchestrator: EpiDataOrchestrator):
+        
         self.dataorchestrator       = dataorchestrator
         self.column_registration    = dataorchestrator.column_registration
+
+        self.dataloader_main: Optional['DataList']    = None
+        self.dataloader_train: Optional['DataList']   = None
+        self.dataloader_val: Optional['DataList']     = None
+        self.dataloader_test: Optional['DataList']    = None     
     
-    def _split_Xyt(self, df: pd.DataFrame) -> Tuple[torch.Tensor, torch.Tensor]:
+    @abstractmethod    
+    def build(self) -> 'DataLoaderManager':
         """
-        Constructs torch.tensor objects from long-format dataframe.
+        Main orchestration method - to be overwritten in subclasses
+        
+        this method creates DeepDataLists or GraphDataLists, to be stored as dataloaders
+        """
+        pass
+
+    def _split_Xyt(self, df: pd.DataFrame) -> Tuple[Tensor,Tensor]:
+        """
+        ConstructsTensor objects from long-format dataframe.
+        Equal for any sublcass
         
         Parameters
         ----------
         df : pd.DataFrame
-            Long-format data with columns: timestamp, id_column, features, targets, splits
+            Long-format data with columns: [{temporal_column}, {id_column}, {features}, {targets}, splits]
         
         Returns
         -------
-        X : torch.Tensor
+        X : Tensor
             Input data of shape [num_timestamps, num_nodes, num_features]
-        y : torch.Tensor
+        y : Tensor
             Target data of shape [num_timestamps, num_nodes, num_targets]
 
         Also creates
@@ -52,8 +81,8 @@ class DeepBaseDataLoaderManager:
             .sort_values(temporal_col)
             .reset_index(drop=True)
         )
-        time_splits.index.name = 't_idx'
-        self.time_splits = time_splits
+        time_splits.index.name  = 't_idx'
+        self.time_splits        = time_splits
         
         # Helper function to pivot and convert columns
         def pivot_columns(columns: List[str]) -> np.ndarray:
@@ -100,22 +129,28 @@ class DeepBaseDataLoaderManager:
         
         return X, y
     
-    def _build_sequences(self, X: torch.Tensor, y: torch.Tensor) -> Tuple[List, List, List, List]:
+    def _build_sequences(self, X: Tensor, y: Tensor) -> Tuple[List['DataObject'], 
+                                                              List['DataObject'], 
+                                                              List['DataObject'], 
+                                                              List['DataObject']]:
         """
         Creates sequences from X, y tensors.
         Returns lists of data objects (not wrapped in container yet).
+        Equal for any subclass
         """
-        dataset_main = []
-        dataset_train = []
-        dataset_val = []
-        dataset_test = []
+        # main contains train+val+test
+        dataset_main:  List['DataObject'] = []
+        dataset_train: List['DataObject'] = []
+        dataset_val:   List['DataObject'] = []
+        dataset_test:  List['DataObject'] = []
 
-        T = X.shape[0]
+        # number of timesteps
+        T       = X.shape[0]
         min_end = self.dataorchestrator.config.sequence_length
         max_end = T + 1
 
         if min_end > T:
-            raise ValueError(...)
+            raise ValueError(f'{self.__class__.__name__} couldnt build sequences as min_end > T; {min_end} > {T}')
 
         for x_end in range(min_end, max_end):
             x_start = x_end - self.dataorchestrator.config.sequence_length
@@ -138,10 +173,22 @@ class DeepBaseDataLoaderManager:
 
         return dataset_main, dataset_train, dataset_val, dataset_test
     
-    def _create_data_object(self, x_seq: torch.Tensor, y_seq: torch.Tensor):
-        """Override in subclasses to create appropriate data objects"""
-        raise NotImplementedError("Subclasses must implement _create_data_object")
-    
-    def build(self):
-        """Main orchestration method - override in subclasses"""
-        raise NotImplementedError("Subclasses must implement construct_dataloaders")
+    @abstractmethod    
+    def _create_data_object(self, x_seq: Tensor, y_seq: Tensor) -> 'DataObject':
+        """Creates appropriate data objects (DeepData or GraphData instances) - to be overwritten in subclasses"""
+        pass
+
+    def __repr__(self) -> str:
+        parts = []
+
+        if self.dataloader_main:
+            parts.append(f"dataloader_main {checkmark}")
+        if self.dataloader_train:
+            parts.append(f"dataloader_train {checkmark}")
+        if self.dataloader_val:
+            parts.append(f"dataloader_val {checkmark}")
+        if self.dataloader_test:
+            parts.append(f"dataloader_test {checkmark}")
+
+        inner = ', '.join(parts) if parts else 'not built'
+        return f"<{self.__class__.__name__}({inner})>"

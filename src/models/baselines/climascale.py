@@ -55,7 +55,7 @@ class ClimaScaleModel(BaseLineModel):
         quantiles = self.dataloadermanager.dataorchestrator.config.quantiles
 
         if quantiles:
-            dl          = self.dataloadermanager.dataloader_collections.copy()
+            dl          = self.dataloadermanager.dataloader_main.copy()
             data_seen   = dl[dl['train']]
             train_df    = dl[dl['train']]
 
@@ -83,7 +83,7 @@ class ClimaScaleModel(BaseLineModel):
         Forecast for set dataset
         """
         quantiles = self.dataloadermanager.dataorchestrator.config.quantiles
-        dl        = self.dataloadermanager.dataloader_collections.copy()
+        dl        = self.dataloadermanager.dataloader_main.copy()
 
         for hh in range(self.dataloadermanager.dataorchestrator.config.horizon_size):
 

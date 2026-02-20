@@ -1,40 +1,16 @@
 import torch
-
-from .baseloader import DeepBaseDataLoaderManager
-from .datacontainers import GraphData, GraphDataList, GraphStructureError
-
-from dataclasses import dataclass
+from torch import Tensor as Tensor
 import os
-from typing import Optional, Literal
-
+from typing import Optional, Literal, cast, List
+from ..issues import DataEntryError
 from ....dataloading.epidataorchestration import EpiDataOrchestrator
+from .baseloader import DeepBaseDataLoaderManager
+from .datacontainers import GraphData, GraphDataList, GraphStructure
 
 from ....utils.helpers import get_project_utilities_env
 
-@dataclass 
-class GraphStructure:
-    """
-    edge_index:     torch.Tensor 
-    edge_weight:    torch.Tensor   
-    """
-    edge_index:     torch.Tensor 
-    edge_weight:    torch.Tensor    
-
-    def __post_init__(self):
-        if self.edge_index.shape[1] != len(self.edge_weight):
-            raise ValueError(
-                f"Incompatiable shapes of edge_index (len = {self.edge_index.shape[1]}) and edge_weight (len = {len(self.edge_weight)}) in GraphStructure"
-            )
-        
-        self.num_nodes      = len(self.edge_index[0].unique())
-        self.num_edges      = len(self.edge_index)
-    
-    def __repr__(self) -> str:
-        representation = f'<GraphStructure(num_nodes = {self.num_nodes}, num_edges = {len(self.edge_weight)})>'
-        return representation 
-
 class GraphDataLoaderManager(DeepBaseDataLoaderManager):
-    """DataLoader manager for graph neural networks"""
+    """DataLoader manager for GNN-based-approaches"""
     
     def __init__(self, dataorchestrator: EpiDataOrchestrator):
         super().__init__(dataorchestrator)
@@ -42,50 +18,46 @@ class GraphDataLoaderManager(DeepBaseDataLoaderManager):
         self.basedir = get_project_utilities_env()
     
     def retrieve_static_graph(self, graphname: str, graphdirectory: str = 'graphs') -> 'GraphDataLoaderManager':
+        """retrieves a static (opposed to dynamic) graph structure"""
         graphpath = os.path.join(self.basedir, graphdirectory, 
                                  self.dataorchestrator.config.nuts_level, graphname, graphname)
         
-        try:
-            i = torch.load(graphpath + '_edge_index.pt', weights_only=False)
-            w = torch.load(graphpath + '_edge_weight.pt', weights_only=False)
-            graph = GraphStructure(i, w)
-        except Exception as e:
-            raise RuntimeError(f'graph by the name of {graphname} not found')
-        
-        self._validate_graphstructure(i, w, graphname)
-        self.graph = graph
+        edge_index      = torch.load(graphpath + '_edge_index.pt', weights_only=False)
+        edge_weight     = torch.load(graphpath + '_edge_weight.pt', weights_only=False)
+        graph_structure = GraphStructure(edge_index, edge_weight)
+
+        self.graph      = graph_structure
         self._graphmode = 'static'
         return self
     
-    def _create_data_object(self, x_seq: torch.Tensor, y_seq: torch.Tensor):
-        """Create GraphData object with edge structure"""
+    def _create_data_object(self, x_seq: Tensor, y_seq: Tensor) -> 'GraphData':
+        """Create GraphData object with graphstructure"""
         return GraphData(
             x = x_seq.clone().detach().float().permute(1, 2, 0),
             y = y_seq.clone().detach().float(),
-            edge_index = self.graph.edge_index,
+            edge_index  = self.graph.edge_index,
             edge_weight = self.graph.edge_weight
         )
     
-    def build(self):
+    def build(self) -> 'GraphDataLoaderManager':
+        """
+        Orchestrates the entire GraphDataLoaderManager - creation. 
+
+        First retrieve the graph structure
+        """
+        if self._graphmode is None:
+            raise DataEntryError("No graph loaded. Call retrieve_static_graph() before build()")
+
         X, y     = self._split_Xyt(self.dataorchestrator.data_final.data)
-        datasets = self._build_sequences(X, y)
-        
-        # Wrap in GraphDataList containers
-        self.dataloader_main = GraphDataList(datasets[0])
-        self.dataloader_train = GraphDataList(datasets[1])
-        self.dataloader_val = GraphDataList(datasets[2])
-        self.dataloader_test = GraphDataList(datasets[3])
+
+        main, train, val, test = cast(
+            tuple[list[GraphData], list[GraphData], list[GraphData], list[GraphData]],
+            self._build_sequences(X, y)
+        )
+                
+        # Wrap in simple lists or custom container
+        self.dataloader_main    = GraphDataList(main)
+        self.dataloader_train   = GraphDataList(train)
+        self.dataloader_val     = GraphDataList(val)
+        self.dataloader_test    = GraphDataList(test)        
         return self
-    
-    def _validate_graphstructure(self, edge_index: torch.Tensor, edge_weight: torch.Tensor, structure_name: str):
-        """validates edge index and edge weight"""
-        num_nodes_graph = len(edge_index.unique())
-        
-        if len(edge_index[0]) != len(edge_weight):
-            raise GraphStructureError(f'edge_index and edge_weight have a different length')
-        
-        if num_nodes_graph != self.dataorchestrator.data_context.num_nodes:
-            raise GraphStructureError(f'{structure_name} has {num_nodes_graph} nodes while data_orchestrator has {self.dataorchestrator.data_context.num_nodes} nodes')
-    
-    def __repr__(self):
-        return '<GraphDataLoaderManager(dataloaders at .dataloader_main, .dataloader_train, .dataloader_val, .dataloader_test)>'

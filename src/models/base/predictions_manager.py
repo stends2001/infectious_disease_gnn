@@ -4,9 +4,7 @@ from dataclasses import dataclass, field
 from typing import Literal, Optional, Dict, Union
 from ...dataloading.epidataorchestration.normalization import reverse_log, reverse_minmax_scaling, reverse_zscore_scaling
 from ...dataloading.epidataorchestration.epidataorchestrator import EpiDataOrchestrator
-from ...dataloading.epidataorchestration.epiconfig import EpiConfig
 from ...dataloading.epidataorchestration.column_registry import ColumnRegistration
-from ...dataloading.epidataorchestration.issues import ColEntryMissingTransformationError
 from ...dataloading.epidataorchestration.temporal_summary import EpiDataTemporalSummary, TemporalError
 
 from ...utils import check_dataset
@@ -170,9 +168,6 @@ class PredictionManager:
         if self.epiconfig.target_column == 'incidence':
             col_entry_target    = self.column_registration.get_by_name('target')
             transformation_dict = col_entry_target.transformation_params
-
-            if transformation_dict is None:
-                raise ColEntryMissingTransformationError(entryname='target')
             
             for col in self.column_registration.pred_columns + ['target']:
                 if col in df.columns:

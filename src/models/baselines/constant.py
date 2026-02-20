@@ -26,7 +26,7 @@ class ConstantModel(BaseLineModel):
         
     def train(self):
         # compute residuals on training data
-        train_df        = self.dataloadermanager.dataloader_collections[self.dataloadermanager.dataloader_collections['train']]
+        train_df        = self.dataloadermanager.dataloader_main[self.dataloadermanager.dataloader_main['train']]
         residuals       = train_df['target'] - self.constant_value
         self._residuals = residuals
         self._update_status('trained')
@@ -48,7 +48,7 @@ class ConstantModel(BaseLineModel):
         quantiles = self.dataloadermanager.dataorchestrator.config.quantiles
         
         for hh in range(self.dataloadermanager.dataorchestrator.config.horizon_size):
-            evaluation_df               = self.dataloadermanager.dataloader_collections[self.dataloadermanager.dataloader_collections[dataset]]
+            evaluation_df               = self.dataloadermanager.dataloader_main[self.dataloadermanager.dataloader_main[dataset]]
             evaluation_df               = evaluation_df[[self.epiconfig.id_column,self.epiconfig.temporal_column,'target']]
             
             if quantiles:
