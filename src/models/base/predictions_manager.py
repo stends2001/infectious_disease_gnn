@@ -1,39 +1,59 @@
 import pandas as pd 
-import geopandas as gpd
 from dataclasses import dataclass, field
 from typing import Literal, Optional, Dict, Union
+from datetime import timedelta
+from dateutil.relativedelta import relativedelta
+
+from .issues import InvalidPredictionsError
 from ...dataloading.epidataorchestration.normalization import reverse_log, reverse_minmax_scaling, reverse_zscore_scaling
 from ...dataloading.epidataorchestration.epidataorchestrator import EpiDataOrchestrator
 from ...dataloading.epidataorchestration.column_registry import ColumnRegistration
 from ...dataloading.epidataorchestration.temporal_summary import EpiDataTemporalSummary, TemporalError
-
 from ...utils import check_dataset
+
 from ..utils.loss.poissonloss import convert_poisson_predictions
-from datetime import timedelta
-from dateutil.relativedelta import relativedelta
-
-class InvalidPredictionsError(Exception):
-
-    def __init__(self, message: str):
-        super().__init__(f'Invalid Predictions {message}')
 
 # ============= Predictions Manager =============
 class PredictionManager:
     """
     Manages predictions in a centralized class.
+    Each model has an instance, at `model.predictions`
+
+    Within this class, each of ['train','val','test'] is a collection of prediction - dataframes per horizon
 
     Parameters
     ----------
     epiconfig: EpiConfig
         the dataorchestrator's configuration object
-
     column_registration: ColumnRegistration
         the dataorchestrator's columnregistration object
+    temporal_summary: EpiDataTemporalSummary
+        the temporal summary of the epidataorchestrator
 
-    Attributes
-    ----------
-    train, val, test: PredictionCollection
-        each of these is a collection of prediction - dataframes per horizon
+    Note
+    ----
+    The predictions and the targets are shifted here,
+    meaning that with respect to the final dataorchestrator's df,
+    the timestamp/target is shifted.
+
+    Methods
+    -------
+        External functions
+    - `add_horizon_predictions()`
+        adds data to PredictionManager: calls all necessary helper functions internally
+    - `get_preds()`
+        gets data from PredictionManager
+
+        Helper functions
+    - `_return_dataset()`
+    - `_setup_reverse_transformations()`
+    - `_setup_required_columns()`
+    - `_shift_prediction_timestamp()`
+    - `_denorm_predictions()`
+    - `_validate_columns()`
+    - `_get_anchor_for_merge()`
+    - `_filter_by_dataset_timerange()`
+    - `_validate_predictions_temporally()`
 
     Examples
     --------
@@ -44,20 +64,92 @@ class PredictionManager:
 
     """
 
-    def __init__(self, data_orchestrator: EpiDataOrchestrator, column_registration: ColumnRegistration, temporal_summary: EpiDataTemporalSummary):
+    def __init__(self, 
+                 data_orchestrator:     EpiDataOrchestrator, 
+                 column_registration:   ColumnRegistration,
+                 temporal_summary:      EpiDataTemporalSummary):
 
         self.train = PredictionCollection()
         self.val   = PredictionCollection()
         self.test  = PredictionCollection()
         
-        self.epidata_orchestrator = data_orchestrator
-        self.epiconfig          = data_orchestrator.config
-        self.column_registration= column_registration
-        self.temporal_summary   = temporal_summary
+        self.epidata_orchestrator   = data_orchestrator
+        self.epiconfig              = data_orchestrator.config
+        self.column_registration    = column_registration
+        self.temporal_summary       = temporal_summary
+
+        # call helper functions
         self._setup_reverse_transformations()
         self._setup_required_columns()
 
+    def add_horizon_predictions(self, 
+                                dataset:                    Literal['train','val','test'], 
+                                horizon_df:                 pd.DataFrame, 
+                                horizon:                    int, 
+                                additional_transformation:  bool = False, 
+                                transf:                     Optional[str] = None, 
+                                transf_args:                Optional[Dict[str,Union[str,float]]] = None):
+        """
+        Adds a prediction df to the prediction manager
+        Internally validates columns, temporal-axis, and everything else.
+
+        TODO: validate that the horizon df doesn't exist yet
+        """
+ 
+        df_validated    = self._validate_columns(horizon_df)
+
+        # shift timestamps to match the PREDICTION timestamps
+        df_shifted_t    = self._shift_prediction_timestamp(df_validated)
+        df_filtered     = self._filter_by_dataset_timerange(df_shifted_t, dataset)
+        
+        self._validate_predictions_temporally(df_filtered, dataset)
+                
+        # get prediction_collection
+        prediction_collection = self._return_dataset(dataset)
+
+        # ===================================================================================
+        # TODO
+        # this piece needs to be rewritten. Probably put into 
+        # col registry somehow
+        # Apply additional transformations if needed
+        if additional_transformation:
+            if transf == 'poisson_sampling':
+                if 'sampling_mode' in transf_args.keys():
+                    sampling_mode = transf_args['sampling_mode'] 
+                    df_filtered[self.pred_cols] = convert_poisson_predictions(df_filtered[self.pred_cols], sampling_mode)
+                else:
+                    raise ValueError('When using poisson_sampling, please supply "sampling_mode"')
+            else:
+                raise ValueError(f'Only "poisson_sampling" supported for additional_transformation')
+        # ===================================================================================
+
+        # Add both normalized and denormalized versions
+        # add normalized version
+        prediction_collection.add(df_filtered.copy(), horizon=horizon, is_original=False)
+        # add denormalized version
+        prediction_collection.add(self._denorm_predictions(df_filtered), horizon=horizon, is_original=True)
+
+    def get_preds(self, dataset: Literal['train','val','test']) -> 'PredictionCollection':
+        """
+        get predictions from any of the datasets
+        """
+        return self._return_dataset(dataset)
+
+    @check_dataset()
+    def _return_dataset(self, dataset: Literal['train','val','test']) -> 'PredictionCollection':
+        """
+        Returns the PredictionCollection at attribute train/val/test
+        if invalid dataset, error is raised from decorator
+        """
+        if dataset == 'train':
+            return self.train
+        elif dataset == 'val':
+            return self.val 
+        elif dataset == 'test':
+            return self.test 
+
     def _setup_reverse_transformations(self):
+        """sets the reverse transformation functions: from normalized data -> non-normalized data"""
         self.reverse_transformations = {
             'minmax': reverse_minmax_scaling,
             'zscore': reverse_zscore_scaling,
@@ -65,6 +157,16 @@ class PredictionManager:
         }
 
     def _setup_required_columns(self):
+        """
+        sets the required columns in the model-specific prediction dfs.
+        The columns present should be:
+        - temporal_column (epiconfig.temporal_column)
+        - node_column (epiconfig.id_column)
+        - 'target'
+        - prediction columns:
+            - if num_qunatiles = 0 => only 'pred'
+            - else all registered pred columns except for 'pred'
+        """        
         cols        = [self.epiconfig.temporal_column, self.epiconfig.id_column, 'target']
 
         if self.epiconfig._num_quantiles == 0:
@@ -72,10 +174,23 @@ class PredictionManager:
         else:
             pred_cols= [c for c in self.column_registration.pred_columns if c != 'pred']
 
-        self.pred_cols      = pred_cols
-        self.required_columns = cols + pred_cols
+        self.pred_cols          = pred_cols
+        self.required_columns   = cols + pred_cols
 
     def _shift_prediction_timestamp(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        In the DataOrchestrator the target has been shifted. 
+        In other words, the combination of values for columns
+        | 'timestamp' | 'target' | has a temporal discrepancy,
+        where 'timestamp' refers to t0; the point in time of the
+        most recent observation (related to features, not target).
+
+        In order to plot and analyze correctly, the prediction
+        managers deal with the 'correct' temporal axis: target/pred
+        are looked at from the correct point in time. Thus, we shift
+        the target by {epiconfig.horizon_leadtime} timesteps, of the 
+        proper temporal_frequency.
+        """
         dfc                                 = df.copy()
 
         if self.epiconfig.temporal_frequency == 'd':
@@ -89,97 +204,40 @@ class PredictionManager:
 
         timestamps: pd.Series[pd.Timestamp] = dfc[self.epiconfig.temporal_column]
         dfc[self.epiconfig.temporal_column]  = timestamps + delta
+
         return dfc
 
-    @check_dataset()
-    def add_horizon_predictions(self, dataset: Literal['train','val','test'], horizon_df: pd.DataFrame, horizon: int, additional_transformation: bool = False, transf: Optional[str] = None, transf_args: Optional[Dict[str,Union[str,float]]] = None):
-
-        df              = self._get_prediction_df_cols(horizon_df)   
-        df_validated    = self._validate_columns(df)
-
-        # shift timestamps to mathc the PREDICTION timestamps
-        df_shifted_t    = self._shift_prediction_timestamp(df_validated)
-        df_filtered     = self._filter_by_dataset_timerange(df_shifted_t, dataset)
-        
-        self._validate_predictions(df_filtered, dataset)
-
-        timesteps_ahead = int(horizon + self.epiconfig.horizon_leadtime)
-        timesteps_unit  = self.epiconfig.temporal_frequency
-        
-        if dataset == 'train':
-            prediction_collection = self.train 
-
-        elif dataset == 'val':
-            prediction_collection = self.val
-
-        elif dataset == 'test':
-            prediction_collection = self.test 
-
-        else:
-            raise ValueError(f'{dataset} invalid dataset. Supply "train", "val" or "test"')      
-
-        # Apply additional transformations if needed
-        if additional_transformation:
-            if transf == 'poisson_sampling':
-                if 'sampling_mode' in transf_args.keys():
-                    sampling_mode = transf_args['sampling_mode'] 
-                    df_filtered[self.pred_cols] = convert_poisson_predictions(df_filtered[self.pred_cols], sampling_mode)
-                else:
-                    raise ValueError('When using poisson_sampling, please supply "sampling_mode"')
-            else:
-                raise ValueError(f'Only "poisson_sampling" supported for additional_transformation')
-
-        # Add both normalized and denormalized versions
-        prediction_collection.add(df_filtered.copy(), horizon=horizon, is_original=False)
-        prediction_collection.add(self._denorm_predictions(df_filtered), horizon=horizon, is_original=True)
-
-    @check_dataset()
-    def get_preds(self, dataset: Literal['train','val','test']) -> 'PredictionCollection':
-        """
-        get predictions for either train/val/test
-        """
-
-        if dataset == 'train':
-            prediction_collection = self.train 
-
-        elif dataset == 'val':
-            prediction_collection = self.val
-
-        elif dataset == 'test':
-            prediction_collection = self.test 
-
-        if prediction_collection._contains_data():
-            return prediction_collection
-        
-        else:
-            raise ValueError(f'No predictions found for {dataset}')
-
     def _denorm_predictions(self, df: pd.DataFrame) -> pd.DataFrame:
-        normalization_method = self.epiconfig.normalization_method
+        """
+        Denormalizes the normalized predictions in df using the parameters
+        from the column registry
 
-        if normalization_method == 'none':
-            return df
+        TODO: make this cases-friendly
+        """
+        normalization_method = self.epiconfig.normalization_method
         
         df_denorm = df.copy()
 
+        # when predicting difference: get anchor
         if self.epiconfig.predict_difference:
-            df_denorm = self._get_anchor_for_merge(df_denorm)
+            df_denorm = self._get_anchor_for_merge(df_denorm)            
         
-        if self.epiconfig.target_column == 'incidence':
+        if normalization_method:
+
             col_entry_target    = self.column_registration.get_by_name('target')
-            transformation_dict = col_entry_target.transformation_params
-            
+            transformation_dict = col_entry_target.transformation_params            
+
+            # normalize all columns that need to be
             for col in self.column_registration.pred_columns + ['target']:
                 if col in df.columns:
-                    if normalization_method:
-                        df_denorm = self.reverse_transformations[normalization_method](
-                            df_denorm, transformation_dict['normalization'], column=col
-                        )
-                    
-                    if 'log' in transformation_dict:
-                        df_denorm = self.reverse_transformations['log'](
-                            df_denorm, transformation_dict['log'], column=col
-                        )
+                    df_denorm = self.reverse_transformations[normalization_method](
+                        df_denorm, transformation_dict['normalization'], column=col
+                    )
+                # de-log all columns that need to be
+                if 'log' in transformation_dict:
+                    df_denorm = self.reverse_transformations['log'](
+                        df_denorm, transformation_dict['log'], column=col
+                    )
 
             if self.epiconfig.predict_difference and 'delta' in transformation_dict:
                 anchor_col = transformation_dict['delta']['anchor_col']
@@ -189,27 +247,23 @@ class PredictionManager:
                 df_denorm = df_denorm.drop(columns=[anchor_col])
         
         return df_denorm
-
-    def _apply_prediction_timeshift(self, df: pd.DataFrame, timeshift: str) -> pd.DataFrame:
-        """shift timestamp by required timeshift"""
-        df['timestamp']         = df['timestamp'] + pd.to_timedelta(timeshift) # type: ignore
-        return df
-    
-    def _get_prediction_df_cols(self, df: pd.DataFrame) -> pd.DataFrame:
-        return df[self.required_columns].copy()    
         
     def _validate_columns(self, data: pd.DataFrame) -> pd.DataFrame:
+        """
+        Returns the df with all the required columns
+        Also validates that these are all present
+        """
         essential_columns = self.required_columns
         
         for cc in essential_columns:
             if cc not in data.columns.tolist():
-                raise ValueError(f'{cc} not found in prediction df')
+                raise InvalidPredictionsError(f'column {cc} not found in prediction df')
             
         for cc in data.columns:
             if cc not in essential_columns:
-                raise ValueError(f'{cc} found in prediction df but not expected')
+                raise InvalidPredictionsError(f'column {cc} found in prediction df but not expected')
                         
-        return data
+        return data[self.required_columns].copy()  
     
     def _get_anchor_for_merge(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -225,6 +279,10 @@ class PredictionManager:
 
     @check_dataset()
     def _filter_by_dataset_timerange(self, df: pd.DataFrame, dataset: Literal['train','val','test']) -> pd.DataFrame:
+        """
+        Filters out data from outside the expected period,
+        using the dates specified in TemporalSummary
+        """
         if dataset == 'train':
             min_date = self.temporal_summary.min_date
             max_date = self.temporal_summary.split_trainval
@@ -235,26 +293,49 @@ class PredictionManager:
             min_date = self.temporal_summary.split_valtest
             max_date = self.temporal_summary.max_date_extended
 
-        dfc = df.copy()
-        mask = (dfc['timestamp'] >= min_date) & (dfc['timestamp'] < max_date)
-        filtered = dfc[mask].reset_index(drop=True)        
+        dfc     = df.copy()
+        mask    = (dfc[self.epiconfig.temporal_column] >= min_date) & (dfc[self.epiconfig.temporal_column] < max_date)
+        filtered= dfc[mask].reset_index(drop=True)        
         return filtered
 
     @check_dataset()
-    def _validate_predictions(self, df: pd.DataFrame, dataset):
-        unique_timestamp_ids = pd.to_datetime(
-            df[self.epiconfig.temporal_column].unique()
-        )
-        expected_timerange  = self.temporal_summary.get_daterange_dataset(dataset, reference = 'target')
-        
-        rng                 = pd.date_range(start=expected_timerange[0], end=expected_timerange[1], freq=pd.infer_freq(sorted(unique_timestamp_ids)))
-        if len(set(rng) - set(unique_timestamp_ids))>0:
-            missing_timesteps = set(rng) - set(unique_timestamp_ids)
-            raise InvalidPredictionsError(f'Prediction timestamps arent complete. Missing: {missing_timesteps}')
+    def _validate_predictions_temporally(self, df: pd.DataFrame, dataset: Literal['train','val','test']):
+        """
+        Validates the temporal axis that is expected
+        If this is not the case, InvalidPredictionsError is thrown
+        """
+        dt_index = pd.DatetimeIndex(
+            pd.to_datetime(df[self.epiconfig.temporal_column])
+        ).drop_duplicates().sort_values()
 
-        if len(set(unique_timestamp_ids)-set(rng))>0:
-            leftover_timesteps = set(unique_timestamp_ids)-set(rng)
-            raise InvalidPredictionsError(f'Prediction timestamps are too numerous. Leftover: {leftover_timesteps}')
+        expected_timerange = self.temporal_summary.get_daterange_dataset(
+            dataset,
+            reference='target'
+        )
+
+        freq = pd.infer_freq(dt_index)
+        if freq is None:
+            raise InvalidPredictionsError(
+                "Could not infer frequency from prediction timestamps."
+            )
+
+        range_expected = pd.date_range(
+            start=expected_timerange[0],
+            end=expected_timerange[1],
+            freq=freq
+        )
+
+        missing = range_expected.difference(dt_index)
+        if not missing.empty:
+            raise InvalidPredictionsError(
+                f"Prediction timestamps are incomplete. Missing: {missing.tolist()}"
+            )
+
+        leftover = dt_index.difference(range_expected)
+        if not leftover.empty:
+            raise InvalidPredictionsError(
+                f"Prediction timestamps are too numerous. Leftover: {leftover.tolist()}"
+            )
 
     def __repr__(self) -> str:
         status_return = ""
@@ -302,21 +383,22 @@ class PredictionCollection:
         self._data[(horizon, is_original)] = data
     
     def get_transformed(self, horizon: int) -> pd.DataFrame:
+        """get the predictions data in transformed scale"""
         return self._data[(horizon, False)]
     
     def get_original(self, horizon: int) -> pd.DataFrame:
+        """get the predictions data in non-transformed scale"""        
         return self._data[(horizon, True)]
 
     @property
     def horizons(self) -> list[int]:
+        """return a list of horizon integers for which predictions are found"""
         return sorted(set(h for h, _ in self._data.keys()))
     
     def _contains_data(self) -> bool:
-        if len(self.horizons) > 0:
-            return True 
-        else:
-            return False
-
+        """return bool for whether or not predictions exist"""
+        return bool(self.horizons)
+    
     def __repr__(self) -> str:
         if self._contains_data():
             return f"<PredictionCollection(predictions for horizons {self.horizons})>"
