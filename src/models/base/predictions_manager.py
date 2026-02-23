@@ -54,6 +54,7 @@ class PredictionManager:
     - `_get_anchor_for_merge()`
     - `_filter_by_dataset_timerange()`
     - `_validate_predictions_temporally()`
+    - `_aggregate_predictions_spatially()`
 
     Examples
     --------
@@ -123,11 +124,26 @@ class PredictionManager:
                 raise ValueError(f'Only "poisson_sampling" supported for additional_transformation')
         # ===================================================================================
 
-        # Add both normalized and denormalized versions
-        # add normalized version
-        prediction_collection.add(df_filtered.copy(), horizon=horizon, is_original=False)
-        # add denormalized version
-        prediction_collection.add(self._denorm_predictions(df_filtered), horizon=horizon, is_original=True)
+        # Add both normalized and denormalized versions, as well as a national aggregate for the denormalized
+        df_transformed      = df_filtered.copy()
+        df_nontransformed   = self._denorm_predictions(df_transformed.copy())
+        df_aggregated       = self._aggregate_predictions_spatially(df_nontransformed.copy())
+        
+        # transformed - regional
+        prediction_collection.add(df_transformed, 
+                                  horizon               = horizon, 
+                                  is_original           = False, 
+                                  spatially_aggregated  = False)
+        # non-transformed - regional
+        prediction_collection.add(df_nontransformed, 
+                                  horizon               = horizon, 
+                                  is_original           = True, 
+                                  spatially_aggregated  = False)
+        # non-transformed - aggregated
+        prediction_collection.add(df_aggregated,
+                                  horizon               = horizon, 
+                                  is_original           = True, 
+                                  spatially_aggregated  = True)
 
     def get_preds(self, dataset: Literal['train','val','test']) -> 'PredictionCollection':
         """
@@ -337,6 +353,56 @@ class PredictionManager:
                 f"Prediction timestamps are too numerous. Leftover: {leftover.tolist()}"
             )
 
+    def _aggregate_predictions_spatially(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Aggregates regional predictions to a national level.
+        
+        For 'cases': simple sum across regions per timestep.
+        For 'incidence': population-weighted aggregation —
+            converts to cases, sums nationally, divides by total population.
+        """
+        dfc = df.copy()
+        columns_to_aggregate = self.pred_cols + ['target']
+        temporal_col = self.epiconfig.temporal_column
+
+        if self.epiconfig.target_column == 'cases':
+            aggregated = (
+                dfc
+                .groupby(temporal_col)[columns_to_aggregate]
+                .sum()
+                .reset_index()
+            )
+
+        elif self.epiconfig.target_column == 'incidence':
+            population_data = self.epidata_orchestrator.data_context.population_size
+
+            dfc['year'] = dfc[temporal_col].dt.year
+            dfc = dfc.merge(population_data, on=[self.epiconfig.id_column, 'year'])
+
+            # Convert incidence rates -> raw cases per region
+            rate_denominator = self.epiconfig.incidence_scalar
+            for col in columns_to_aggregate:
+                dfc[f'{col}_cases'] = dfc[col] * dfc['population_size'] / rate_denominator
+
+            # Sum cases and population nationally per timestep
+            case_cols = [f'{col}_cases' for col in columns_to_aggregate]
+            national = (
+                dfc
+                .groupby(temporal_col)[case_cols + ['population_size']]
+                .sum()
+                .reset_index()
+            )
+
+            # Convert back to national incidence rate
+            for col in columns_to_aggregate:
+                national[col] = national[f'{col}_cases'] / national['population_size'] * rate_denominator
+
+            aggregated = national[[temporal_col] + columns_to_aggregate]
+
+        else:
+            raise ValueError(f"Unsupported target_column '{self.epiconfig.target_column}' for spatial aggregation.")
+
+        return aggregated
+
     def __repr__(self) -> str:
         status_return = ""
 
@@ -360,14 +426,18 @@ class PredictionManager:
 class PredictionCollection:
     """
     Stores predictions across horizons for one datast (train/val/test)
+    Predictions are stored under three variables:
+    - horizon:              int
+    - is_original:          bool
+    - spatially_aggregated: bool
     
     Accessible by:
     self.get_original(0)
 
     """
-    _data: dict[tuple[int, bool], pd.DataFrame] = field(default_factory=dict)       # a new dictionary is created for each class' instance
+    _data: dict[tuple[int, bool, bool], pd.DataFrame] = field(default_factory=dict)       # a new dictionary is created for each class' instance
     
-    def add(self, data: pd.DataFrame, horizon: int, is_original: bool = False):
+    def add(self, data: pd.DataFrame, horizon: int, is_original: bool = False, spatially_aggregated: bool = False):
         """
         Add predictions
 
@@ -380,20 +450,23 @@ class PredictionCollection:
         is_original: bool
             if False, then transformed scale, if True then nontransformed        
         """
-        self._data[(horizon, is_original)] = data
+        self._data[(horizon, is_original, spatially_aggregated)] = data
     
-    def get_transformed(self, horizon: int) -> pd.DataFrame:
+    def get(self, horizon: int, is_original: bool, spatially_aggregated: bool) -> pd.DataFrame:
+        return self._data[(horizon, is_original, spatially_aggregated)]
+
+    def get_transformed(self, horizon: int, spatially_aggregated: bool = False) -> pd.DataFrame:
         """get the predictions data in transformed scale"""
-        return self._data[(horizon, False)]
+        return self._data[(horizon, False, spatially_aggregated)]
     
-    def get_original(self, horizon: int) -> pd.DataFrame:
+    def get_original(self, horizon: int, spatially_aggregated: bool = False) -> pd.DataFrame:
         """get the predictions data in non-transformed scale"""        
-        return self._data[(horizon, True)]
+        return self._data[(horizon, True, spatially_aggregated)]
 
     @property
     def horizons(self) -> list[int]:
         """return a list of horizon integers for which predictions are found"""
-        return sorted(set(h for h, _ in self._data.keys()))
+        return sorted(set(h for h, _, _ in self._data.keys()))
     
     def _contains_data(self) -> bool:
         """return bool for whether or not predictions exist"""

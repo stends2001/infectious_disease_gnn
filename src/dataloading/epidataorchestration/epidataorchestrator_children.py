@@ -482,6 +482,10 @@ class EpiDataHarmonizer:
                                               tokenization_map['nuts_node-idx'],
                                               f'{self.epiconfig.nuts_level}_key',         
                                               self.epiconfig.id_column)
+        population_data = self._apply_tokenization(population_data,
+                                                   tokenization_map['nuts_node-idx'],
+                                                   f'{self.epiconfig.nuts_level}_key',
+                                                   self.epiconfig.id_column)
 
         # extra features
         population_density_data = None
@@ -525,6 +529,7 @@ class EpiDataHarmonizer:
             shapedata_nuts1     = rawdata.shapedata_collection['nuts1'],
             shapedata_nuts2     = rawdata.shapedata_collection['nuts2'],
             shapedata_nuts3     = rawdata.shapedata_collection['nuts3'],
+            population_size     = population_data,
             nuts_harm           = nutsnames,
             tokenization_map    = tokenization_map,
             temporal_summary    = self._return_temporal_summary()            

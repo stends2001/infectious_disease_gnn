@@ -118,6 +118,7 @@ class ContextEpiData:
         shapedata for raw, unchanged German Regierungsbezirke    
     shapedata_nuts3: gpd.GeoDataFrame  
         shapedata for raw, unchanged German Kreisen (including Berlin split and merged)   
+    population_size: pd.DataFrame        
     nuts_harm:  pd.DataFrame
         table as follows:
         ___________________________________________________
@@ -129,6 +130,7 @@ class ContextEpiData:
         - f"idx - {epiconfig.id_column}"    => token_id:    Kennziffern
     temporal_summary: EpiDataTemporalSummary
         temporal_summary created based on EpiConfig
+
     """    
     nuts_level:             Literal['nuts1', 'nuts2', 'nuts3']
     shapedata_node:         gpd.GeoDataFrame
@@ -136,6 +138,7 @@ class ContextEpiData:
     shapedata_nuts1:        gpd.GeoDataFrame
     shapedata_nuts2:        gpd.GeoDataFrame
     shapedata_nuts3:        gpd.GeoDataFrame            
+    population_size:        pd.DataFrame
     nuts_harm:              pd.DataFrame
     tokenization_map:       Dict[str, Dict[(int | str), (int | str)]]
     temporal_summary:       'EpiDataTemporalSummary'
@@ -151,7 +154,8 @@ class ContextEpiData:
                 f"shapedata_nuts0 {checkmark}, "
                 f"shapedata_nuts1 {checkmark}, "
                 f"shapedata_nuts2 {checkmark}, "
-                f"shapedata_nuts3 {checkmark}, "                                                                
+                f"shapedata_nuts3 {checkmark}, "             
+                f"population_size {checkmark}, "                                                                       
                 f"nuts_harm {checkmark}, "
                 f"tokenization_map {checkmark}, "
                 f"temporal_summary {checkmark}"            

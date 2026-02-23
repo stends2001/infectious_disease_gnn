@@ -83,52 +83,72 @@ class BaseModel:
 
     @convert_managedfigure
     def show_forecasts(self,
-                       node_idx:    Union[List[int], int]           = 1,
-                       dataset:     Literal['train','val','test']   = 'test',
-                       plot_type:   Literal['line', 'map']          = 'line',
-                       horizon:     int                             = 0,
-                       transformed: bool                            = False,
+                       node_idx:    Union[int, List[Union[int,Literal['national']]], Literal['national']]  = 1,
+                       dataset:     Literal['train','val','test']               = 'test',
+                       plot_type:   Literal['line', 'map']                      = 'line',
+                       horizon:     int                                         = 0,
+                       is_original: bool                                        = True,
                        ) -> ManagedFigure:
                 
         predictioncollection = self.predictions.get_preds(dataset)
-        xlimits              = self.temporal_summary.get_daterange_dataset(dataset, reference = 'target')
-        xlimits              = [self.temporal_summary._shift(xlimits[0], -1), self.temporal_summary._shift(xlimits[1], 1)]
+        x_range              = self.temporal_summary.get_daterange_dataset(dataset, reference = 'target')
+        xlimits              = [self.temporal_summary._shift(x_range[0], -1), self.temporal_summary._shift(x_range[1], 1)]
+        timesteps_ahead      = int(self.dataloadermanager.dataorchestrator.config.horizon_leadtime + horizon)
 
-        timesteps_ahead          = int(self.dataloadermanager.dataorchestrator.config.horizon_leadtime + horizon)
+        df_pred_aggr = None
+        if isinstance(node_idx, list):
+            if 'national' in node_idx:
+                df_pred_aggr = predictioncollection.get(horizon      = horizon,
+                                                        is_original  = True,
+                                                        spatially_aggregated = True
+                                                        )
+            nodes_list = node_idx
+        elif isinstance(node_idx, int):
+            nodes_list = [node_idx]
+        elif isinstance(node_idx, str):
+            if node_idx != 'national':
+                raise ValueError(f'the only string value for node_idx allowed is "national". Got {node_idx}')
+            df_pred_aggr = predictioncollection.get(horizon      = horizon,
+                                                    is_original  = True,
+                                                    spatially_aggregated = True
+                                                    )
+            nodes_list = [node_idx]
+        else:
+            raise ValueError(f"Invalid input for node_idx. Must be Union[int, List[Union[int,Literal['national']]]. Got {node_idx}")            
+        
+        df_pred = predictioncollection.get(horizon       = horizon,
+                                            is_original  = is_original,
+                                            spatially_aggregated=False)
 
         if self.dataloadermanager.dataorchestrator.config.prediction_mode == 'classification':
             raise ValueError('currently no forecast for classifications supported')
 
-        if not transformed:
-            evaluation_df = predictioncollection.get_original(horizon)
-
-        else:
-            evaluation_df = predictioncollection.get_transformed(horizon)
-
-
-        if isinstance(node_idx, int):
-            node_idx = [node_idx]
-
-
-
         if plot_type == 'line':
 
-            n_plots     = len(node_idx)
-            fig, axes   = plt.subplots(n_plots ,1, figsize = (16, 2 + (5 * n_plots)))
-            
+            n_plots     = len(nodes_list)
 
+            fig, axes   = plt.subplots(n_plots ,1, figsize = (16, 2 + (5 * n_plots)))
             
             if n_plots > 1:
                 axes        = axes.flatten()           
             else:
                 axes = [axes]
 
-            for counter, id in enumerate(node_idx):
+            for counter, id in enumerate(nodes_list):
                 ax = axes[counter]
-                nodename = self.nutsnames[self.nutsnames[f'{self.epiconfig.id_column}'] == id][f'{self.nutslevel}_name'].iloc[0]
 
-                evaluation_df_node  = evaluation_df[evaluation_df[self.epiconfig.id_column] == id]
-                sns.lineplot(data   = evaluation_df_node, x = self.epiconfig.temporal_column, y = 'target',    color = testcolor,          marker = 'o',   label = 'ground truth', ax = ax, linewidth = 2)
+                # ======== get target data ==========
+                
+                if id != 'national':
+                    nodename        = self.nutsnames[self.nutsnames[f'{self.epiconfig.id_column}'] == id][f'{self.nutslevel}_name'].iloc[0]
+                    df_selection    = df_pred[df_pred[self.epiconfig.id_column] == id]
+                elif df_pred_aggr is not None: 
+                    nodename        = 'nationally'
+                    df_selection    = df_pred_aggr
+                else:
+                    raise ValueError('smth went wrong in getting aggregated df')
+                
+                sns.lineplot(data   = df_selection, x = self.epiconfig.temporal_column, y = 'target',    color = testcolor,          marker = 'o',   label = 'ground truth', ax = ax, linewidth = 2)
 
                 quantiles = self.epiconfig.quantiles
 
@@ -145,20 +165,20 @@ class BaseModel:
 
                 # center line
                 if color_is_light(self.model_color):
-                    sns.lineplot(data=evaluation_df_node, x=self.epiconfig.temporal_column, y=center_col,
-                                color=self.model_color, marker='o', label=f'predictions {self.name}',
+                    sns.lineplot(data = df_selection, x = self.epiconfig.temporal_column, y = center_col,
+                                color = self.model_color, marker='o', label=f'predictions {self.name}',
                                 ax=ax, linewidth=2, markeredgecolor='black', markeredgewidth=0.2)
                 else:
-                    sns.lineplot(data=evaluation_df_node, x=self.epiconfig.temporal_column, y=center_col,
+                    sns.lineplot(data = df_selection, x = self.epiconfig.temporal_column, y = center_col,
                                 color=self.model_color, marker='o', label=f'predictions {self.name}',
                                 ax=ax, linewidth=2)
 
                 # quantile band
                 if bottom_col and top_col:
                     ax.fill_between(
-                        evaluation_df_node[self.epiconfig.temporal_column],
-                        evaluation_df_node[bottom_col],
-                        evaluation_df_node[top_col],
+                        df_selection[self.epiconfig.temporal_column],
+                        df_selection[bottom_col],
+                        df_selection[top_col],
                         color=self.model_color,
                         alpha=0.2,
                         label=f'{quantiles[0]}–{quantiles[-1]} interval'
@@ -174,7 +194,7 @@ class BaseModel:
             if dataset != 'test':
                 title += f" [{dataset}]"
 
-            if transformed:
+            if not is_original:
                 title += ' [transformed]'        
             
             plt.suptitle(title)
