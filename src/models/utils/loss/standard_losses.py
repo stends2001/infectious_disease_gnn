@@ -14,6 +14,7 @@ class MSELoss(BaseLoss):
         self.mse = nn.MSELoss()
     
     def forward(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
+        y_pred = y_pred.squeeze(-1)
         self._validate_inputs(y_pred, y_true)
         return self.mse(y_pred, y_true)
 

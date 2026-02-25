@@ -26,19 +26,19 @@ class SimpleGCNModule(nn.Module):
                  num_layers: int,
                  dropout: float,
                  horizon_size: int,
-                 seq_length: int):
+                 seq_length: int,
+                 num_quantiles : int):
 
         super().__init__()
 
-        self.num_features = num_features
-        self.num_nodes = num_nodes
-        self.hidden_size = hidden_size
-        self.num_layers = num_layers
-        self.horizon_size = horizon_size
-        self.seq_length = seq_length
-        self.emb_size = emb_size
-
-
+        self.num_features   = num_features
+        self.num_nodes      = num_nodes
+        self.hidden_size    = hidden_size
+        self.num_layers     = num_layers
+        self.horizon_size   = horizon_size
+        self.seq_length     = seq_length
+        self.emb_size       = emb_size
+        self.num_quantiles  = num_quantiles
 
         self.convs = nn.ModuleList()
         self.convs.append(GCNConv(num_features + emb_size, hidden_size))
@@ -54,7 +54,7 @@ class SimpleGCNModule(nn.Module):
             nn.Linear(hidden_size, hidden_size // 2),
             nn.ReLU(),
             nn.Dropout(dropout),
-            nn.Linear(hidden_size // 2, horizon_size)
+            nn.Linear(hidden_size // 2, horizon_size * num_quantiles)
         )
 
     def forward(self,
@@ -78,6 +78,9 @@ class SimpleGCNModule(nn.Module):
             h = self.dropout(h)
 
         output = self.output_proj(h)
+
+
+        output = output.view(self.num_nodes, self.horizon_size, self.num_quantiles)
 
         return output
     
@@ -130,16 +133,18 @@ class SimpleGCNModel(DeepModel):
         _num_nodes      = self.dataloadermanager.dataorchestrator.data_context.num_nodes
         _horizon_size   = self.dataloadermanager.dataorchestrator.config.horizon_size
         _seq_length     = self.dataloadermanager.dataorchestrator.config.sequence_length
+        _num_quantiles  = max(self.dataloadermanager.dataorchestrator.config._num_quantiles,1)
 
         self.model = SimpleGCNModule(
             num_features    = _num_features,
             num_nodes       = _num_nodes,
             hidden_size     = hidden_size,
-            emb_size= emb_size,
+            emb_size        = emb_size,
             num_layers      = num_layers,
             dropout         = dropout,
             horizon_size    = _horizon_size,
-            seq_length      =_seq_length
+            seq_length      =_seq_length,
+            num_quantiles= _num_quantiles
     
         ).to(self.device)
 

@@ -25,7 +25,8 @@ class LSTMArchitecture(nn.Module):
                  num_layers:        int, 
                  dropout:           float, 
                  horizon_size:      int, 
-                 seq_length:        int
+                 seq_length:        int,
+                 num_quantiles:     int
                  ):
         super().__init__()
         
@@ -35,6 +36,7 @@ class LSTMArchitecture(nn.Module):
         self.num_layers     = num_layers
         self.num_nodes      = num_nodes
         self.horizon_size   = horizon_size
+        self.num_quantiles  = num_quantiles
 
         # LSTM expects [seq_len, batch, features]
         # We'll treat num_nodes as batch dimension
@@ -45,14 +47,15 @@ class LSTMArchitecture(nn.Module):
             dropout     = dropout if num_layers > 1 else 0,
             batch_first = False # [seq_len, num_nodes, features]
         )
-        
+            
         self.output_proj = nn.Sequential(
             nn.Linear(hidden_size, hidden_size // 2),
             nn.ReLU(),
             nn.Dropout(dropout),
-            nn.Linear(hidden_size // 2, self.horizon_size)
+            nn.Linear(hidden_size // 2, horizon_size * num_quantiles)
         )
-    
+
+
     def forward(self, x: Tensor, hidden_state: Optional[Tensor]=None) -> Tuple[torch.Tensor,torch.Tensor,torch.Tensor]:
         """
         Forward pass.
@@ -80,7 +83,10 @@ class LSTMArchitecture(nn.Module):
         last_output = lstm_out[-1]  # [num_nodes, hidden_size]
         
         # Project to prediction horizon
-        output = self.output_proj(last_output)  # [num_nodes, prediction_horizon]
+        output = self.output_proj(last_output)
+
+
+        output = output.view(self.num_nodes, self.horizon_size, self.num_quantiles)
         
         return output, h, c
 
@@ -146,6 +152,7 @@ class LSTMModel(DeepModel):
         _num_nodes      = self.dataloadermanager.dataorchestrator.data_context.num_nodes
         _horizon_size   = self.dataloadermanager.dataorchestrator.config.horizon_size
         _seq_length     = self.dataloadermanager.dataorchestrator.config.sequence_length
+        _num_quantiles  = max(self.dataloadermanager.dataorchestrator.config._num_quantiles,1)        
         
         self.model = LSTMArchitecture(
             num_features    = _num_features,
@@ -155,6 +162,7 @@ class LSTMModel(DeepModel):
             dropout         = dropout,
             horizon_size    = _horizon_size,
             seq_length      = _seq_length,
+            num_quantiles   = _num_quantiles
         ).to(self.device)
         
         model_hparams_config = {

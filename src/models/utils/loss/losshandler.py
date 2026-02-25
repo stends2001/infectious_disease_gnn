@@ -1,4 +1,4 @@
-from typing import Optional, Dict, Any, List 
+from typing import Optional, Dict, Any, List, TYPE_CHECKING
 import torch
 
 from .standard_losses import MSELoss, MAELoss, HuberLoss, SmoothL1Loss, ExponentialDecayLoss, PolynomialDecayLoss, WeightedMSELoss
@@ -7,6 +7,7 @@ from .poissonloss import PoissonLoss, NegativeBinomialLoss,ZeroInflatedPoissonLo
 from .classification import BCELoss, BCELogitLoss
 from .asymmetricmse import AsymmetricMSELoss
 from .quantile import QuantileLoss
+from .pinball import PinballLoss
 
 LOSS_REGISTRY: Dict[str, type] = {
     'mse':              MSELoss,
@@ -25,7 +26,8 @@ LOSS_REGISTRY: Dict[str, type] = {
     'poisson3':         ZeroInflatedPoissonLoss,
     'outbreakpoisson':  OutbreakAwarePoissonLoss,
     'bce':              BCELoss,    
-    'bcelogit':         BCELogitLoss
+    'bcelogit':         BCELogitLoss,
+    'pinball':          PinballLoss,
 }
 
 
@@ -54,9 +56,9 @@ class LossHandler:
                 f"Unknown loss '{loss_name}'. Available: {available}"
             )
         
-        loss_kwargs = loss_kwargs or {}
-        self.loss_name = loss_name
-        self.loss_fn = LOSS_REGISTRY[loss_name](**loss_kwargs)
+        loss_kwargs     = loss_kwargs or {}
+        self.loss_name  = loss_name
+        self.loss_fn    = LOSS_REGISTRY[loss_name](**loss_kwargs)
     
     def __call__(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
         """Compute loss."""

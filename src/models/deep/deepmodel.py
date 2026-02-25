@@ -168,6 +168,10 @@ class DeepModel(BaseModel, ABC):
         self.n_epochs           = n_epochs
         self.patience           = patience
         self.min_delta          = min_delta
+
+        if loss == 'pinball':
+            loss_kwargs = {'quantiles': self.epiconfig.quantiles}
+
         self.loss               = LossHandler(loss, loss_kwargs=loss_kwargs)  
 
         if optimizer_kwargs is None:
@@ -413,87 +417,94 @@ class DeepModel(BaseModel, ABC):
 
     @check_dataset()
     def forecast(self, dataset: Literal['train','val','test'] = 'test'):
-        """
-        Unified forecasting loop for deep learning models.
-        
-        Returns predictions aligned with the correct timestamps using the 
-        pre-computed time_splits from the dataloader manager.
-        """
         self._check_state(['model_hparams_set', 'global_hparams_set', 'trained'])
-
         if self.model is None:
             raise ValueError('Please initiate a model')
 
         self.model.eval()
-        
-        # Get the appropriate dataloader
         dataloader = getattr(self.dataloadermanager, f'dataloader_{dataset}')
-        
-        # Reset state before forecasting
         self.strategy.reset_state_dataset()
-        
         iterator = tqdm(dataloader, desc=f"Forecasting {dataset}") if self.verbose >= 0 else dataloader
 
-        all_predictions = []
-        all_targets = []
+        all_predictions, all_targets = [], []
         total_loss = 0
-        
+
         with torch.no_grad():
             for snapshot in iterator:
                 snapshot = snapshot.to(self.device)
-
                 y_hat, loss_val = self.strategy.forecast_step(
-                    model=self.model, 
-                    snapshot=snapshot, 
-                    loss_fn=self.loss
+                    model=self.model, snapshot=snapshot, loss_fn=self.loss
                 )
                 total_loss += loss_val
-
-                # Collect predictions and targets
                 all_predictions.append(y_hat.detach().cpu())
                 all_targets.append(snapshot.y.detach().cpu())
 
         avg_loss = total_loss / len(dataloader)
         setattr(self, f'{dataset}_loss', avg_loss)
 
-        # Stack all predictions and targets
-        # Shape: [num_sequences, num_nodes, horizon_size]
         predictions_tensor = torch.stack(all_predictions)
+        # Shape must be: [num_sequences, num_nodes, horizon_size, num_quantiles]
+        if predictions_tensor.ndim < 4:
+            raise ValueError('predictions tensor supposed to have 4 dimensions')
         targets_tensor = torch.stack(all_targets)
-        
-        num_sequences, num_nodes, horizon_size = predictions_tensor.shape
-        
-        # Create the results dataframe
+
+        num_sequences, num_nodes, horizon_size, num_quantiles = predictions_tensor.shape
+
+        # Get the quantile column names from the column registry
+        # These are the names PredictionManager expects, e.g. ['q_0.1', 'q_0.5', 'q_0.9']
+        # For num_quantiles == 0 (point forecast), this degenerates to ['pred']
+        if self.epiconfig._num_quantiles == 0:
+            pred_col_names = ['pred']
+        else:
+            pred_col_names = [c for c in self.predictions.column_registration.pred_columns if c != 'pred']
+
+        # ⚠️ CRITICAL CHECK: the number of quantile names must match the last tensor dim
+        if len(pred_col_names) != num_quantiles:
+            raise ValueError(
+                f"Mismatch: model output has {num_quantiles} quantile dims, "
+                f"but column registry has {len(pred_col_names)} pred columns: {pred_col_names}"
+            )
+
         results = self._format_forecast_results(
             predictions=predictions_tensor,
             targets=targets_tensor,
             dataset=dataset,
             num_sequences=num_sequences,
             num_nodes=num_nodes,
-            horizon_size=horizon_size
+            horizon_size=horizon_size,
+            pred_col_names=pred_col_names,
         )
-        
-        # Store predictions for each horizon
+
         for hh in range(horizon_size):
-            horizon_data = results[
-                [self.epiconfig.temporal_column, self.epiconfig.id_column, f'pred_{hh}', f'target_{hh}']
-            ].rename(columns={f'pred_{hh}': 'pred', f'target_{hh}': 'target'})
-            
+            # Select the columns for this horizon: timestamp, id, all pred_cols, target
+            horizon_cols = (
+                [self.epiconfig.temporal_column, self.epiconfig.id_column]
+                + [f'{col}_{hh}' for col in pred_col_names]
+                + [f'target_{hh}']
+            )
+            horizon_data = results[horizon_cols].rename(
+                columns={
+                    **{f'{col}_{hh}': col for col in pred_col_names},
+                    f'target_{hh}': 'target',
+                }
+            )
+
             if self.loss.loss_name in ['poisson', 'outbreakpoisson']:
                 self.predictions.add_horizon_predictions(
-                    dataset, horizon_data, hh, 
-                    additional_transformation=True, 
-                    transf='poisson_sampling', 
+                    dataset, horizon_data, hh,
+                    additional_transformation=True,
+                    transf='poisson_sampling',
                     transf_args={'sampling_mode': 'mean'}
                 )
             else:
                 self.predictions.add_horizon_predictions(dataset, horizon_data, hh)
-        
+
         if self.verbose > 1:
             print(f"{dataset.capitalize()} loss: {avg_loss:.4f}")
-        
+
         self._update_status('forecasted')
         return self
+
 
     def _format_forecast_results(
         self,
@@ -502,48 +513,50 @@ class DeepModel(BaseModel, ABC):
         dataset: str,
         num_sequences: int,
         num_nodes: int,
-        horizon_size: int
+        horizon_size: int,
+        pred_col_names: list[str],
     ) -> pd.DataFrame:
         """
-        Format predictions and targets into a dataframe with correct timestamps.
-        
-        Uses the time_splits dataframe to align sequence indices with actual timestamps.
+        Format predictions into a flat DataFrame aligned with correct timestamps.
+        Handles both point forecasts (num_quantiles=1) and quantile forecasts.
+
+        predictions shape: [num_sequences, num_nodes, horizon_size, num_quantiles]
+        targets shape:     [num_sequences, num_nodes, horizon_size]
         """
-        # Reshape to long format: [num_sequences * num_nodes, horizon_size]
-        pred_reshaped = predictions.view(num_sequences * num_nodes, horizon_size).numpy()
+        num_quantiles = len(pred_col_names)
+
+        # Reshape: [num_sequences * num_nodes, horizon_size, num_quantiles]
+        pred_reshaped = (
+            predictions
+            .view(num_sequences * num_nodes, horizon_size, num_quantiles)
+            .numpy()
+        )
+        # Reshape: [num_sequences * num_nodes, horizon_size]
         target_reshaped = targets.view(num_sequences * num_nodes, horizon_size).numpy()
-        
-        # Create index arrays
+
+        # Index arrays — np.repeat/tile is correct here, no issue
         sequence_idx = np.repeat(np.arange(num_sequences), num_nodes)
-        node_idx = np.tile(np.arange(num_nodes), num_sequences)
-        
-        # Get the timestamps for this dataset
+        node_idx     = np.tile(np.arange(num_nodes), num_sequences)
+
         dataset_time_splits = self.dataloadermanager.time_splits[
             self.dataloadermanager.time_splits[dataset]
-        ].reset_index()
-        
-        # Sequence indices correspond to rows in the filtered time_splits
-        # (after accounting for sequence_length lookback)
-        sequence_length = self.dataloadermanager.dataorchestrator.config.sequence_length
-        
-        timestamp_indices = sequence_idx 
-        
-        # Map to actual timestamps
-        timestamps = dataset_time_splits.loc[timestamp_indices, self.epiconfig.temporal_column].values
-        
-        # Build the results dataframe
+        ].reset_index(drop=True)  # ⚠️ drop=True to avoid keeping old integer index as a column
+
+        timestamps = dataset_time_splits.loc[sequence_idx, self.epiconfig.temporal_column].values
+
         results = pd.DataFrame({
             self.epiconfig.temporal_column: timestamps,
-            self.epiconfig.id_column: node_idx
+            self.epiconfig.id_column: node_idx,
         })
-        
-        # Add prediction columns
-        for hh in range(horizon_size):
-            results[f'pred_{hh}'] = pred_reshaped[:, hh]
-            results[f'target_{hh}'] = target_reshaped[:, hh]
-        
-        return results
 
+        # One column per horizon per quantile: e.g. q_0.1_0, q_0.5_0, q_0.9_0, ...
+        for hh in range(horizon_size):
+            for qq, col_name in enumerate(pred_col_names):
+                results[f'{col_name}_{hh}'] = pred_reshaped[:, hh, qq]
+            results[f'target_{hh}'] = target_reshaped[:, hh]
+
+        return results
+    
     def debug(self):
         if self.model is None:
             raise ValueError('Please initiate a model')

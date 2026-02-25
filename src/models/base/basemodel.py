@@ -184,10 +184,10 @@ class BaseModel:
                         label=f'{quantiles[0]}–{quantiles[-1]} interval'
                     )
 
-                    ax.set_xlabel("")   
-                    ax.set_xlim(xlimits)     
-                    ax.set_title(f'{nodename} [node: {id}]')    
-                    ax.grid()   
+                ax.set_xlabel("")   
+                ax.set_xlim(xlimits)     
+                ax.set_title(f'{nodename} [node: {id}]')    
+                ax.grid()   
 
             title = f'{self.dataloadermanager.dataorchestrator.config.target_column} predictions by {self.name}, {timesteps_ahead}{self.dataloadermanager.dataorchestrator.config.temporal_frequency} ahead' 
 

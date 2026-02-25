@@ -97,7 +97,6 @@ class GCNLSTMArchitecture(nn.Module):
         self.out_dropout = nn.Dropout(dropout)
 
         # --- Output projection ---
-        self.fc = nn.Linear(lstm_hidden_size, horizon_size)
         self.fc = nn.Linear(lstm_hidden_size, horizon_size * self.num_quantiles)
 
     def forward(self,
@@ -148,11 +147,10 @@ class GCNLSTMArchitecture(nn.Module):
         ht = self.lstm_out_norm(ht)
         ht = self.out_dropout(ht)
 
-        # output = self.fc(ht)                                                              # [num_nodes, horizon_size]
-        output = self.fc(ht).view(self.num_nodes, self.horizon_size, self.num_quantiles)    # [num_nodes, horizon_size, num_quantiles]
+        output = self.fc(ht)
 
-        if self.num_quantiles == 1:
-            output = output[:,:,0]
+
+        output = output.view(self.num_nodes, self.horizon_size, self.num_quantiles)
 
         return output, h, c
         
@@ -226,7 +224,7 @@ class GCNLSTMModel(DeepModel):
         _num_nodes      = self.dataloadermanager.dataorchestrator.data_context.num_nodes
         _horizon_size   = self.dataloadermanager.dataorchestrator.config.horizon_size
         _seq_length     = self.dataloadermanager.dataorchestrator.config.sequence_length
-        _num_quantiles  = self.dataloadermanager.dataorchestrator.config.num_quantiles
+        _num_quantiles  = max(self.dataloadermanager.dataorchestrator.config._num_quantiles,1)
 
         self.model = GCNLSTMArchitecture(
             num_features        = _num_features,
