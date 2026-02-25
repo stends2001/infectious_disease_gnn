@@ -1,13 +1,12 @@
-from typing import Optional
+from typing import Optional, TypeVar, Callable, Any
 import copy
-
+import functools
 import matplotlib
 
 from .managers import LegendManager, TickManager, LabelManager, LayoutManager
 
 import matplotlib.pyplot as plt 
 
-from typing import Optional
 import copy
 
 import matplotlib
@@ -19,14 +18,17 @@ import pickle
 def clone_figure(fig: matplotlib.figure.Figure) -> matplotlib.figure.Figure:
     return pickle.loads(pickle.dumps(fig))
 
-def convert_managedfigure(func):
-    """Decorator that wraps matplotlib figures in Fig class"""
+F = TypeVar('F', bound=Callable[..., Any])
+
+def convert_managedfigure(func: F) -> F:
+    """Decorator that wraps matplotlib figures in ManagedFigure"""
+    @functools.wraps(func)
     def wrapper(*args, **kwargs):
         result = func(*args, **kwargs)
         if isinstance(result, matplotlib.figure.Figure):
             return ManagedFigure(result)
         return result
-    return wrapper
+    return wrapper  # type: ignore[return-value]
 
 
 class ManagedFigure:

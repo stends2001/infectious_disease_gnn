@@ -1,5 +1,3 @@
-# utils/textformatting.py
-
 from typing import Dict, Any, Union, List, Tuple
 
 checkmark       = '✓'
