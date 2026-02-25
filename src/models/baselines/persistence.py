@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 
 from ..base.issues import ModelError
-from ...utils.textformatting import align, section
+from ...utils.textformatting import section
 from ...dataloading import BaseLineDataLoaderManager 
 from .baselinemodel import BaseLineModel 
 
@@ -63,10 +63,10 @@ class PersistenceModel(BaseLineModel):
             persistence_pred = evaluation_df.groupby(self.epiconfig.id_column)['target'].shift(timeshift_num)
 
             if quantiles:
-                t_idx = self._get_seasonal_index(evaluation_df)
+                # t_idx = self._get_seasonal_index(evaluation_df)
                 for i, q in enumerate(quantiles):
-                    offset = t_idx.map(self._residual_quantiles[q])
-                    evaluation_df[f'pred_q{i}'] = (persistence_pred + offset).clip(lower=0)
+                #     offset = t_idx.map(self._residual_quantiles[q])
+                    evaluation_df[f'pred_q{i}'] = persistence_pred * (1 + (q - 0.5))
                 pred_cols = [f'pred_q{i}' for i in range(len(quantiles))]
             else:
                 evaluation_df['pred'] = persistence_pred
@@ -91,3 +91,29 @@ class PersistenceModel(BaseLineModel):
             return df[self.epiconfig.temporal_column].dt.month
         else:
             raise ModelError(f'Invalid temporal frequency found for ClimaScale model: {freq}')        
+    
+    def __str__(self) -> str:
+
+        all_keys = (
+            ['model name', 'model class'] + list(self._state.keys())
+        )
+
+        width = max(len(k) for k in all_keys) if all_keys else 20
+        
+        # Build output
+        lines = [f'<{self.__class__.__name__}(']
+        lines.append('')        
+        general_items = {'name': self.name, 'model_class': self.model_class}
+        lines.extend(section('generics', general_items, width))
+        lines.append('')
+        
+        # Status section
+        status_items = {k: "✓" if v else "✗" for k, v in self._state.items()}
+        status_items['model_hparams_set'] = 'NA'        
+        status_items['global_hparams_set'] = 'NA'
+        lines.extend(section('status', status_items, width))
+        lines.append('')
+                  
+        lines.append(')>')
+        
+        return '\n'.join(lines)    

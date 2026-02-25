@@ -399,6 +399,7 @@ class BaseModel(Generic[DLM]):
 
     def _clean_name(self, name: str) -> str:
         return name.lower().replace(' ', '_')
+    
     # ======== REPRESENTATION METHODS ===== #
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(name={self.name!r})"    
@@ -406,24 +407,22 @@ class BaseModel(Generic[DLM]):
     def __str__(self) -> str:
 
         all_keys = (
-            ['model name', 'model class'] + list(self._state.keys())
+            ['name', 'model class'] + list(self._state.keys())
         )
 
         width = max(len(k) for k in all_keys) if all_keys else 20
         
         # Build output
         lines = [f'<{self.__class__.__name__}(']
-        lines.append(align('model name',  self.name, width))
-        lines.append(align('model class', self.model_class, width))
+        lines.append('')
+        general_items = {'name': self.name, 'model_class': self.model_class}
+        lines.extend(section('generics', general_items, width))
         lines.append('')
         
         # Status section
         status_items = {k: "✓" if v else "✗" for k, v in self._state.items()}
         lines.extend(section('status', status_items, width))
         lines.append('')
-                
-        # Global hparams
-        lines.extend(section('global hparams', self.config_info.get('global_hparams', {}), width))
         
         lines.append(')>')
         

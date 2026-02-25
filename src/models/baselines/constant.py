@@ -4,6 +4,7 @@ import pandas as pd
 from ...dataloading import BaseLineDataLoaderManager
 from ...utils import check_dataset
 from .baselinemodel import BaseLineModel 
+from ...utils import align, section
 
 class ConstantModel(BaseLineModel):
     """ 
@@ -53,3 +54,32 @@ class ConstantModel(BaseLineModel):
             
         self._update_status('forecasted')   
         return self  
+    
+    def __str__(self) -> str:
+
+        all_keys = (
+            ['model name', 'model class'] + list(self._state.keys())
+        )
+
+        width = max(len(k) for k in all_keys) if all_keys else 20
+        
+        # Build output
+        lines = [f'<{self.__class__.__name__}(']
+        lines.append('')        
+        general_items = {'name': self.name, 'model_class': self.model_class}
+        lines.extend(section('generics', general_items, width))
+        lines.append('')
+        
+        # Status section
+        status_items = {k: "✓" if v else "✗" for k, v in self._state.items()}
+        status_items['global_hparams_set'] = 'NA'
+        lines.extend(section('status', status_items, width))
+        lines.append('')
+                
+        # Global hparams
+        lines.extend(section('global hparams', self.config_info.get('global_hparams', {}), width))
+        lines.append(align('constant_value',  self.constant_value, width))
+        
+        lines.append(')>')
+        
+        return '\n'.join(lines)    

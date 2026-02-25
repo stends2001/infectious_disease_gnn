@@ -5,6 +5,7 @@ import numpy as np
 from .baselinemodel import BaseLineModel 
 from ..base.issues import ModelError
 from ...utils import check_dataset
+from ...utils.textformatting import section
 from ...dataloading import BaseLineDataLoaderManager 
 
 class ClimaScaleModel(BaseLineModel):
@@ -129,3 +130,29 @@ class ClimaScaleModel(BaseLineModel):
         scaling_factor   = shifted_target / shifted_seasonal.replace(0, float('nan'))
         group['pred']    = (scaling_factor * group['seasonal_mean']).fillna(0)
         return group
+    
+    def __str__(self) -> str:
+
+        all_keys = (
+            ['model name', 'model class'] + list(self._state.keys())
+        )
+
+        width = max(len(k) for k in all_keys) if all_keys else 20
+        
+        # Build output
+        lines = [f'<{self.__class__.__name__}(']
+        lines.append('')        
+        general_items = {'name': self.name, 'model_class': self.model_class}
+        lines.extend(section('generics', general_items, width))
+        lines.append('')
+        
+        # Status section
+        status_items = {k: "✓" if v else "✗" for k, v in self._state.items()}
+        status_items['model_hparams_set'] = 'NA'        
+        status_items['global_hparams_set'] = 'NA'
+        lines.extend(section('status', status_items, width))
+        lines.append('')
+                  
+        lines.append(')>')
+        
+        return '\n'.join(lines)        
