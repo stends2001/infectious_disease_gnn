@@ -1,11 +1,11 @@
-from typing import Union, Optional, Literal, List, Tuple
+from typing import Union, Optional, Literal, List, Tuple, Self, Generic, TypeVar
 import pandas as pd
 from matplotlib.axes import Axes
 import matplotlib.pyplot as plt 
 import seaborn as sns
 import numpy as np
 
-from .issues import FutureUpdateError, ModelStatusError
+from .issues import FutureUpdateError, ModelStatusError, ModelInitError
 from .predictions_manager import PredictionManager
 
 from ..utils.modelcolors import model_colors
@@ -14,7 +14,9 @@ from ...dataloading import BaseLineDataLoaderManager, DeepDataLoaderManager, Gra
 from ...plotting import ManagedFigure
 from ...utils import testcolor, color_is_light, checkmark, align, section
 
-class BaseModel:
+DLM = TypeVar('DLM', bound=Union[BaseLineDataLoaderManager, DeepDataLoaderManager, GraphDataLoaderManager])
+
+class BaseModel(Generic[DLM]):
 
     """ 
     Parent class of ALL models, baseline, shallow and deep.
@@ -32,10 +34,20 @@ class BaseModel:
         - 0:
         - 1:
         - 2:
+
+    Downstream
+    ----------
+    BaseModel has 3 types of subclasses:
+    - BaseLineModel
+    - ShallowModel
+    - DeepModel
+
+    Each of which has further subclasses. SimpleGCNModel and LSTMModel are example of a DeepModel.
     """
+    _expected_dataloadermanager: str 
 
     def __init__(self, 
-                 dataloadermanager: Union[BaseLineDataLoaderManager, DeepDataLoaderManager, GraphDataLoaderManager], 
+                 dataloadermanager: DLM, 
                  name:              Optional[str]   = None,
                  verbose:           int             = -1):
         
@@ -53,6 +65,10 @@ class BaseModel:
         self.prediction_mode            = self.dataloadermanager.dataorchestrator.config.prediction_mode
         self.model_class                = self.__class__.__name__
         self.model_color                = self._get_modelcolor()
+        self.pred_cols                  = self._return_pred_cols()
+
+        # validate
+        self._validate_dataloadermanager()
         
         # dynamic (changing) attributes
         self.config_info                = {}
@@ -229,6 +245,8 @@ class BaseModel:
         raise NotImplementedError("Subclasses of BaseModel must implement save_model-method")
           
     # ======== HIDDEN METHODS ========= #
+    
+    # helpers
     def _get_forecast_dfs(self, 
                           node_idx:     Union[int, List[Union[int,Literal['national']]], Literal['national']], 
                           dataset:      Literal['train','val','test'], 
@@ -282,6 +300,29 @@ class BaseModel:
         
         return nodes_list, df_pred, df_pred_aggr
 
+    def _return_pred_cols(self) -> List[str]:
+        """ 
+        return the names of the prediction - columns
+        """
+        if self.epiconfig._num_quantiles == 0:
+            pred_cols= ['pred']
+        else:
+            pred_cols= [c for c in self.column_registration.pred_columns if c != 'pred']
+        return pred_cols    
+
+    # validation - related 
+    def _validate_dataloadermanager(self):
+        """validate class of dataloadermanager"""
+        if not hasattr(self, '_expected_dataloadermanager'):
+            raise ModelInitError(f'attribute self._expected_dataloadermanager not set in model {self.name}')
+
+        exp = self._expected_dataloadermanager
+        got = self.dataloadermanager.__class__.__name__
+
+        if exp != got:
+            raise ModelInitError(f'{self.name} expected a dataloadermanager of class {exp} but got {got}')
+
+    # status - related
     def _print_status_update(self, status: str) -> None:
         """
         prints a status update, depending on verbose
@@ -344,6 +385,7 @@ class BaseModel:
                 f"Call the corresponding methods first."
             )
     
+    # appearance - related
     def _get_modelcolor(self) -> str:
         lookup_name = self.__class__.__name__.lower()
         
@@ -357,7 +399,6 @@ class BaseModel:
 
     def _clean_name(self, name: str) -> str:
         return name.lower().replace(' ', '_')
-            
     # ======== REPRESENTATION METHODS ===== #
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(name={self.name!r})"    

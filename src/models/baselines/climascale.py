@@ -1,13 +1,16 @@
-from typing import TYPE_CHECKING, Optional, Literal
+from typing import Optional, Literal, Self
 import pandas as pd 
+import numpy as np
 
 from .baselinemodel import BaseLineModel 
+from ..base.issues import ModelError
 from ...utils import check_dataset
-from ...utils.textformatting import align, section
 from ...dataloading import BaseLineDataLoaderManager 
 
 class ClimaScaleModel(BaseLineModel):
-
+    """ 
+    # TODO
+    """
     def __init__(self, 
                  dataloadermanager: BaseLineDataLoaderManager,                 
                  name:              Optional[str] = None,
@@ -17,35 +20,6 @@ class ClimaScaleModel(BaseLineModel):
             name = f'ClimaScale Model'
 
         super().__init__(dataloadermanager=dataloadermanager, name=name, verbose=verbose)
-        self.horizon_leadtime = self.dataloadermanager.dataorchestrator.config.horizon_leadtime
-
-    def _get_seasonal_indexes(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Adds t_idx column based on temporal frequency"""
-        dfc  = df.copy()
-        freq = self.dataloadermanager.dataorchestrator.config.temporal_frequency
-        if freq == 'w':
-            dfc['t_idx'] = dfc[self.epiconfig.temporal_column].dt.isocalendar().week.astype(int)
-        elif freq == 'd':
-            dfc['t_idx'] = dfc[self.epiconfig.temporal_column].dt.isocalendar().day.astype(int)
-        elif freq == 'm':
-            dfc['t_idx'] = dfc[self.epiconfig.temporal_column].dt.month
-        return dfc
-
-    def _get_seasonal_means(self, dataloader_main: pd.DataFrame) -> pd.DataFrame:
-        """Returns a df with the average target per (node, seasonal timepoint)"""
-        dl_main = self._get_seasonal_indexes(dataloader_main)
-        return (dl_main.groupby([self.epiconfig.id_column, 't_idx'])['target']
-                       .mean()
-                       .reset_index()
-                       .rename(columns={'target': 'seasonal_mean'}))
-    
-    def _compute_pred(self, group, h):
-        """Compute scaled seasonal prediction per node group"""
-        shifted_target   = group['target'].shift(h)
-        shifted_seasonal = group['seasonal_mean'].shift(h)
-        scaling_factor   = shifted_target / shifted_seasonal.replace(0, float('nan'))
-        group['pred']    = (scaling_factor * group['seasonal_mean']).fillna(0)
-        return group
 
     def train(self):
         """
@@ -62,23 +36,25 @@ class ClimaScaleModel(BaseLineModel):
             seasonal_averages = self._get_seasonal_means(data_seen)
             train_indexed     = self._get_seasonal_indexes(train_df)
             merged            = pd.merge(train_indexed, seasonal_averages, on=[self.epiconfig.id_column, 't_idx']).sort_values(
-                                    by=[self.epiconfig.temporal_column, self.epiconfig.id_column])
+                by=[self.epiconfig.temporal_column, self.epiconfig.id_column])
+            
             merged            = merged.groupby(self.epiconfig.id_column).apply(
-                                    lambda g: self._compute_pred(g, self.horizon_leadtime)).reset_index(drop=True)
+                lambda g: self._compute_pred(g, self.epiconfig.horizon_leadtime)
+                ).reset_index(drop=True)
 
             residuals = merged['target'] - merged['pred']
 
             # per seasonal timepoint quantiles
             self._residual_quantiles = (
                 residuals.groupby(merged['t_idx'])
-                         .quantile(quantiles)
+                         .quantile(np.array(quantiles))
                          .unstack()
             )
 
         self._update_status('trained')
 
     @check_dataset()
-    def forecast(self, dataset: Literal['train','val','test'] = 'test'):
+    def forecast(self, dataset: Literal['train','val','test'] = 'test') -> Self:
         """
         Forecast for set dataset
         """
@@ -93,8 +69,6 @@ class ClimaScaleModel(BaseLineModel):
                 data_seen = dl[dl['train']]
             elif dataset == 'test':
                 data_seen = dl[dl['train'] | dl['val']]
-            else:
-                raise ValueError(f'invalid dataset {dataset}')
         
             evaluation_df       = dl[dl[dataset]]
             seasonal_averages   = self._get_seasonal_means(data_seen)
@@ -103,7 +77,7 @@ class ClimaScaleModel(BaseLineModel):
             merged_df = pd.merge(evaluation_indexed, seasonal_averages, on=[self.epiconfig.id_column, 't_idx']).sort_values(
                             by=[self.epiconfig.temporal_column, self.epiconfig.id_column])
             merged_df = merged_df.groupby(self.epiconfig.id_column).apply(
-                            lambda g: self._compute_pred(g, self.horizon_leadtime)).reset_index(drop=True)
+                            lambda g: self._compute_pred(g, self.epiconfig.horizon_leadtime)).reset_index(drop=True)
 
             if quantiles:
                 for i, q in enumerate(quantiles):
@@ -121,15 +95,37 @@ class ClimaScaleModel(BaseLineModel):
         self._update_status('forecasted')   
         return self  
 
-    def __str__(self):          
-        all_keys = ['model name', 'model family', 'forecasted']
-        width = max(len(k) for k in all_keys)
+    def _get_seasonal_indexes(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Adds t_idx column based on temporal frequency"""
         
-        lines = [f'<{self.model_class}(']
-        lines.append(align('model name', self.name, width))
-        lines.append(align('model family', 'BaseLineModel', width))        
-        lines.append('')
-        lines.extend(section('status', {'forecasted': self.predictions}, width))
-        lines.append(')>')
+        dfc         = df.copy()
+        freq        = self.dataloadermanager.dataorchestrator.config.temporal_frequency
+
+        timestamp: pd.Series[pd.Timestamp]  = dfc[self.epiconfig.temporal_column]   
+
+        if freq == 'w':
+            dfc['t_idx'] = timestamp.dt.isocalendar().week.astype(int)
+        elif freq == 'd':
+            dfc['t_idx'] = timestamp.dt.isocalendar().day.astype(int)
+        elif freq == 'm':
+            dfc['t_idx'] = timestamp.dt.month
+        else:
+            raise ModelError(f'Invalid temporal frequency found for ClimaScale model: {freq}')
         
-        return '\n'.join(lines)
+        return dfc
+
+    def _get_seasonal_means(self, dataloader_main: pd.DataFrame) -> pd.DataFrame:
+        """Returns a df with the average target per (node, seasonal timepoint)"""
+        dl_main = self._get_seasonal_indexes(dataloader_main)
+        return (dl_main.groupby([self.epiconfig.id_column, 't_idx'])['target']
+                       .mean()
+                       .reset_index()
+                       .rename(columns={'target': 'seasonal_mean'}))
+    
+    def _compute_pred(self, group, h):
+        """Compute scaled seasonal prediction per node group"""
+        shifted_target   = group['target'].shift(h)
+        shifted_seasonal = group['seasonal_mean'].shift(h)
+        scaling_factor   = shifted_target / shifted_seasonal.replace(0, float('nan'))
+        group['pred']    = (scaling_factor * group['seasonal_mean']).fillna(0)
+        return group

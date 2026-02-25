@@ -1,6 +1,8 @@
-from typing import TYPE_CHECKING, Optional, Literal
+from typing import Optional, Literal
 import pandas as pd 
+import numpy as np
 
+from ..base.issues import ModelError
 from ...utils.textformatting import align, section
 from ...dataloading import BaseLineDataLoaderManager 
 from .baselinemodel import BaseLineModel 
@@ -8,7 +10,9 @@ from .baselinemodel import BaseLineModel
 from ...utils import check_dataset
 
 class PersistenceModel(BaseLineModel):
-
+    """ 
+    # TODO
+    """
     def __init__(self, 
                  dataloadermanager: BaseLineDataLoaderManager,                 
                  name:              Optional[str] = None,
@@ -38,21 +42,11 @@ class PersistenceModel(BaseLineModel):
             # per seasonal timepoint quantiles
             self._residual_quantiles = (
                 residuals.groupby(t_idx)
-                         .quantile(quantiles)
+                         .quantile(np.array(quantiles))
                          .unstack()
             )
 
         self._update_status('trained')
-
-    def _get_seasonal_index(self, df: pd.DataFrame) -> pd.Series:
-        """Returns seasonal index series based on temporal frequency"""
-        freq = self.dataloadermanager.dataorchestrator.config.temporal_frequency
-        if freq == 'w':
-            return df[self.epiconfig.temporal_column].dt.isocalendar().week.astype(int)
-        elif freq == 'd':
-            return df[self.epiconfig.temporal_column].dt.isocalendar().day.astype(int)
-        elif freq == 'm':
-            return df[self.epiconfig.temporal_column].dt.month
 
     @check_dataset()
     def forecast(self, dataset: Literal['train','val','test'] = 'test'):
@@ -85,16 +79,15 @@ class PersistenceModel(BaseLineModel):
 
         self._update_status('forecasted')   
         return self  
-
-    def __str__(self):
-        all_keys = ['model name', 'model family', 'forecasted']
-        width = max(len(k) for k in all_keys)
-        
-        lines = [f'<{self.model_class}(']
-        lines.append(align('model name', self.name, width))
-        lines.append(align('model family', 'BaseLineModel', width))
-        lines.append('')
-        lines.extend(section('status', {'forecasted': self.predictions}, width))
-        lines.append(')>')
-        
-        return '\n'.join(lines)
+    
+    def _get_seasonal_index(self, df: pd.DataFrame) -> pd.Series:
+        """Returns seasonal index series based on temporal frequency"""
+        freq = self.dataloadermanager.dataorchestrator.config.temporal_frequency
+        if freq == 'w':
+            return df[self.epiconfig.temporal_column].dt.isocalendar().week.astype(int)
+        elif freq == 'd':
+            return df[self.epiconfig.temporal_column].dt.isocalendar().day.astype(int)
+        elif freq == 'm':
+            return df[self.epiconfig.temporal_column].dt.month
+        else:
+            raise ModelError(f'Invalid temporal frequency found for ClimaScale model: {freq}')        
