@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
 
-from .issues import FutureUpdateError, ModelStatusError, ModelInitError
+from ..issues import FutureUpdateError, ModelStatusError, ModelInitError
 from .predictions_manager import PredictionManager
 
 from ..utils.modelcolors import model_colors

@@ -120,7 +120,9 @@ class SimpleGCNModel(DeepModel):
         if not name:
             name = 'SpatialGNN'        
 
-        super().__init__(dataloadermanager, name=name, deepfamily='gnn' , verbose=verbose, strategy=StandardGNNStrategy())                 
+        self._expected_dataloadermanager = 'GraphDataLoaderManager'
+
+        super().__init__(dataloadermanager, name=name , verbose=verbose, strategy=StandardGNNStrategy())                 
 
     def set_model_hparams(self, 
                           hidden_size:  int = 64, 

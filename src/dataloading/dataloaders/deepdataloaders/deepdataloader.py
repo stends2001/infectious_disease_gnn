@@ -25,8 +25,8 @@ class DeepDataLoaderManager(DeepBaseDataLoaderManager):
         )
                 
         # Wrap in simple lists or custom container
-        self.dataloader_main    = DeepDataList(main)
-        self.dataloader_train   = DeepDataList(train)
-        self.dataloader_val     = DeepDataList(val)
-        self.dataloader_test    = DeepDataList(test)
+        self._dataloader_main    = DeepDataList(main)
+        self._dataloader_train   = DeepDataList(train)
+        self._dataloader_val     = DeepDataList(val)
+        self._dataloader_test    = DeepDataList(test)
         return self

@@ -295,13 +295,14 @@ class GATv2LSTMModel(DeepModel):
         if not name:
             name = 'GATV2LSTMModel'
 
+        self._expected_dataloadermanager = 'GraphDataLoaderManager'
+
         strategy = StatelessGATv2LSTMStrategy() if reset == 'epoch' else StatefullGATv2LSTMStrategy()
 
         super().__init__(
             dataloadermanager   = dataloadermanager, 
             name                = name, 
-            verbose             = verbose, 
-            deepfamily          = 'gnn', 
+            verbose             = verbose,
             strategy            = strategy
         )
 

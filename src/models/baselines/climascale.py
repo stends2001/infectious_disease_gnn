@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 
 from .baselinemodel import BaseLineModel 
-from ..base.issues import ModelError
+from ..issues import ModelError
 from ...utils import check_dataset
 from ...utils.textformatting import section
 from ...dataloading import BaseLineDataLoaderManager 

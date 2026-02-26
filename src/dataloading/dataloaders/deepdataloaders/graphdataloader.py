@@ -56,8 +56,8 @@ class GraphDataLoaderManager(DeepBaseDataLoaderManager):
         )
                 
         # Wrap in simple lists or custom container
-        self.dataloader_main    = GraphDataList(main)
-        self.dataloader_train   = GraphDataList(train)
-        self.dataloader_val     = GraphDataList(val)
-        self.dataloader_test    = GraphDataList(test)        
+        self._dataloader_main    = GraphDataList(main)
+        self._dataloader_train   = GraphDataList(train)
+        self._dataloader_val     = GraphDataList(val)
+        self._dataloader_test    = GraphDataList(test)        
         return self

@@ -1,7 +1,7 @@
 import torch 
 import torch.nn as nn    
 from torch import Tensor
-from typing import Optional, Tuple, Literal
+from typing import Optional, Tuple, Literal, Union
 
 from ....dataloading.dataloaders.deepdataloaders.deepdataloader import DeepDataLoaderManager
 from ....dataloading.dataloaders.deepdataloaders.graphdataloader import GraphDataLoaderManager
@@ -133,13 +133,14 @@ class LSTMModel(DeepModel):
         if not name:
             name = 'NodeLSTM'
 
+        self._expected_dataloadermanager = 'DeepDataLoaderManager'
+
         strategy = StatelessLSTMStrategy() if reset == 'epoch' else StatefullLSTMStrategy()
         
         super().__init__(
             dataloadermanager   = dataloadermanager, 
             name                = name, 
             verbose             = verbose, 
-            deepfamily          = 'vanilla', 
             strategy            = strategy
         )
 

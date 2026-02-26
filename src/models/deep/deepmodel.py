@@ -1,154 +1,84 @@
-from abc import ABC, abstractmethod
-from typing import Optional, Union, Dict, Any, Literal, Type
+from typing import Union, Dict, Type, Literal, Optional, Any, Tuple, List, TypeVar, Generic
 
-import torch
+import torch 
 import torch.optim as optim
 from torch.optim.optimizer import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 
-import pandas as pd
+from matplotlib.axes import Axes
+import matplotlib.pyplot as plt 
+import seaborn as sns
+
+import pandas as pd 
 import numpy as np
 
 from tqdm import tqdm
 
-import matplotlib.pyplot as plt
-import seaborn as sns
-
 from .modelmanager import ModelManager
-from ..base import BaseModel
+
+
+from .strategies.gcn import StandardGNNStrategy
+from .strategies.lstmstrategy import StatefullLSTMStrategy, StatelessLSTMStrategy
+from .strategies.gatv2lstm import StatelessGATv2LSTMStrategy, StatefullGATv2LSTMStrategy
+
+
 from ..utils.loss.losshandler import LossHandler
-from ...dataloading.dataloaders.deepdataloaders.graphdataloader import GraphDataLoaderManager
-from ...dataloading.dataloaders.deepdataloaders.deepdataloader import DeepDataLoaderManager
-from ...utils import check_dataset
-from ...utils.textformatting import warning_emoji, section, align, checkmark
-from ...utils.colors import traincolor, valcolor
-from .strategies.basestrategy import Strategy
+from ..base import BaseModel
+from ..issues import DeviceWarning, InvalidLossError, InvalidOPtimizerError, InvalidSchedulerError, ModelStatusError
 
-from .debugging import DeepModelDebuggingError
-
-class ConflictingDataLoaderManager(Exception):
-    def __init__(self, model_name: BaseModel, suggested_strategy: str, dataloadermanager: str):
-        super().__init__(f"Conflicting dataloader for {model_name}\nstrategy suggests {suggested_strategy} but dataloadermanager is of type {dataloadermanager}")
-
-class ConflictingDataLoaderShape(Exception):
-    def __init__(self, message: str):
-        super().__init__(f"Conflicting shapes in dataloader\n{message}")    
-
-class DeepModel(BaseModel, ABC):
+from ...dataloading import GraphDataLoaderManager, DeepDataLoaderManager
+from ...utils import checkmark, traincolor, valcolor, align, section, check_dataset
+ 
+class DeepModel(BaseModel[Union[GraphDataLoaderManager, DeepDataLoaderManager]]):
 
     _childclasses: Dict[str, Type["DeepModel"]] = {}
-    
+        
     def __init__(self, 
                  dataloadermanager:     Union[GraphDataLoaderManager, DeepDataLoaderManager], 
                  strategy,
-                 deepfamily:            Literal['vanilla','gnn'],
                  name:                  str,          
                  verbose:               Literal[-1, 0, 1, 2] = -1):
 
-        super().__init__(dataloadermanager=dataloadermanager, name=name, verbose = verbose)        
-
-        self.deepfamily        = deepfamily        
-        self.dataloadermanager = dataloadermanager
-        self.device            = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        
-        if self.device == 'cpu':
-            print(f'{warning_emoji} you are connected to cpu, not to gpu')
+        super().__init__(dataloadermanager = dataloadermanager, name = name, verbose = verbose)        
 
         self.model:     Optional[torch.nn.Module]           = None                  # to be initiated by childclass
         self.optimizer: Optional[optim.optimizer.Optimizer] = None                  # to be initiated by _get_optimizer
         self.scheduler: Optional[_LRScheduler]              = None                  # to be initiated by _get_scheduler
+        self.model_manager                                  = ModelManager()
+        self.monitoring_metrics                             = None
+        self.evaluation_datasets                            = {}
+
+        self._set_device()
         self._set_strategy(strategy)
-        self._validate_dataloader_class()
-        self._validate_dataloader_shapes()
 
-        self.model_manager = ModelManager()
-        self.monitoring_metrics = None
-        self.evaluation_datasets= {}
+    # ======= DUNDER ======= #
 
+    # __init_subclass__ is run when a subclass is iniated
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
         DeepModel._childclasses[cls.__name__.lower()] = cls
-
-    def _validate_dataloader_class(self):
-        # if strategy suggests vanilla deepmodel:
-        if self.deepfamily == 'vanilla':
-            if self.dataloadermanager.__class__.__name__ != 'DeepDataLoaderManager':
-                raise ConflictingDataLoaderManager(self, 'deep-vanilla', self.dataloadermanager.__class__.__name__)
-        elif self.deepfamily == 'gnn':
-            if self.dataloadermanager.__class__.__name__ != 'GraphDataLoaderManager':
-                raise ConflictingDataLoaderManager(self, 'deep-graph', self.dataloadermanager.__class__.__name__)    
-        else:
-            raise ValueError(f'Invalid input for attribute deepfamily found. Should be "vanilla" or "gnn" but received: {self.deepfamily}')        
-
-    def _validate_dataloader_shapes(self):
-        pass     
-      
-    def set_model_hparams(self):
-        raise NotImplementedError("Child classes of DeepModel must implement set_model_hparams")
-
-    def _get_optimizer(self, optimizer_name: str, lr: float, optimizer_kwargs: Dict[str, Any]) -> Optimizer:
-        """Factory method to create and return optimizer"""
-        self._check_state(['model_hparams_set'])
-
-        if self.model is None:
-            raise ValueError('Please initiate a model')        
-
-        # pylance struggles with torch typing?
-        optimizer_map = {
-            'adam':    optim.Adam,     # type: ignore
-            'adamw':   optim.AdamW,    # type: ignore
-            'sgd':     optim.SGD,      # type: ignore
-            'rmsprop': optim.RMSprop,  # type: ignore
-            'adagrad': optim.Adagrad,  # type: ignore
-        }
-        
-        if optimizer_name.lower() not in optimizer_map:
-            raise ValueError(f"Optimizer '{optimizer_name}' not supported. Choose from: {list(optimizer_map.keys())}")
-        
-        optimizer_class = optimizer_map[optimizer_name.lower()]
-
-        return optimizer_class(self.model.parameters(), lr=lr, **optimizer_kwargs)
-
-    def _get_scheduler(self, scheduler_name: str, optimizer: Optimizer, scheduler_kwargs: Dict[str, Any]) -> _LRScheduler:
-        """Factory method to create and return scheduler"""
-        
-        self._check_state(['model_hparams_set'])
-        
-        scheduler_map = {
-            'step':        torch.optim.lr_scheduler.StepLR,
-            'exponential': torch.optim.lr_scheduler.ExponentialLR,
-            'cosine':      torch.optim.lr_scheduler.CosineAnnealingLR,
-            'cosine_warm': torch.optim.lr_scheduler.CosineAnnealingWarmRestarts,            
-            'plateau':     torch.optim.lr_scheduler.ReduceLROnPlateau,
-            'cyclic':      torch.optim.lr_scheduler.CyclicLR,
-            'onecycle':    torch.optim.lr_scheduler.OneCycleLR,
-            'multistep':   torch.optim.lr_scheduler.MultiStepLR,
-            'lambda':      torch.optim.lr_scheduler.LambdaLR,
-        }
-        
-        if scheduler_name.lower() not in scheduler_map:
-            raise ValueError(f"Scheduler '{scheduler_name}' not supported. Choose from: {list(scheduler_map.keys())}")
-        
-        scheduler_class = scheduler_map[scheduler_name.lower()]
-        return scheduler_class(optimizer, **scheduler_kwargs)
-
-    def _set_strategy(self, strategy: Strategy) -> None:
-        """Allow subclasses to specify their strategy"""
-        self.strategy = strategy
-
+    
+    # ======= MAIN METHODS =========== #
     def set_global_hparams(self, 
-                            lr: float = 0.001,
-                            n_epochs: int = 5,
-                            patience: int = 15,
-                            min_delta: float = 1e-4,                            
-                            optimizer: str = 'adam',
-                            optimizer_kwargs: Optional[Dict[str, Any]] = None,
-                            scheduler: Optional[str] = 'step',
-                            scheduler_kwargs: Optional[Dict[str, Any]] = None,
-                            loss: str = 'mse',
-                            loss_kwargs: Optional[Dict[str, Any]] = None                            
-                            ):
-        """Prepares model for training using global hyperparameters."""
+                           lr:              float           = 0.001,
+                           n_epochs:        int             = 5,
+                           patience:        int             = 15,
+                           min_delta:       float           = 1e-4,                            
+                           optimizer:       str             = 'adam',
+                           loss:            str             = 'mse',                           
+                           scheduler:       Optional[str]   = 'step',
+                           # kwargs
+                           optimizer_kwargs:Optional[Dict[str, Any]] = None,                           
+                           scheduler_kwargs:Optional[Dict[str, Any]] = None,
+                           loss_kwargs:     Optional[Dict[str, Any]] = None                            
+                           ):
+        """
+        Prepares model for training using global hyperparameters
+        
+        Parameters
+        ---------
+
+        """
         self._check_state(['model_hparams_set'])
 
         global_params_config = {
@@ -157,27 +87,34 @@ class DeepModel(BaseModel, ABC):
             'patience'          : patience,
             'min_delta'         : min_delta,                       
             'optimizer'         : optimizer,
-            'optimizer_kwargs'  : optimizer_kwargs,
-            'scheduler'         : scheduler,
-            'scheduler_kwargs'  : scheduler_kwargs,
             'loss'              : loss,
+            'scheduler'         : scheduler,
+
+            'optimizer_kwargs'  : optimizer_kwargs,
+            'scheduler_kwargs'  : scheduler_kwargs,
             'loss_kwargs'       : loss_kwargs
         }
         
+        # ==== CONSTANTS ===== #
         self.global_hparams_set = True
         self.n_epochs           = n_epochs
         self.patience           = patience
         self.min_delta          = min_delta
 
+        # ==== LOSS ==== #
         if loss == 'pinball':
-            loss_kwargs = {'quantiles': self.epiconfig.quantiles}
+            if loss_kwargs is None:
+                loss_kwargs = {}
+            if 'quantiles' not in loss_kwargs.keys():
+                loss_kwargs['quantiles'] = self.epiconfig.quantiles
+        self.loss = LossHandler(loss, loss_kwargs = loss_kwargs)  
 
-        self.loss               = LossHandler(loss, loss_kwargs=loss_kwargs)  
-
+        # ==== OPTIMIZER ==== #
         if optimizer_kwargs is None:
             optimizer_kwargs = {}
         self.optimizer = self._get_optimizer(optimizer, lr, optimizer_kwargs)
         
+        # ==== SCHEDULER ====== #
         if scheduler_kwargs is None:
             default_scheduler_kwargs = {
                 'step':        {'step_size': 15, 'gamma': 0.8},
@@ -190,6 +127,7 @@ class DeepModel(BaseModel, ABC):
 
         if scheduler:
             self.scheduler = self._get_scheduler(scheduler, self.optimizer, scheduler_kwargs)
+
         else:
             self.scheduler = None
 
@@ -197,92 +135,26 @@ class DeepModel(BaseModel, ABC):
         self._update_status('global_hparams_set')
         return self
 
-    def show_monitoring_metrics(self):
-        """Returns plot of trainloss, valloss, patience and learning rate per epoch."""
-        if self.model is None:
-            raise ValueError('Please initiate a model')
-        
-        if not isinstance(self.monitoring_metrics, pd.DataFrame):
-            raise ValueError('no monitoring metrics found')
-
-        fig, axes   = plt.subplots(1, 3, figsize=(24, 4))
-        axes        = axes.flatten()
-
-        # lines: train_loss, val_loss and learning_rate
-        sns.lineplot(data=self.monitoring_metrics, x='epoch', y='train_loss',   color=traincolor,   label='Train Loss',         ax=axes[0])
-        sns.lineplot(data=self.monitoring_metrics, x='epoch', y='val_loss',     color=valcolor,     label='Validation Loss',    ax=axes[1])
-        sns.lineplot(data=self.monitoring_metrics, x='epoch', y='learning_rate',color='black',      label='Learning Rate',      ax=axes[2])
-
-        # Scatter patience epochs and corresponding values
-        # Create a mask where patience > 0
-        patience_mask = self.monitoring_metrics['patience'] > 0
-
-        # Plot patience epochs as red 'x' markers
-        axes[0].scatter(self.monitoring_metrics['epoch'][patience_mask], 
-                        self.monitoring_metrics['train_loss'][patience_mask], 
-                        color='red', marker='x', label='Patience Epochs')
-
-        axes[1].scatter(self.monitoring_metrics['epoch'][patience_mask], 
-                        self.monitoring_metrics['val_loss'][patience_mask], 
-                        color='red', marker='x', label='Patience Epochs')
-
-        axes[2].scatter(self.monitoring_metrics['epoch'][patience_mask], 
-                        self.monitoring_metrics['learning_rate'][patience_mask], 
-                        color='red', marker='x', label='Patience Epochs')   
-
-        for ax in axes:
-            ax.grid()
-            ax.set_ylabel('loss')
-            ax.set_xlabel('epoch')
-            ax.legend()
-
-        axes[0].set_title('Training loss')      
-        axes[1].set_title('Validation loss')    
-        axes[2].set_title('Learning Rate Schedule')
-        axes[2].set_ylabel('Learning Rate')
-        axes[2].set_yscale('log')
-
-        fig.show()
-        return fig
-
     def train(self):
         """ 
         """
-        if self.model is None:
-            raise ValueError('Please initiate a model')
-        
-        if self.optimizer is None:
-            raise ValueError('no valid optimizer found')
-
-        if self.scheduler is None:
-            raise ValueError('no valid scheduler found')
-        
         self._check_state(['model_hparams_set', 'global_hparams_set'])
 
+        if self.model is None:
+            raise ModelStatusError(f'attribute model is None. Model was not correctly initiated')   
+        
+        if self.optimizer is None:
+            raise ModelStatusError(f'attribute optimizer is None. global hparams were not correctly set.')   
+
+        if self.scheduler is None:
+            raise ModelStatusError(f'attribute scheduler is None. global hparams were not correctly set.')   
+        
         train_loader = self.dataloadermanager.dataloader_train 
         val_loader   = self.dataloadermanager.dataloader_val 
 
-        # print dataloader snapshot
-        if self.verbose>=2:
-            print(f'Dataloader Snapshot: {train_loader[0]}')        
+        verbose_loops, epoch_iter = self._return_verbose_iter()
 
-        # determine verbose - loops (which loops to return evaluation metric)
-        if self.verbose >= 2:
-            verbose_loops   = list(np.arange(1, self.n_epochs + 1))
-            epoch_iter      = range(self.n_epochs)
-
-        elif self.verbose >= 1:
-            verbose_loops   = list(np.arange(1, self.n_epochs + 1, step=10))
-            epoch_iter      = range(self.n_epochs)
-
-        elif self.verbose < 0:
-            verbose_loops   = []
-            epoch_iter      = range(self.n_epochs)
-
-        else:
-            verbose_loops   = []
-            epoch_iter      = tqdm(range(self.n_epochs), desc="Training epochs") # if no verbose, just a tqdm
-
+        # ====== PRE-TRAINING ====== #
         self.model.train()
         best_val_loss       = float('inf')
         patience_counter    = 0
@@ -295,7 +167,10 @@ class DeepModel(BaseModel, ABC):
 
         L_train             = len(list(train_loader))
         L_val               = len(list(val_loader))
-    
+
+        if len(verbose_loops) > 0:
+            self._return_verbose_line()
+
         # Each epoch is divided into:
         #   training phase
         #   validation phase
@@ -357,9 +232,7 @@ class DeepModel(BaseModel, ABC):
             list_lr.append(current_lr)
             
             self.model.train()
-            # gives three digits as print no matter what
-            verbose_statement_basis = f"Epoch {num_epoch:03d} train loss: {train_loss:.4f}, val loss: {val_loss:.4f}"
-            
+
             # Check if validation loss improved
             val_improved = val_loss < (best_val_loss - self.min_delta)
 
@@ -368,14 +241,10 @@ class DeepModel(BaseModel, ABC):
                 best_val_loss   = val_loss
                 patience_counter= 0
                 best_model_state= self.model.state_dict().copy()
-                
-                verbose_statement = verbose_statement_basis + f" {checkmark} (new best)"
-                    
                 list_patience.append(False)
 
             else:
                 patience_counter += 1
-                verbose_statement = verbose_statement_basis + f" (patience: {patience_counter}/{self.patience})"
                 list_patience.append(True)
 
             if patience_counter >= self.patience:
@@ -387,9 +256,6 @@ class DeepModel(BaseModel, ABC):
 
                 break              
 
-            if num_epoch in verbose_loops:
-                print(verbose_statement)
-
             # Step scheduler => scheduler.step requires val loss
             if isinstance(self.scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
                 self.scheduler.step(val_loss) # type: ignore
@@ -399,9 +265,12 @@ class DeepModel(BaseModel, ABC):
 
             new_lr = self.optimizer.param_groups[0]['lr']
 
-            if current_lr != new_lr and self.verbose >=1:
-                if not isinstance(self.scheduler, torch.optim.lr_scheduler.CosineAnnealingWarmRestarts) and not isinstance(self.scheduler, torch.optim.lr_scheduler.CosineAnnealingLR):
-                    print(f'lr has been updated from {current_lr:.2e} to {new_lr:.2e}')        
+            if num_epoch in verbose_loops:
+                self._return_verbose_line(num_epoch, train_loss, val_loss,
+                                          checkmark if val_improved else None,
+                                          None if val_improved else f"{patience_counter}/{self.patience}",
+                                          True if current_lr != new_lr else None
+                                          )     
             
         self.monitoring_metrics = pd.DataFrame({'train_loss'    : list_train_loss,
                                                 'val_loss'      : list_val_loss,
@@ -415,11 +284,186 @@ class DeepModel(BaseModel, ABC):
 
         self._update_status('trained')
 
+    def show_monitoring_metrics(self):
+        """Returns plot of trainloss, valloss, patience and learning rate per epoch."""
+        if self.model is None:
+            raise ModelStatusError(f'attribute model is None. Model was not correctly initiated')     
+        
+        if not isinstance(self.monitoring_metrics, pd.DataFrame):
+            raise ValueError('no monitoring metrics found')
+      
+        fig, axes_array = plt.subplots(1, 3, figsize=(24, 4))
+        axes: list[Axes]= list(axes_array.flatten())
+
+        # lines: train_loss, val_loss and learning_rate
+        sns.lineplot(data = self.monitoring_metrics, x='epoch', y='train_loss',   color=traincolor,   label='Train Loss',         ax=axes[0])
+        sns.lineplot(data = self.monitoring_metrics, x='epoch', y='val_loss',     color=valcolor,     label='Validation Loss',    ax=axes[1])
+        sns.lineplot(data = self.monitoring_metrics, x='epoch', y='learning_rate',color='black',      label='Learning Rate',      ax=axes[2])
+
+        # Scatter patience epochs and corresponding values
+        # Create a mask where patience > 0
+        patience_mask = self.monitoring_metrics['patience'] > 0
+
+        # Plot patience epochs as red 'x' markers
+        axes[0].scatter(self.monitoring_metrics['epoch'][patience_mask], 
+                        self.monitoring_metrics['train_loss'][patience_mask], 
+                        color='red', marker='x', label='Patience Epochs')
+
+        axes[1].scatter(self.monitoring_metrics['epoch'][patience_mask], 
+                        self.monitoring_metrics['val_loss'][patience_mask], 
+                        color='red', marker='x', label='Patience Epochs')
+
+        axes[2].scatter(self.monitoring_metrics['epoch'][patience_mask], 
+                        self.monitoring_metrics['learning_rate'][patience_mask], 
+                        color='red', marker='x', label='Patience Epochs')   
+
+        for ax in axes:
+            ax.grid()
+            ax.set_ylabel('loss')
+            ax.set_xlabel('epoch')
+            ax.legend()
+
+        axes[0].set_title('Training loss')      
+        axes[1].set_title('Validation loss')    
+        axes[2].set_title('Learning Rate Schedule')
+        axes[2].set_ylabel('Learning Rate')
+        axes[2].set_yscale('log')
+
+        fig.show()
+        return fig
+
+    # ======= TO BE IMPLEMENTED BY SUBCLASSES =========== #   
+    def set_model_hparams(self):
+        raise NotImplementedError("Subclass of DeepModel must implement set_model_hparams")
+
+    # ======= HELPERS ======= #
+    def _set_device(self):
+        """sets attribute device"""
+        self.device            = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        
+        if self.device == 'cpu':
+            w = DeviceWarning('device found is CPU')
+            print(w)
+ 
+    def _get_optimizer(self, 
+                       optimizer_name:  str, 
+                       lr:              float, 
+                       optimizer_kwargs:Dict[str, Any]) -> Optimizer:
+        """Factory method to create and return optimizer"""
+        self._check_state(['model_hparams_set'])
+
+        if self.model is None:
+            raise ModelStatusError(f'attribute model is None. Model was not correctly initiated')        
+
+        # pylance struggles with torch typing?
+        optimizer_map = {
+            'adam':    optim.Adam,     # type: ignore
+            'adamw':   optim.AdamW,    # type: ignore
+            'sgd':     optim.SGD,      # type: ignore
+            'rmsprop': optim.RMSprop,  # type: ignore
+            'adagrad': optim.Adagrad,  # type: ignore
+        }
+        
+        if optimizer_name.lower() not in optimizer_map:
+            raise InvalidOPtimizerError(optimizer_name, list(optimizer_map.keys()))
+        
+        optimizer_class = optimizer_map[optimizer_name.lower()]
+
+        return optimizer_class(self.model.parameters(), lr=lr, **optimizer_kwargs)
+
+    def _get_scheduler(self, scheduler_name: str, optimizer: Optimizer, scheduler_kwargs: Dict[str, Any]) -> _LRScheduler:
+        """Factory method to create and return scheduler"""
+        
+        self._check_state(['model_hparams_set'])
+        
+        scheduler_map = {
+            'step':        torch.optim.lr_scheduler.StepLR,
+            'exponential': torch.optim.lr_scheduler.ExponentialLR,
+            'cosine':      torch.optim.lr_scheduler.CosineAnnealingLR,
+            'cosine_warm': torch.optim.lr_scheduler.CosineAnnealingWarmRestarts,            
+            'plateau':     torch.optim.lr_scheduler.ReduceLROnPlateau,
+            'cyclic':      torch.optim.lr_scheduler.CyclicLR,
+            'onecycle':    torch.optim.lr_scheduler.OneCycleLR,
+            'multistep':   torch.optim.lr_scheduler.MultiStepLR,
+            'lambda':      torch.optim.lr_scheduler.LambdaLR,
+        }
+        
+        if scheduler_name.lower() not in scheduler_map:
+            raise InvalidSchedulerError(scheduler_name, list(scheduler_map.keys()))
+        
+        scheduler_class = scheduler_map[scheduler_name.lower()]
+        return scheduler_class(optimizer, **scheduler_kwargs)
+
+    def _set_strategy(self, strategy):
+        """Allow subclasses to specify their strategy"""
+        self.strategy = strategy
+
+    def _return_verbose_iter(self) -> Tuple[list, Union[range, tqdm]]:
+        # print dataloader snapshot
+        if self.verbose>=2:
+            print(f'Dataloader Snapshot: {self.dataloadermanager.dataloader_train [0]}')        
+
+        # determine verbose - loops (which loops to return evaluation metric)
+        if self.verbose >= 2:
+            verbose_loops   = list(np.arange(1, self.n_epochs + 1))
+            epoch_iter      = range(self.n_epochs)
+
+        elif self.verbose >= 1:
+            verbose_loops   = list(np.arange(1, self.n_epochs + 1, step=10))
+            epoch_iter      = range(self.n_epochs)
+
+        elif self.verbose < 0:
+            verbose_loops   = []
+            epoch_iter      = range(self.n_epochs)
+
+        else:
+            verbose_loops   = []
+            epoch_iter      = tqdm(range(self.n_epochs), desc="Training epochs") # if no verbose, just a tqdm     
+
+        return verbose_loops, epoch_iter   
+
+    def _return_verbose_line(self, epoch=None, train_loss=None, val_loss=None, new_best=None, patience=None, lr_updated= None):
+        columns = ["epoch", "train loss", "val loss", "new best", "patience"]
+        columns = [col.upper() for col in columns]
+
+        widths = [5, 10, 10, 8, 9]
+        alignments = ["^", "^", "^", "^", "^"]
+
+        def fmt(value, width, align):
+            return f"{value:{align}{width}}"
+
+        def make_row(values):
+            return "| " + " | ".join(
+                fmt(v, w, a) for v, w, a in zip(values, widths, alignments)
+            ) + " |"
+
+        # total table width = pipes + spaces + column widths
+        total_width = sum(widths) + 3 * len(widths) + 1
+        separator = "─" * total_width
+
+        if any(x is not None for x in (epoch, train_loss, val_loss, new_best, patience, lr_updated)):
+            row_values = [
+                f"{epoch:03d}" if epoch is not None else "",
+                f"{train_loss:.4f}" if train_loss is not None else "",
+                f"{val_loss:.4f}" if val_loss is not None else "",
+                f"{new_best}" if new_best else " ",
+                f"{patience}" if patience else "",
+            ]
+            line = make_row(row_values)
+            if lr_updated:
+                line += " *"
+            print(line)
+        else:
+            print(separator)
+            print(make_row(columns))            
+
     @check_dataset()
     def forecast(self, dataset: Literal['train','val','test'] = 'test'):
+        
         self._check_state(['model_hparams_set', 'global_hparams_set', 'trained'])
+
         if self.model is None:
-            raise ValueError('Please initiate a model')
+            raise ModelStatusError(f'attribute model is None. Model was not correctly initiated')   
 
         self.model.eval()
         dataloader = getattr(self.dataloadermanager, f'dataloader_{dataset}')
@@ -433,7 +477,9 @@ class DeepModel(BaseModel, ABC):
             for snapshot in iterator:
                 snapshot = snapshot.to(self.device)
                 y_hat, loss_val = self.strategy.forecast_step(
-                    model=self.model, snapshot=snapshot, loss_fn=self.loss
+                    model=self.model, 
+                    snapshot=snapshot, 
+                    loss_fn=self.loss
                 )
                 total_loss += loss_val
                 all_predictions.append(y_hat.detach().cpu())
@@ -443,9 +489,11 @@ class DeepModel(BaseModel, ABC):
         setattr(self, f'{dataset}_loss', avg_loss)
 
         predictions_tensor = torch.stack(all_predictions)
+
         # Shape must be: [num_sequences, num_nodes, horizon_size, num_quantiles]
         if predictions_tensor.ndim < 4:
             raise ValueError('predictions tensor supposed to have 4 dimensions')
+        
         targets_tensor = torch.stack(all_targets)
 
         num_sequences, num_nodes, horizon_size, num_quantiles = predictions_tensor.shape
@@ -466,13 +514,13 @@ class DeepModel(BaseModel, ABC):
             )
 
         results = self._format_forecast_results(
-            predictions=predictions_tensor,
-            targets=targets_tensor,
-            dataset=dataset,
-            num_sequences=num_sequences,
-            num_nodes=num_nodes,
-            horizon_size=horizon_size,
-            pred_col_names=pred_col_names,
+            predictions     = predictions_tensor,
+            targets         = targets_tensor,
+            dataset         = dataset,
+            num_sequences   = num_sequences,
+            num_nodes       = num_nodes,
+            horizon_size    = horizon_size,
+            pred_col_names  = pred_col_names,
         )
 
         for hh in range(horizon_size):
@@ -504,7 +552,6 @@ class DeepModel(BaseModel, ABC):
 
         self._update_status('forecasted')
         return self
-
 
     def _format_forecast_results(
         self,
@@ -569,10 +616,9 @@ class DeepModel(BaseModel, ABC):
         y_hat = y_hat.detach().cpu()
         y     = train_sample.y.detach().cpu()
         report.validate()
-        if y_hat.shape != y.shape:
-            raise DeepModelDebuggingError(f"incompatible prediction shape: y_hat [{y_hat.shape}], y [{y.shape}]")
+        # if y_hat.shape != y.shape:
+        #     raise DeepModelDebuggingError(f"incompatible prediction shape: y_hat [{y_hat.shape}], y [{y.shape}]")
         
-    
     def save(self, filename: Optional[str] = None) -> None:
         """
         Save the trained model.

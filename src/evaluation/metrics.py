@@ -1,251 +1,174 @@
+from abc import ABC, abstractmethod
 import numpy as np
 import pandas as pd 
-from typing import Optional, cast, Tuple, List, Union
-import torch
+from typing import Optional, List, TypeVar, cast
 from scipy.stats import spearmanr, pearsonr
-from tqdm import tqdm
-from pandas._libs.missing import NAType
 
-import warnings 
-from sklearn.exceptions import UndefinedMetricWarning
+import inspect
 
-from sklearn.metrics import (
-    accuracy_score, precision_score, recall_score, f1_score,
-    roc_auc_score, average_precision_score, confusion_matrix
-)
-
-class RegressionMetrics:
+class MetricsCalculatorBase(ABC):
     """
-    compute metrics for dataframe    
-    """
+    compute metrics for dataframe, when predictions
+    represent regression-quantile-predictions  
 
+    The following (1) metrics are calculated nodewise
+    - WIS
+
+    Parameters
+    ----------
+    target_col: str
+        ground truth column. Typically "incidence"
+    pred_cols: str 
+        prediction column. Typically "pred_q0" ... "pred_qQ"
+    id_col: str
+        geographical nodes column. Typically "node"
+    temporal_col: str
+        timestamps column. Typically "timestamp"
+    """
     def __init__(self, 
-                 target_col: str    = 'incidence', 
-                 pred_col: str      = 'pred', 
-                 id_col: str        = 'node', 
-                 temporal_col: str  = 'timestamp'):
-        """
-        Initialize metrics calculator (configuration only, not data).
+                 target_col:    str,
+                 pred_cols:     List[str],
+                 id_col:        str,
+                 temporal_col:  str,
+                 quantiles:     Optional[List[float]] = None
+                 ):
         
+        self.target_col         = target_col
+        self.pred_cols          = pred_cols
+        self.id_col             = id_col
+        self.temporal_col       = temporal_col
+        self.quantiles          = quantiles
+
+        self.supported_metrics  = self._return_supported_metrics()
+        self._validate_input()
+
+    def _validate_input(self):
+        if self._requires_quantiles and self.quantiles is None:
+            raise ValueError(f'_require_quantiles set to True while quantiles is None')
+        
+        if not self._requires_quantiles and self.quantiles is not None:
+            raise ValueError(f'_require_quantiles set to False while quantiles supplied')        
+
+    def _return_supported_metrics(self) -> List[str]:
+        """return a list of metric-methods implemented"""
+        methods = [
+            name for name, member in inspect.getmembers(self.__class__, predicate=inspect.isfunction)
+            if member.__qualname__.split(".")[0] == self.__class__.__name__
+            and not name.startswith("_")
+        ]   
+        return methods 
+
+    @property
+    @abstractmethod
+    def _requires_quantiles(self) -> bool:
+        pass
+
+    def __repr__(self) -> str:
+        representation = f"<{self.__class__.__name__}(supported_metrics: {self.supported_metrics})>"
+        return representation
+
+class QuantileRegressionMetricsCalculator(MetricsCalculatorBase):  
+
+    def wis(self, y: np.ndarray, yhats: np.ndarray) -> float:
+        """
         Parameters
-        -----------
-        target_col, pred_col, id_col, temporal_col : str
-            Column names
-        edge_index : torch.Tensor, optional
-            Graph structure [2, num_edges]
-        edge_weight : torch.Tensor, optional
-            Edge weights [num_edges]
+        ----------
+        y     : (T,)      ground truth
+        yhats : (T, Q)    quantile predictions, columns ordered q0 ... qQ
         """
-        self.target_col     = target_col
-        self.pred_col       = pred_col
-        self.id_col         = id_col
-        self.temporal_col   = temporal_col
-        self.supported_metrics = ['mse','rmse','pearson','spearman','ccc','smape','mape','mae','r2']
+        assert self.quantiles is not None  # narrows type for linter
+        n_intervals = len(self.quantiles) // 2
+        mid         = n_intervals
 
-    # =============== Node-level metrics =============== #
-    def mse(self, df: pd.DataFrame) -> float:
-        """return mean square error"""
-        return float(np.mean((df[self.target_col] - df[self.pred_col]) ** 2)) # return of np.mean is floating[any] (supports complex numbers)
-    
-    def mae(self, df: pd.DataFrame) -> float:
-        return float(np.mean(np.abs(df[self.target_col] - df[self.pred_col])))
+        components = []
 
-    def r2(self, df: pd.DataFrame) -> float:
-        y_true = df[self.target_col]
-        y_pred = df[self.pred_col]        
-        ss_res = np.sum((y_true - y_pred) ** 2)
-        ss_tot = np.sum((y_true - np.mean(y_true)) ** 2)
-        r2=  float(1 - ss_res/ ss_tot)
-        return r2
+        for i in range(n_intervals):
+            lower  = yhats[:, i]
+            upper  = yhats[:, n_intervals - 1 - i]
+            alpha  = self.quantiles[i] * 2
 
-    def rmse(self, df: pd.DataFrame) -> float:
-        """Root mean squared error."""
-        return np.sqrt(self.mse(df))
+            width          = upper - lower
+            penalty_lower  = (2 / alpha) * np.maximum(lower - y, 0)
+            penalty_upper  = (2 / alpha) * np.maximum(y - upper, 0)
+            components.append(width + penalty_lower + penalty_upper)
 
-    def pearson(self, df: pd.DataFrame) -> Union[float, NAType]:
-            """Pearson correlation, with check for zero variance"""
-            
-            # Check variance of both columns
-            if df[self.target_col].var() == 0 or df[self.pred_col].var() == 0:
-                return pd.NA
-            
-            # Calculate Pearson correlation
-            corr, _ = pearsonr(df[self.target_col], df[self.pred_col])
-            
-            return float(corr)  # type: ignore
+        # median absolute error component
+        components.append(np.abs(y - yhats[:, mid]))
 
-    def spearman(self, df: pd.DataFrame) -> Union[float, NAType]:
-        """Spearman correlation, with check for zero variance"""
-        
-        # Check variance of both columns
-        if df[self.target_col].var() == 0 or df[self.pred_col].var() == 0:
+        # WIS = mean over components, then mean over timestamps
+        return float(np.mean(np.stack(components, axis=1)))
+
+    @property
+    def _requires_quantiles(self) -> bool:
+        return True 
+
+class PointRegressionMetricsCalculator(MetricsCalculatorBase):
+
+    def mse(self, y, yhat):
+        return float(np.mean((y - yhat) ** 2))
+
+    def mae(self, y, yhat):
+        return float(np.mean(np.abs(y - yhat)))
+
+    def r2(self, y, yhat):
+        ss_res = np.sum((y - yhat) ** 2)
+        ss_tot = np.sum((y - np.mean(y)) ** 2)
+        if ss_tot == 0:
             return pd.NA
-        
-        # Calculate Spearman correlation
-        corr, _ = spearmanr(df[self.target_col], df[self.pred_col], nan_policy='omit')
-        
-        return float(corr)  # type: ignore
-            
-    def ccc(self, df: pd.DataFrame) -> Union[float, NAType]:
-        """concordance correlation coefficient."""
-        target, pred = df[self.target_col], df[self.pred_col]
-                
-        mean_target, mean_pred  = target.mean(), pred.mean()
-        var_target,  var_pred   = target.var(ddof=1), pred.var(ddof=1)
+        return float(1 - ss_res / ss_tot)
 
-        if var_target == 0 or var_pred == 0:
+    def rmse(self, y, yhat):
+        return float(np.sqrt(self.mse(y, yhat)))
+
+    def pearson(self, y, yhat):
+        if np.all(y == y[0]) or np.all(yhat == yhat[0]):
             return pd.NA
+        corr = cast(float, pearsonr(y, yhat).statistic)     # type: ignore
+        return corr
 
-        # Sample covariance (divides by n-1)
-        cov = ((target - mean_target) * (pred - mean_pred)).sum() / (len(target) - 1)
-        
-        numerator   = 2 * cov
-        denominator = var_target + var_pred + (mean_target - mean_pred) ** 2 # type: ignore
+    def spearman(self, y, yhat):
+        if np.all(y == y[0]) or np.all(yhat == yhat[0]):
+            return pd.NA
+        corr = cast(float, spearmanr(y, yhat, nan_policy = 'omit').statistic)     # type: ignore
+        return corr        
 
+    def ccc(self, y, yhat):
+        mean_y, mean_yhat = y.mean(), yhat.mean()
+        var_y = y.var(ddof=1)
+        var_yhat = yhat.var(ddof=1)
+        if var_y == 0 or var_yhat == 0:
+            return pd.NA
+        cov = np.sum((y - mean_y) * (yhat - mean_yhat)) / (len(y) - 1)
+        numerator = 2 * cov
+        denominator = var_y + var_yhat + (mean_y - mean_yhat) ** 2
         if denominator == 0:
             return pd.NA
-        else:
-            return cast(float, numerator / denominator)
-
-    def smape(self, df, epsilon=1e-6):
-        # Mask rows where both true and predicted values are zero
-        true_col = self.target_col
-        pred_col  = self.pred_col
-        non_zero_mask = ~(df[true_col] == 0) & ~(df[pred_col] == 0)
-        df_filtered = df[non_zero_mask]
-
-        # Replace 0's in the true or predicted values with epsilon to avoid division by zero
-        true_values = df_filtered[true_col].replace(0, epsilon)
-        pred_values = df_filtered[pred_col].replace(0, epsilon)
-
-        # Compute the numerator (absolute difference)
-        numerator = abs(true_values - pred_values)
-        
-        # Compute the denominator (mean of absolute values)
-        denominator = (abs(true_values) + abs(pred_values)) / 2
-        
-        # Ensure the denominator isn't zero or extremely small
-        denominator = np.maximum(denominator, epsilon)  # Prevent division by very small numbers
-
-        # Calculate SMAPE as a percentage
-        smape = (numerator / denominator).mean() * 100
-        return smape
+        return float(numerator / denominator)
     
-    def mape(self, df, epsilon=1e-6):
-        true_col = self.target_col
-        pred_col = self.pred_col
+    def smape(self, y, yhat, epsilon=1e-6):
+        mask = ~((y == 0) & (yhat == 0))
+        y, yhat = y[mask], yhat[mask]
+        if len(y) == 0:
+            return pd.NA
+        y = np.where(y == 0, epsilon, y)
+        yhat = np.where(yhat == 0, epsilon, yhat)
+        denominator = np.maximum((np.abs(y) + np.abs(yhat)) / 2, epsilon)
+        return float(np.mean(np.abs(y - yhat) / denominator) * 100)
 
-        # Mask rows where true value is zero (MAPE undefined there)
-        non_zero_mask = df[true_col] != 0
-        df_filtered = df[non_zero_mask]
+    def mape(self, y, yhat, epsilon=1e-6):
+        mask = y != 0
+        y, yhat = y[mask], yhat[mask]
+        if len(y) == 0:
+            return pd.NA
+        denominator = np.maximum(np.abs(y), epsilon)
+        return float(np.mean(np.abs(y - yhat) / denominator) * 100)
+    
+    @property
+    def pred_col(self) -> str:
+        if len(self.pred_cols) > 1:
+            raise ValueError('PointRegressionMetricsCalculator expects a List of only 1 prediction column')
+        return self.pred_cols[0]
 
-        # Replace 0's in true values with epsilon (extra safety)
-        true_values = df_filtered[true_col].replace(0, epsilon)
-        pred_values = df_filtered[pred_col]
-
-        # Compute absolute percentage error
-        numerator = abs(true_values - pred_values)
-        denominator = np.maximum(abs(true_values), epsilon)
-
-        mape = (numerator / denominator).mean() * 100
-        return mape
-
-
-class ClassificationMetrics:
-    """
-
-    """
-    def __init__(self, 
-                 target_col: str = 'target', 
-                 pred_col: str = 'pred',  # probabilities
-                 pred_binary_col: Optional[str] = None,  # optional binary predictions
-                 id_col: str = 'node', 
-                 temporal_col: str = 'timestamp'):
-        """
-        pred_col : str
-            Column with probability predictions (0-1)
-        pred_binary_col : str, optional
-            Column with binary predictions (0 or 1). If None, will be computed from pred_col
-        """
-        self.target_col = target_col
-        self.pred_col = pred_col
-        self.pred_binary_col = pred_binary_col
-        self.id_col = id_col
-        self.temporal_col = temporal_col
-        self.supported_metrics = ['roc_auc','accuracy','precision','recall','f1','fpr','fnr']
-
-    def _get_binary_predictions(self, df: pd.DataFrame, threshold: float = 0.5) -> pd.Series:
-        """"""
-        if self.pred_binary_col and self.pred_binary_col in df.columns:
-            return df[self.pred_binary_col]
-        else:
-            return (df[self.pred_col] > threshold).astype(int)
-
-    # =============== Threshold-dependent metrics ===============
-    def accuracy(self, df: pd.DataFrame, threshold: float = 0.5) -> float:
-        """"""
-        y_pred = self._get_binary_predictions(df, threshold)
-        return float(accuracy_score(df[self.target_col], y_pred))
-
-    def precision(self, df: pd.DataFrame, threshold: float = 0.5) -> float:
-        """"""
-        y_pred = self._get_binary_predictions(df, threshold)
-        return float(precision_score(df[self.target_col], y_pred, zero_division=0))
-
-    def recall(self, df: pd.DataFrame, threshold: float = 0.5) -> float:
-        """"""
-        y_pred = self._get_binary_predictions(df, threshold)
-        return float(recall_score(df[self.target_col], y_pred, zero_division=0))
-
-    def f1(self, df: pd.DataFrame, threshold: float = 0.5) -> float:
-        """"""
-        y_pred = self._get_binary_predictions(df, threshold)
-        return float(f1_score(df[self.target_col], y_pred, zero_division=0))
-
-    def fpr(self, df: pd.DataFrame, threshold: float = 0.5) -> float:
-        """"""
-        y_pred = self._get_binary_predictions(df, threshold)
-        cm = confusion_matrix(
-            df[self.target_col], y_pred, labels=[0, 1]
-        )  # always 2x2
-        tn, fp, fn, tp = cm.ravel()
-        return float(fp / (fp + tn)) if (fp + tn) > 0 else float('nan')
-
-    def fnr(self, df: pd.DataFrame, threshold: float = 0.5) -> float:
-        """"""
-        y_pred = self._get_binary_predictions(df, threshold)
-        cm = confusion_matrix(
-            df[self.target_col], y_pred, labels=[0, 1]
-        )
-        tn, fp, fn, tp = cm.ravel()
-        return float(fn / (fn + tp)) if (fn + tp) > 0 else float('nan')
-
-    def conf_matrix(self, df: pd.DataFrame, threshold: float = 0.5) -> np.ndarray:
-        """"""
-        y_pred = self._get_binary_predictions(df, threshold)
-        return confusion_matrix(df[self.target_col], y_pred, labels=[0, 1])
-
-    # =============== Threshold-independent metrics ===============
-    def roc_auc(self, df: pd.DataFrame) -> float:
-        """
-        note that for some groups there's only a single class!
-        """
-        with warnings.catch_warnings():
-            warnings.filterwarnings(
-                "ignore",
-                category=UndefinedMetricWarning
-            )
-            try:
-                return float(
-                    roc_auc_score(df[self.target_col], df[self.pred_col])
-                )
-            except ValueError:
-                # Single-class ground truth
-                return float('nan')
-        
-    def average_precision(self, df: pd.DataFrame) -> float:
-        """"""
-        try:
-            return float(average_precision_score(df[self.target_col], df[self.pred_col]))
-        except ValueError:
-            return float('nan')
+    @property
+    def _requires_quantiles(self) -> bool:
+        return False     

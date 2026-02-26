@@ -2,7 +2,7 @@ from typing import Optional, Literal
 import pandas as pd 
 import numpy as np
 
-from ..base.issues import ModelError
+from ..issues import ModelError
 from ...utils.textformatting import section
 from ...dataloading import BaseLineDataLoaderManager 
 from ...utils import check_dataset

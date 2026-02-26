@@ -187,6 +187,8 @@ class GCNLSTMModel(DeepModel):
         if not name:
             name = 'GCNLSTMModel'
 
+        self._expected_dataloadermanager = 'GraphDataLoaderManager'
+
         # Reuse StatelessGATv2LSTMStrategy — it already handles
         # (x, edge_index, edge_weight, hidden) -> (y_hat, h, c)
         # which is exactly this model's forward signature
@@ -194,7 +196,6 @@ class GCNLSTMModel(DeepModel):
             dataloadermanager   = dataloadermanager,
             name                = name,
             verbose             = verbose,
-            deepfamily          = 'gnn',
             strategy            = StatelessGATv2LSTMStrategy()
         )
 

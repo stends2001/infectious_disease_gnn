@@ -1,308 +1,109 @@
-from typing import Literal, Dict, List
+from typing import Dict, List
 import pandas as pd
-from dataclasses import dataclass, field
+from dataclasses import field
 
-@dataclass
-class PredictionCompilation:
-    """
-    A class to store and manage predictions across multiple datasets (train, val, test, etc.).
-    """
-    _data: Dict[str, Dict[str, pd.DataFrame]] = field(default_factory=dict)  # Stores datasets with horizons as keys
-    
-    def add_horizon(self, data: pd.DataFrame, horizon: str, dataset: str):
-        """Add a new horizon for a specified dataset."""
-        if dataset not in self._data:
-            self._validate_dataset(dataset)
-            self._data[dataset] = {}  # Initialize the dataset if it doesn't exist
-            
-        self._data[dataset][horizon] = data
-    
-    def get_compilation(self, horizon: str, dataset: str) -> pd.DataFrame:
-        """Get the data for a specified horizon and dataset."""
-        if dataset not in self._data or horizon not in self._data[dataset]:
-            raise ValueError(f'No compilation found for {dataset} with horizon {horizon}')
-        return self._data[dataset][horizon]
-    
-    @property
-    def compilations(self) -> Dict[str, list[str]]:
-        """Return the horizons for each dataset."""
-        return {dataset: sorted(horizons.keys()) for dataset, horizons in self._data.items()}
-    
-    def _validate_dataset(self, dataset):
-        if dataset not in ['train','val','test']:
-            raise ValueError(f'{dataset} not valid. Please supply train, val or test')
-          
-    
+from src.issues import Error
 
-@dataclass
-class MetricCompilation:
-    """
-    A class to store and manage metrics across multiple datasets (train, val, test)
-    and prediction horizons.
-    
-    Structure
-    ---------
-    _data[dataset][horizon][metric_name] = DataFrame
-    
-    Example
+class InvalidPredictionCompilation(Error):
+    def __init__(self, message: str, *, code: str | None = None, context: str | None = None):
+        super().__init__(message, code=code, context=context)   
+
+class InvalidMetricsCompilation(Error):
+    def __init__(self, message: str, *, code: str | None = None, context: str | None = None):
+        super().__init__(message, code=code, context=context)   
+
+class EvaluationPredictionsCompilation:
+
+    """ 
+    _data: Dict[DATASET: Dict[HORIZON: Dict["predictions": pd.DataFrame, "metrics": pd.DataFrame]]]
+
+
+    A class to store and manage predictions compilations (i.e. one dataset with preds of all models)
+    and associated metrics, over multiple datasets (train/val/test) and horizons.
+
+    Per combination of dataset and horizon, there is a long table as follows in
+    _predictions_compilations 
+    ________________________________________________________
+    | node | pred-column | model1.name | ... | modelN.name |
+
+    and _metric_compilations
+    ___________________________________________________
+    | node | metric | model1.name | ... | modelN.name |
+
+
+    Methods
     -------
-    _data['test']['horizon_1']['mse'] = DataFrame with columns [node, model1, model2, ...]
-    
-    Examples
-    --------
-    >>> metrics = MetricCompilation()
-    >>> metrics.add_horizon(metrics_dict, 'horizon_1', 'test')
-    >>> mse_df = metrics.get_metric('horizon_1', 'test', 'mse')
-    >>> all_metrics = metrics.get_compilation('horizon_1', 'test')
+    add_horizon
+
+    get_compilation
+
+    Properties
+    ----------
+    compilation    
+
+
+
+    Note
+    ----
+    The structure of self._data looks as follows:
+    {
+        'train': {'horizon_0' : {'predictions' : df, 'metrics' : df}},    
+        'val'  : {'horizon_0' : {'predictions' : df, 'metrics' : df},
+                  'horizon_1' : {'predictions' : df, 'metrics' : df}}                 
+        'test' : {'horizon_0' : {'predictions' : df, 'metrics' : df},
+                  'horizon_1' : {'predictions' : df, 'metrics' : df},
+                  'horizon_2' : {'predictions' : df, 'metrics' : df}},
+    }    
     """
-    _data: Dict[str, Dict[str, Dict[str, pd.DataFrame]]] = field(default_factory=dict)
-    
-    def add_horizon(self, data: Dict[str, pd.DataFrame], horizon: str, dataset: str):
-        """
-        Add metrics for a new horizon and dataset.
-        
-        Parameters
-        ----------
-        data : Dict[str, pd.DataFrame]
-            Dictionary mapping metric names to DataFrames
-            e.g., {'mse': df_mse, 'rmse': df_rmse, ...}
-        horizon : str
-            Horizon identifier (e.g., 'horizon_0', 'horizon_1')
-        dataset : str
-            Dataset name ('train', 'val', or 'test')
-        """
-        self._validate_dataset(dataset)
+
+    def __init__(self, model_names: List[str]):
+        self.model_names    = model_names
+        self._data:                     Dict[str, Dict[str, Dict[str, pd.DataFrame]]] = {}
+
+    # ======== DATA ====== #
+    def add_data(self, predictions: pd.DataFrame, metrics: pd.DataFrame, horizon: int, dataset: str):
+        """Adds data"""
+        horizon_str = f"horizon_{horizon}"
         
         if dataset not in self._data:
-            self._data[dataset] = {}
-        
-        self._data[dataset][horizon] = data
-    
-    def get_compilation(self, horizon: str, dataset: str) -> Dict[str, pd.DataFrame]:
-        """
-        Get all metrics for a specified horizon and dataset.
-        
-        Parameters
-        ----------
-        horizon : str
-            Horizon identifier
-        dataset : str
-            Dataset name
+            self._data[dataset] = {} 
             
-        Returns
-        -------
-        Dict[str, pd.DataFrame]
-            Dictionary mapping metric names to DataFrames
-            
-        Raises
-        ------
-        ValueError
-            If dataset or horizon not found
-        """
+        self._data[dataset][horizon_str] = {'predictions':  predictions,
+                                            'metrics'    :  metrics}
+
+    def get_data(self, horizon: int, dataset: str) -> Dict[str, pd.DataFrame]:
+        """Get the data for a specified horizon and predictions_compilation."""
+        horizon_str = f"horizon_{horizon}"
+
         if dataset not in self._data:
-            raise ValueError(
-                f"No data found for dataset '{dataset}'. "
-                f"Available datasets: {list(self._data.keys())}"
-            )
+            raise ValueError('data not found')
         
-        if horizon not in self._data[dataset]:
-            raise ValueError(
-                f"No data found for horizon '{horizon}' in dataset '{dataset}'. "
-                f"Available horizons: {list(self._data[dataset].keys())}"
-            )
-        
-        return self._data[dataset][horizon]
-    
-    def get_metric(self, horizon: str, dataset: str, metric_name: str) -> pd.DataFrame:
-        """
-        Get a specific metric for a specified horizon and dataset.
-        
-        Parameters
-        ----------
-        horizon : str
-            Horizon identifier
-        dataset : str
-            Dataset name
-        metric_name : str
-            Name of the metric (e.g., 'mse', 'rmse')
-            
-        Returns
-        -------
-        pd.DataFrame
-            DataFrame with columns [node, model1, model2, ...]
-            
-        Raises
-        ------
-        ValueError
-            If dataset, horizon, or metric not found
-        """
-        compilation = self.get_compilation(horizon, dataset)
-        
-        if metric_name not in compilation:
-            raise ValueError(
-                f"Metric '{metric_name}' not found for horizon '{horizon}', "
-                f"dataset '{dataset}'. Available metrics: {list(compilation.keys())}"
-            )
-        
-        return compilation[metric_name]
+        return self._data[dataset][horizon_str]         
     
     @property
     def datasets(self) -> List[str]:
-        """Return list of available datasets."""
-        return sorted(self._data.keys())
-    
+        """
+        
+        """
+        return list(self._data.keys())
+
     @property
-    def compilations(self) -> Dict[str, List[str]]:
+    def horizons(self) -> Dict[str, List[str]]:
         """
-        Return the horizons available for each dataset.
         
-        Returns
-        -------
-        Dict[str, List[str]]
-            Dictionary mapping dataset names to lists of horizon identifiers
-            
-        Example
-        -------
-        >>> metrics.compilations
-        {'train': ['horizon_0', 'horizon_1'], 'test': ['horizon_0']}
-        """
-        return {
-            dataset: sorted(horizons.keys()) 
-            for dataset, horizons in self._data.items()
-        }
-    
-    @property
-    def metrics(self) -> Dict[str, List[str]]:
-        """
-        Return unique metric names available for each dataset.
-        
-        Returns
-        -------
-        Dict[str, List[str]]
-            Dictionary mapping dataset names to lists of available metric names
-            
-        Example
-        -------
-        >>> metrics.metrics
-        {'train': ['ccc', 'mse', 'rmse'], 'test': ['ccc', 'mse', 'rmse']}
-        """
-        result = {}
-        
-        for dataset, horizons in self._data.items():
-            # Collect all unique metric names across all horizons for this dataset
-            all_metrics = set()
-            for horizon_data in horizons.values():
-                all_metrics.update(horizon_data.keys())
-            
-            result[dataset] = sorted(all_metrics)
-        
-        return result
-    
-    def get_metrics_for_horizon(self, horizon: str, dataset: str) -> List[str]:
-        """
-        Get list of available metrics for a specific horizon and dataset.
-        
-        Parameters
-        ----------
-        horizon : str
-            Horizon identifier
-        dataset : str
-            Dataset name
-            
-        Returns
-        -------
-        List[str]
-            List of metric names available
-        """
-        compilation = self.get_compilation(horizon, dataset)
-        return sorted(compilation.keys())
-    
-    def has_metric(self, horizon: str, dataset: str, metric_name: str) -> bool:
-        """
-        Check if a specific metric exists for given horizon and dataset.
-        
-        Parameters
-        ----------
-        horizon : str
-            Horizon identifier
-        dataset : str
-            Dataset name
-        metric_name : str
-            Name of the metric
-            
-        Returns
-        -------
-        bool
-            True if metric exists, False otherwise
-        """
-        try:
-            self.get_metric(horizon, dataset, metric_name)
-            return True
-        except ValueError:
-            return False
-    
-    def _validate_dataset(self, dataset: str):
-        """
-        Validate that dataset name is one of the allowed values.
-        
-        Parameters
-        ----------
-        dataset : str
-            Dataset name to validate
-            
-        Raises
-        ------
-        ValueError
-            If dataset is not 'train', 'val', or 'test'
-        """
-        valid_datasets = ['train', 'val', 'test']
-        if dataset not in valid_datasets:
-            raise ValueError(
-                f"Invalid dataset '{dataset}'. "
-                f"Must be one of: {valid_datasets}"
-            )
-    
+        """        
+        dataset_horizons = {}
+        for dataset in self.datasets:
+            horizons                    = list(self._data[dataset].keys())
+            dataset_horizons[dataset]   = horizons
+        return dataset_horizons
+
     def __repr__(self) -> str:
-        """Return string representation of the compilation."""
-        if not self._data:
-            return "<MetricCompilation(empty)>"
+        representation = f"<{self.__class__.__name__}(" 
         
-        summary = []
-        for dataset, horizons in self._data.items():
-            n_horizons = len(horizons)
-            n_metrics = len(self.metrics.get(dataset, []))
-            summary.append(f"{dataset}({n_horizons} horizons, {n_metrics} metrics)")
+        representation += f"{self.horizons}" if len(self.horizons) else "empty"
         
-        return f"<MetricCompilation({', '.join(summary)})>"
-    
-    def summary(self) -> str:
-        """
-        Return detailed summary of stored metrics.
-        
-        Returns
-        -------
-        str
-            Formatted summary string
-        """
-        if not self._data:
-            return "MetricCompilation is empty"
-        
-        lines = ["MetricCompilation Summary:", "=" * 50]
-        
-        for dataset in sorted(self._data.keys()):
-            lines.append(f"\n{dataset.upper()}:")
-            horizons = self._data[dataset]
-            
-            for horizon in sorted(horizons.keys()):
-                lines.append(f"  {horizon}:")
-                metrics_dict = horizons[horizon]
-                
-                for metric_name in sorted(metrics_dict.keys()):
-                    df = metrics_dict[metric_name]
-                    n_nodes = len(df)
-                    n_models = len(df.columns) - 1  # Subtract 'node' column
-                    lines.append(
-                        f"    - {metric_name}: {n_nodes} nodes × {n_models} models"
-                    )
-        
-        return "\n".join(lines)
+        representation += ")>"
+        return representation     
+
+

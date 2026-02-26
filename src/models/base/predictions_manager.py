@@ -4,7 +4,7 @@ from typing import Literal, Optional, Dict, Union
 from datetime import timedelta
 from dateutil.relativedelta import relativedelta
 
-from .issues import InvalidPredictionsError
+from ..issues import InvalidPredictionsError, MissingPredictionsError
 from ...dataloading.epidataorchestration.normalization import reverse_log, reverse_minmax_scaling, reverse_zscore_scaling
 from ...dataloading.epidataorchestration.epidataorchestrator import EpiDataOrchestrator
 from ...dataloading.epidataorchestration.column_registry import ColumnRegistration
@@ -453,15 +453,11 @@ class PredictionCollection:
         self._data[(horizon, is_original, spatially_aggregated)] = data
     
     def get(self, horizon: int, is_original: bool, spatially_aggregated: bool) -> pd.DataFrame:
-        return self._data[(horizon, is_original, spatially_aggregated)]
 
-    def get_transformed(self, horizon: int, spatially_aggregated: bool = False) -> pd.DataFrame:
-        """get the predictions data in transformed scale"""
-        return self._data[(horizon, False, spatially_aggregated)]
-    
-    def get_original(self, horizon: int, spatially_aggregated: bool = False) -> pd.DataFrame:
-        """get the predictions data in non-transformed scale"""        
-        return self._data[(horizon, True, spatially_aggregated)]
+        key = (horizon, is_original, spatially_aggregated)
+        if key not in self._data:
+            raise MissingPredictionsError(f"No predictions found for horizon={horizon}, is_original={is_original}, spatially_aggregated={spatially_aggregated}. Available: {list(self._data.keys())}")
+        return self._data[key]
 
     @property
     def horizons(self) -> list[int]:

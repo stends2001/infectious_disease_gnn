@@ -5,6 +5,8 @@ import pandas as pd
 import numpy as np 
 from typing import List, Tuple, TYPE_CHECKING, Optional
 
+from ..issues import DataListError
+
 from ....utils.textformatting import checkmark
 
 if TYPE_CHECKING:
@@ -29,10 +31,10 @@ class DeepBaseDataLoaderManager(ABC):
         self.dataorchestrator       = dataorchestrator
         self.column_registration    = dataorchestrator.column_registration
 
-        self.dataloader_main: Optional['DataList']    = None
-        self.dataloader_train: Optional['DataList']   = None
-        self.dataloader_val: Optional['DataList']     = None
-        self.dataloader_test: Optional['DataList']    = None     
+        self._dataloader_main: Optional['DataList']    = None
+        self._dataloader_train: Optional['DataList']   = None
+        self._dataloader_val: Optional['DataList']     = None
+        self._dataloader_test: Optional['DataList']    = None     
     
     @abstractmethod    
     def build(self) -> 'DataLoaderManager':
@@ -178,16 +180,44 @@ class DeepBaseDataLoaderManager(ABC):
         """Creates appropriate data objects (DeepData or GraphData instances) - to be overwritten in subclasses"""
         pass
 
+    @property 
+    def dataloader_main(self) -> 'DataList':
+        if self._dataloader_main is None:
+            raise DataListError('dataloader_main not found')
+        else:
+            return self._dataloader_main
+        
+    @property 
+    def dataloader_train(self) -> 'DataList':
+        if self._dataloader_train is None:
+            raise DataListError('dataloader_train not found')
+        else:
+            return self._dataloader_train
+
+    @property 
+    def dataloader_val(self) -> 'DataList':
+        if self._dataloader_val is None:
+            raise DataListError('dataloader_val not found')
+        else:
+            return self._dataloader_val
+
+    @property 
+    def dataloader_test(self) -> 'DataList':
+        if self._dataloader_test is None:
+            raise DataListError('dataloader_test not found')
+        else:
+            return self._dataloader_test                        
+
     def __repr__(self) -> str:
         parts = []
 
-        if self.dataloader_main:
+        if self._dataloader_main:
             parts.append(f"dataloader_main {checkmark}")
-        if self.dataloader_train:
+        if self._dataloader_train:
             parts.append(f"dataloader_train {checkmark}")
-        if self.dataloader_val:
+        if self._dataloader_val:
             parts.append(f"dataloader_val {checkmark}")
-        if self.dataloader_test:
+        if self._dataloader_test:
             parts.append(f"dataloader_test {checkmark}")
 
         inner = ', '.join(parts) if parts else 'not built'
