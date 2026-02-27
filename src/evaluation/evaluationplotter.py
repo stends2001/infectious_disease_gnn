@@ -21,6 +21,8 @@ if TYPE_CHECKING:
 from matplotlib.cm import ScalarMappable
 from matplotlib.colors import Normalize
 
+from .issues import MetricError
+
 class EvaluationPlotter:
 
     def __init__(self, evaluator: 'Evaluator'):
@@ -50,6 +52,8 @@ class EvaluationPlotter:
             If provided, a red dot will be placed at this value on each distribution.
         """       
         horizon_str         = f'horizon_{horizon}'
+
+        self._validate_metric(metric)
 
         # Get colors
         model_class_colors = {ml.model_class: ml.model_color for ml in self.evaluator.evaluated_models.values()}
@@ -201,6 +205,9 @@ class EvaluationPlotter:
 
         vmin, vmax = map_df[metric].min(), map_df[metric].max()
 
+        if vmax < 1:
+            vmax = 1
+
         fig, axes = plt.subplots(nrows, ncols, figsize=figsize)
         axes = axes.flatten()
 
@@ -247,3 +254,7 @@ class EvaluationPlotter:
         fig.suptitle(f'{metric} distribution',fontweight = 'bold')
         plt.tight_layout()
         plt.show()
+
+    def _validate_metric(self, metric: str) -> None:
+        if metric not in self.evaluator.metric_calculator.supported_metrics:
+            raise MetricError(f'invalid metric {metric}. Supported metrics are {self.evaluator.metric_calculator.supported_metrics}')

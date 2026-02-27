@@ -135,7 +135,14 @@ class Evaluator:
                 row[metric_name] = getattr(self.metric_calculator, metric_name)(y, yhat)
             records.append(row)
 
-        return pd.DataFrame(records)
+        metrics_df = pd.DataFrame(records)
+
+        metric_cols = self.metric_calculator.supported_metrics
+        metrics_df[metric_cols] = metrics_df[metric_cols].apply(
+            pd.to_numeric, errors='coerce'
+        )
+
+        return metrics_df
 
     def _validate_epiconfigs(self) -> 'EpiConfig':
         """cross checks all prediction modes"""

@@ -1,5 +1,7 @@
 from typing import Union, Dict, Type, Literal, Optional, Any, Tuple, List, TypeVar, Generic
 
+from wcwidth import wcswidth
+
 import torch 
 import torch.optim as optim
 from torch.optim.optimizer import Optimizer
@@ -16,11 +18,9 @@ from tqdm import tqdm
 
 from .modelmanager import ModelManager
 
-
 from .strategies.gcn import StandardGNNStrategy
 from .strategies.lstmstrategy import StatefullLSTMStrategy, StatelessLSTMStrategy
 from .strategies.gatv2lstm import StatelessGATv2LSTMStrategy, StatefullGATv2LSTMStrategy
-
 
 from ..utils.loss.losshandler import LossHandler
 from ..base import BaseModel
@@ -131,6 +131,7 @@ class DeepModel(BaseModel[Union[GraphDataLoaderManager, DeepDataLoaderManager]])
         else:
             self.scheduler = None
 
+        self._validate_global_hparams()
         self.config_info['global_hparams']  = global_params_config
         self._update_status('global_hparams_set')
         return self
@@ -267,7 +268,7 @@ class DeepModel(BaseModel[Union[GraphDataLoaderManager, DeepDataLoaderManager]])
 
             if num_epoch in verbose_loops:
                 self._return_verbose_line(num_epoch, train_loss, val_loss,
-                                          checkmark if val_improved else None,
+                                          "v" if val_improved else None,
                                           None if val_improved else f"{patience_counter}/{self.patience}",
                                           True if current_lr != new_lr else None
                                           )     
@@ -332,6 +333,135 @@ class DeepModel(BaseModel[Union[GraphDataLoaderManager, DeepDataLoaderManager]])
         fig.show()
         return fig
 
+    def debug(self):
+        if self.model is None:
+            raise ValueError('Please initiate a model')
+
+        self._check_state(['model_hparams_set'])
+
+        train_sample = self.dataloadermanager.dataloader_train[0].to(self.device)
+        y_hat , report = self.strategy.debug(self.model, train_sample)
+
+        y_hat = y_hat.detach().cpu()
+        y     = train_sample.y.detach().cpu()
+        report.validate()
+        # if y_hat.shape != y.shape:
+        #     raise DeepModelDebuggingError(f"incompatible prediction shape: y_hat [{y_hat.shape}], y [{y.shape}]")
+        
+    def save(self, filename: Optional[str] = None) -> None:
+        """
+        Save the trained model.
+        """
+        self._check_state(['trained'])
+
+        self.model_manager.save(self, filename)
+    
+    @check_dataset()
+    def forecast(self, dataset: Literal['train','val','test'] = 'test'):
+        
+        self._check_state(['model_hparams_set', 'global_hparams_set', 'trained'])
+
+        if self.model is None:
+            raise ModelStatusError(f'attribute model is None. Model was not correctly initiated')   
+
+        self.model.eval()
+        dataloader = getattr(self.dataloadermanager, f'dataloader_{dataset}')
+        self.strategy.reset_state_dataset()
+        iterator = tqdm(dataloader, desc=f"Forecasting {dataset}") if self.verbose >= 0 else dataloader
+
+        all_predictions, all_targets = [], []
+        total_loss = 0
+
+        with torch.no_grad():
+            for snapshot in iterator:
+                snapshot = snapshot.to(self.device)
+                y_hat, loss_val = self.strategy.forecast_step(
+                    model=self.model, 
+                    snapshot=snapshot, 
+                    loss_fn=self.loss
+                )
+                total_loss += loss_val
+                all_predictions.append(y_hat.detach().cpu())
+                all_targets.append(snapshot.y.detach().cpu())
+
+        avg_loss = total_loss / len(dataloader)
+        setattr(self, f'{dataset}_loss', avg_loss)
+
+        predictions_tensor = torch.stack(all_predictions)
+
+        # Shape must be: [num_sequences, num_nodes, horizon_size, num_quantiles]
+        if predictions_tensor.ndim < 4:
+            raise ValueError('predictions tensor supposed to have 4 dimensions')
+        
+        targets_tensor = torch.stack(all_targets)
+
+        num_sequences, num_nodes, horizon_size, num_quantiles = predictions_tensor.shape
+
+        # Get the quantile column names from the column registry
+        # These are the names PredictionManager expects, e.g. ['q_0.1', 'q_0.5', 'q_0.9']
+        # For num_quantiles == 0 (point forecast), this degenerates to ['pred']
+        if self.epiconfig._num_quantiles == 0:
+            pred_col_names = ['pred']
+        else:
+            pred_col_names = [c for c in self.predictions.column_registration.pred_columns if c != 'pred']
+
+        # ⚠️ CRITICAL CHECK: the number of quantile names must match the last tensor dim
+        if len(pred_col_names) != num_quantiles:
+            raise ValueError(
+                f"Mismatch: model output has {num_quantiles} quantile dims, "
+                f"but column registry has {len(pred_col_names)} pred columns: {pred_col_names}"
+            )
+
+        results = self._format_forecast_results(
+            predictions     = predictions_tensor,
+            targets         = targets_tensor,
+            dataset         = dataset,
+            num_sequences   = num_sequences,
+            num_nodes       = num_nodes,
+            horizon_size    = horizon_size,
+            pred_col_names  = pred_col_names,
+        )
+
+        for hh in range(horizon_size):
+            # Select the columns for this horizon: timestamp, id, all pred_cols, target
+            horizon_cols = (
+                [self.epiconfig.temporal_column, self.epiconfig.id_column]
+                + [f'{col}_{hh}' for col in pred_col_names]
+                + [f'target_{hh}']
+            )
+            horizon_data = results[horizon_cols].rename(
+                columns={
+                    **{f'{col}_{hh}': col for col in pred_col_names},
+                    f'target_{hh}': 'target',
+                }
+            )
+
+            if self.loss.loss_name in ['poisson', 'outbreakpoisson']:
+                self.predictions.add_horizon_predictions(
+                    dataset, horizon_data, hh,
+                    additional_transformation=True,
+                    transf='poisson_sampling',
+                    transf_args={'sampling_mode': 'mean'}
+                )
+            else:
+                self.predictions.add_horizon_predictions(dataset, horizon_data, hh)
+
+        if self.verbose > 1:
+            print(f"{dataset.capitalize()} loss: {avg_loss:.4f}")
+
+        self._update_status('forecasted')
+        return self
+
+    @classmethod
+    def load(cls, model_name: str) -> 'DeepModel':
+        """
+        Load a trained model.
+
+        NOTE: classmethod 
+        """
+        manager = ModelManager()
+        return manager.load(model_name, cls)
+
     # ======= TO BE IMPLEMENTED BY SUBCLASSES =========== #   
     def set_model_hparams(self):
         raise NotImplementedError("Subclass of DeepModel must implement set_model_hparams")
@@ -344,7 +474,15 @@ class DeepModel(BaseModel[Union[GraphDataLoaderManager, DeepDataLoaderManager]])
         if self.device == 'cpu':
             w = DeviceWarning('device found is CPU')
             print(w)
- 
+
+    def _validate_global_hparams(self):
+        
+        if self.epiconfig.quantiles:
+            if self.loss != 'pinball':
+                raise ValueError('quantiles given to DeepModel, yet loss is not pinball.')
+
+
+
     def _get_optimizer(self, 
                        optimizer_name:  str, 
                        lr:              float, 
@@ -446,7 +584,7 @@ class DeepModel(BaseModel[Union[GraphDataLoaderManager, DeepDataLoaderManager]])
                 f"{epoch:03d}" if epoch is not None else "",
                 f"{train_loss:.4f}" if train_loss is not None else "",
                 f"{val_loss:.4f}" if val_loss is not None else "",
-                f"{new_best}" if new_best else " ",
+                f"{new_best}" if new_best is not None else "",
                 f"{patience}" if patience else "",
             ]
             line = make_row(row_values)
@@ -456,102 +594,6 @@ class DeepModel(BaseModel[Union[GraphDataLoaderManager, DeepDataLoaderManager]])
         else:
             print(separator)
             print(make_row(columns))            
-
-    @check_dataset()
-    def forecast(self, dataset: Literal['train','val','test'] = 'test'):
-        
-        self._check_state(['model_hparams_set', 'global_hparams_set', 'trained'])
-
-        if self.model is None:
-            raise ModelStatusError(f'attribute model is None. Model was not correctly initiated')   
-
-        self.model.eval()
-        dataloader = getattr(self.dataloadermanager, f'dataloader_{dataset}')
-        self.strategy.reset_state_dataset()
-        iterator = tqdm(dataloader, desc=f"Forecasting {dataset}") if self.verbose >= 0 else dataloader
-
-        all_predictions, all_targets = [], []
-        total_loss = 0
-
-        with torch.no_grad():
-            for snapshot in iterator:
-                snapshot = snapshot.to(self.device)
-                y_hat, loss_val = self.strategy.forecast_step(
-                    model=self.model, 
-                    snapshot=snapshot, 
-                    loss_fn=self.loss
-                )
-                total_loss += loss_val
-                all_predictions.append(y_hat.detach().cpu())
-                all_targets.append(snapshot.y.detach().cpu())
-
-        avg_loss = total_loss / len(dataloader)
-        setattr(self, f'{dataset}_loss', avg_loss)
-
-        predictions_tensor = torch.stack(all_predictions)
-
-        # Shape must be: [num_sequences, num_nodes, horizon_size, num_quantiles]
-        if predictions_tensor.ndim < 4:
-            raise ValueError('predictions tensor supposed to have 4 dimensions')
-        
-        targets_tensor = torch.stack(all_targets)
-
-        num_sequences, num_nodes, horizon_size, num_quantiles = predictions_tensor.shape
-
-        # Get the quantile column names from the column registry
-        # These are the names PredictionManager expects, e.g. ['q_0.1', 'q_0.5', 'q_0.9']
-        # For num_quantiles == 0 (point forecast), this degenerates to ['pred']
-        if self.epiconfig._num_quantiles == 0:
-            pred_col_names = ['pred']
-        else:
-            pred_col_names = [c for c in self.predictions.column_registration.pred_columns if c != 'pred']
-
-        # ⚠️ CRITICAL CHECK: the number of quantile names must match the last tensor dim
-        if len(pred_col_names) != num_quantiles:
-            raise ValueError(
-                f"Mismatch: model output has {num_quantiles} quantile dims, "
-                f"but column registry has {len(pred_col_names)} pred columns: {pred_col_names}"
-            )
-
-        results = self._format_forecast_results(
-            predictions     = predictions_tensor,
-            targets         = targets_tensor,
-            dataset         = dataset,
-            num_sequences   = num_sequences,
-            num_nodes       = num_nodes,
-            horizon_size    = horizon_size,
-            pred_col_names  = pred_col_names,
-        )
-
-        for hh in range(horizon_size):
-            # Select the columns for this horizon: timestamp, id, all pred_cols, target
-            horizon_cols = (
-                [self.epiconfig.temporal_column, self.epiconfig.id_column]
-                + [f'{col}_{hh}' for col in pred_col_names]
-                + [f'target_{hh}']
-            )
-            horizon_data = results[horizon_cols].rename(
-                columns={
-                    **{f'{col}_{hh}': col for col in pred_col_names},
-                    f'target_{hh}': 'target',
-                }
-            )
-
-            if self.loss.loss_name in ['poisson', 'outbreakpoisson']:
-                self.predictions.add_horizon_predictions(
-                    dataset, horizon_data, hh,
-                    additional_transformation=True,
-                    transf='poisson_sampling',
-                    transf_args={'sampling_mode': 'mean'}
-                )
-            else:
-                self.predictions.add_horizon_predictions(dataset, horizon_data, hh)
-
-        if self.verbose > 1:
-            print(f"{dataset.capitalize()} loss: {avg_loss:.4f}")
-
-        self._update_status('forecasted')
-        return self
 
     def _format_forecast_results(
         self,
@@ -604,39 +646,6 @@ class DeepModel(BaseModel[Union[GraphDataLoaderManager, DeepDataLoaderManager]])
 
         return results
     
-    def debug(self):
-        if self.model is None:
-            raise ValueError('Please initiate a model')
-
-        self._check_state(['model_hparams_set'])
-
-        train_sample = self.dataloadermanager.dataloader_train[0].to(self.device)
-        y_hat , report = self.strategy.debug(self.model, train_sample)
-
-        y_hat = y_hat.detach().cpu()
-        y     = train_sample.y.detach().cpu()
-        report.validate()
-        # if y_hat.shape != y.shape:
-        #     raise DeepModelDebuggingError(f"incompatible prediction shape: y_hat [{y_hat.shape}], y [{y.shape}]")
-        
-    def save(self, filename: Optional[str] = None) -> None:
-        """
-        Save the trained model.
-        """
-        self._check_state(['trained'])
-
-        self.model_manager.save(self, filename)
-    
-    @classmethod
-    def load(cls, model_name: str) -> 'DeepModel':
-        """
-        Load a trained model.
-
-        NOTE: classmethod 
-        """
-        manager = ModelManager()
-        return manager.load(model_name, cls)
-
     def __str__(self):
         # Calculate width
         all_keys = (

@@ -2,6 +2,8 @@ from dataclasses import dataclass
 from typing import Literal, Optional, Dict, List
 from pathlib import Path
 import pandas as pd
+import yaml
+import dataclasses
 
 from ...utils.helpers import get_data_env
 from ...utils.textformatting import align, return_header_line
@@ -12,14 +14,94 @@ from .issues import EpiConfigWarning, EpiConfigValidationError, EpiConfigLimitat
 @dataclass
 class EpiConfig:
     """ 
+    Dataclass that tells the EpiDataOrchestrator how to orchestrate that data,
+    and prepare it uniformly for a set of possible dataloadermanagers.
+
+    Upon initiation, internal validation is executed to ensure the data
+    orchestrator will be able to work with this config.
+
+    After initiation, and thus, validation, an instance can be saved using
+    `save_config()`. EpiConfigs can also be loaded, using the classmethod
+    `load_config()`.
+    
     Note
     ----
     the dates listed in this class are solely strings.
     for proper dealing with timestamps, please refer to TemporalSummary   
+
+    Examples
+    --------
+    ### loading config
+    >>> config = EpiConfig.load_config('default_influenza_quantiles')
+
+    ### default_influenza_point_predictions
+    >>> config = EpiConfig(
+        disease             = 'influenza',
+
+        split_berlin        = False,
+
+        horizon_leadtime    = 3,
+
+        sequence_length     = 4
+
+        feature_popsize     = True,      
+        feature_popdens     = True,
+        feature_gisd        = True,
+        feature_popage      = True,
+        
+        log_transform       = ['incidence']     
+        )    
+
+    ### default influenza quantile predictions
+    >>> config = EpiConfig(
+        disease             = 'influenza',
+
+        split_berlin        = False,
+
+        horizon_leadtime    = 3,
+        quantiles           = [0.1,0.25,0.5,0.75,0.9],
+
+        sequence_length     = 4
+
+        feature_popsize     = True,      
+        feature_popdens     = True,
+        feature_gisd        = True,
+        feature_popage      = True,
+        
+        log_transform       = ['incidence']     
+        )     
+
+    ### default covid point predictions
+    >>> config = EpiConfig(
+        disease             = 'covid_daily',
+
+        temporal_frequency  = 'w',
+        min_date            = '2020-03-02',
+        max_date            = '2023-01-01',
+        split_trainval      = '2022-06-01',
+        split_valtest       = '2022-09-01', 
+
+        split_berlin        = False,
+
+        horizon_leadtime    = 7,
+
+        time_index_d        = True,
+        time_index_w        = False,
+        sequence_length     = 7,
+
+        feature_popsize     = True,      
+        feature_popdens     = True,
+        feature_popage      = True,
+        
+        log_transform       = ['incidence'],   
+        )    
+
+    ### saving config
+    >>> config.save_config('default_covid_point_predictions')       
     """
 
     # ============= MAIN =============
-    disease:                str
+    disease:                str   
     
     # ============= TEMPORAL =============
     temporal_frequency:     Literal['m','w','d']= 'w'
@@ -78,6 +160,31 @@ class EpiConfig:
         self._set_hidden_attributes()
 
         self._classify_attributes()
+
+    # ============ CONFIG LOADING/SAVING ==============
+    def save_config(self, config_name: str):
+        """ 
+        saves EpiConfig to a .yaml of name `config_name` inside
+        the directory returned by `get_config_path()`.
+        """
+        config_dict = dataclasses.asdict(self)
+        path        = self.get_config_path() / f'{config_name}.yaml'
+        with open(path, 'w') as f:
+            yaml.dump(config_dict, f, default_flow_style=False, sort_keys=False)    
+
+        print(f'EpiConfig saved to {config_name}.yaml')
+
+    @classmethod
+    def load_config(cls, config_name: str) -> 'EpiConfig':
+        """ 
+        Loads a .yaml of name `config_name` into an EpiConfig
+        the directory returned by `get_config_path()`.
+        """        
+        path = Path("config/epiconfigs") / f'{config_name}.yaml'
+        with open(path) as f:
+            d = yaml.safe_load(f)
+        print(f'EpiConfig {config_name} loaded')            
+        return cls(**d)      
 
     # ============= VALIDATION FUNCTIONS ==============
     def _validate_datapaths(self) -> None:
@@ -255,6 +362,10 @@ class EpiConfig:
         return Path(get_data_env())
     
     # ============== PATH-RETURNING ===================
+    def get_config_path(self) -> Path:
+
+        return Path("config/epiconfigs")
+
     def get_disease_path(self) -> Path:
         """Path to disease CSV file."""
         return self.data_path / 'processed/germany/epidemiology/casedata/survstat' / f'{self.disease}.csv'
