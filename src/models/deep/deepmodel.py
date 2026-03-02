@@ -3,6 +3,7 @@ from typing import Union, Dict, Type, Literal, Optional, Any, Tuple, List, TypeV
 from wcwidth import wcswidth
 
 import torch 
+from torch import Tensor as Tensor
 import torch.optim as optim
 from torch.optim.optimizer import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
@@ -18,9 +19,7 @@ from tqdm import tqdm
 
 from .modelmanager import ModelManager
 
-from .strategies.gcn import StandardGNNStrategy
-from .strategies.lstmstrategy import StatefullLSTMStrategy, StatelessLSTMStrategy
-from .strategies.gatv2lstm import StatelessGATv2LSTMStrategy, StatefullGATv2LSTMStrategy
+from .strategies.basestrategy import Strategy
 
 from ..utils.loss.losshandler import LossHandler
 from ..base import BaseModel
@@ -29,13 +28,15 @@ from ..issues import DeviceWarning, InvalidLossError, InvalidOPtimizerError, Inv
 from ...dataloading import GraphDataLoaderManager, DeepDataLoaderManager
 from ...utils import checkmark, traincolor, valcolor, align, section, check_dataset
  
+from .issues import UnexpectedDataShape, InconsistentDataShape
+
 class DeepModel(BaseModel[Union[GraphDataLoaderManager, DeepDataLoaderManager]]):
 
     _childclasses: Dict[str, Type["DeepModel"]] = {}
         
     def __init__(self, 
                  dataloadermanager:     Union[GraphDataLoaderManager, DeepDataLoaderManager], 
-                 strategy,
+                 strategy:              Strategy,
                  name:                  str,          
                  verbose:               Literal[-1, 0, 1, 2] = -1):
 
@@ -47,7 +48,6 @@ class DeepModel(BaseModel[Union[GraphDataLoaderManager, DeepDataLoaderManager]])
         self.model_manager                                  = ModelManager()
         self.monitoring_metrics                             = None
         self.evaluation_datasets                            = {}
-
         self._set_device()
         self._set_strategy(strategy)
 
@@ -105,9 +105,11 @@ class DeepModel(BaseModel[Union[GraphDataLoaderManager, DeepDataLoaderManager]])
         if loss == 'pinball':
             if loss_kwargs is None:
                 loss_kwargs = {}
+
             if 'quantiles' not in loss_kwargs.keys():
                 loss_kwargs['quantiles'] = self.epiconfig.quantiles
-        self.loss = LossHandler(loss, loss_kwargs = loss_kwargs)  
+
+        self.loss       = LossHandler(loss, loss_kwargs = loss_kwargs)  
 
         # ==== OPTIMIZER ==== #
         if optimizer_kwargs is None:
@@ -166,8 +168,8 @@ class DeepModel(BaseModel[Union[GraphDataLoaderManager, DeepDataLoaderManager]])
         list_patience       = []
         list_lr             = []
 
-        L_train             = len(list(train_loader))
-        L_val               = len(list(val_loader))
+        L_train             = len(train_loader)
+        L_val               = len(val_loader)
 
         if len(verbose_loops) > 0:
             self._return_verbose_line()
@@ -365,15 +367,30 @@ class DeepModel(BaseModel[Union[GraphDataLoaderManager, DeepDataLoaderManager]])
             raise ModelStatusError(f'attribute model is None. Model was not correctly initiated')   
 
         self.model.eval()
-        dataloader = getattr(self.dataloadermanager, f'dataloader_{dataset}')
+
+        # stupdly keep pylance happy
+        if dataset == 'train':
+            dataloader = self.dataloadermanager.dataloader_train
+        elif dataset == 'val':
+            dataloader = self.dataloadermanager.dataloader_val 
+        elif dataset == 'test':
+            dataloader = self.dataloadermanager.dataloader_test
+        else:
+            # will never be raised given the check_dataset decorator
+            raise ValueError(f'cant find dataset {dataset}')
+
         self.strategy.reset_state_dataset()
         iterator = tqdm(dataloader, desc=f"Forecasting {dataset}") if self.verbose >= 0 else dataloader
 
-        all_predictions, all_targets = [], []
+        raw_predictions: List[Tensor]   = []
+        raw_targets: List[Tensor]       = []
+        
         total_loss = 0
 
+        expected_shape_yhat = [self.dataloadermanager.dataorchestrator.data_context.num_nodes, self.epiconfig.horizon_size, max(1,self.epiconfig._num_quantiles)]
+
         with torch.no_grad():
-            for snapshot in iterator:
+            for idx, snapshot in enumerate(iterator):
                 snapshot = snapshot.to(self.device)
                 y_hat, loss_val = self.strategy.forecast_step(
                     model=self.model, 
@@ -381,42 +398,54 @@ class DeepModel(BaseModel[Union[GraphDataLoaderManager, DeepDataLoaderManager]])
                     loss_fn=self.loss
                 )
                 total_loss += loss_val
-                all_predictions.append(y_hat.detach().cpu())
-                all_targets.append(snapshot.y.detach().cpu())
+
+                if not idx:
+                    if list(y_hat.shape) != expected_shape_yhat:
+                        raise UnexpectedDataShape(f'{list(y_hat.shape)}', f'{expected_shape_yhat}', "stacked yhat forecasting snapshot 0")
+
+                raw_predictions.append(y_hat.detach().cpu())
+                raw_targets.append(snapshot.y.detach().cpu())
 
         avg_loss = total_loss / len(dataloader)
         setattr(self, f'{dataset}_loss', avg_loss)
 
-        predictions_tensor = torch.stack(all_predictions)
+        # =========== SHAPE CHECK 1 ============= #
+        # at this point, raw_predictions is a List of len [timestamps].
+        # at each idx, there is a Tensor with shape [num_nodes, horizon_size, quantiles].
+        # Since quantiles don't play a role in the target, those do not have that final dim
+        # We're now removing the list-ness and stack that to a new dimension. The tensors therefore
+        # get 3 (target) and 4 (predictions) dimensions.
 
-        # Shape must be: [num_sequences, num_nodes, horizon_size, num_quantiles]
-        if predictions_tensor.ndim < 4:
-            raise ValueError('predictions tensor supposed to have 4 dimensions')
-        
-        targets_tensor = torch.stack(all_targets)
+        predictions_tensor  = torch.stack(raw_predictions)
+        targets_tensor      = torch.stack(raw_targets)
 
-        num_sequences, num_nodes, horizon_size, num_quantiles = predictions_tensor.shape
+        expected_shape_predictions  = [len(dataloader), self.dataloadermanager.dataorchestrator.data_context.num_nodes, self.epiconfig.horizon_size, max(1,self.epiconfig._num_quantiles)]
+        expected_shape_targets      = [len(dataloader), self.dataloadermanager.dataorchestrator.data_context.num_nodes, self.epiconfig.horizon_size]        
+
+        received_shape_predictions  = list(predictions_tensor.shape)
+        received_shape_targets      = list(targets_tensor.shape)
+
+        if expected_shape_predictions != received_shape_predictions:
+            raise UnexpectedDataShape(f'{received_shape_predictions}', f'{expected_shape_predictions}', "stacked raw predictions")
+
+        if expected_shape_targets != received_shape_targets:
+            raise UnexpectedDataShape(f'{received_shape_targets}', f'{expected_shape_targets}', "stacked raw targets")
+
+        num_timesteps, num_nodes, horizon_size, num_quantiles = predictions_tensor.shape
 
         # Get the quantile column names from the column registry
         # These are the names PredictionManager expects, e.g. ['q_0.1', 'q_0.5', 'q_0.9']
         # For num_quantiles == 0 (point forecast), this degenerates to ['pred']
         if self.epiconfig._num_quantiles == 0:
-            pred_col_names = ['pred']
+            pred_col_names = ['pred']                  
         else:
-            pred_col_names = [c for c in self.predictions.column_registration.pred_columns if c != 'pred']
-
-        # ⚠️ CRITICAL CHECK: the number of quantile names must match the last tensor dim
-        if len(pred_col_names) != num_quantiles:
-            raise ValueError(
-                f"Mismatch: model output has {num_quantiles} quantile dims, "
-                f"but column registry has {len(pred_col_names)} pred columns: {pred_col_names}"
-            )
-
+            pred_col_names = [c for c in self.predictions.column_registration.pred_columns if c != 'pred']    
+        
         results = self._format_forecast_results(
             predictions     = predictions_tensor,
             targets         = targets_tensor,
             dataset         = dataset,
-            num_sequences   = num_sequences,
+            num_timesteps   = num_timesteps,
             num_nodes       = num_nodes,
             horizon_size    = horizon_size,
             pred_col_names  = pred_col_names,
@@ -475,13 +504,10 @@ class DeepModel(BaseModel[Union[GraphDataLoaderManager, DeepDataLoaderManager]])
             w = DeviceWarning('device found is CPU')
             print(w)
 
-    def _validate_global_hparams(self):
-        
+    def _validate_global_hparams(self):        
         if self.epiconfig.quantiles:
-            if self.loss != 'pinball':
+            if self.loss.loss_name != 'pinball':
                 raise ValueError('quantiles given to DeepModel, yet loss is not pinball.')
-
-
 
     def _get_optimizer(self, 
                        optimizer_name:  str, 
@@ -532,7 +558,7 @@ class DeepModel(BaseModel[Union[GraphDataLoaderManager, DeepDataLoaderManager]])
         scheduler_class = scheduler_map[scheduler_name.lower()]
         return scheduler_class(optimizer, **scheduler_kwargs)
 
-    def _set_strategy(self, strategy):
+    def _set_strategy(self, strategy: Strategy):
         """Allow subclasses to specify their strategy"""
         self.strategy = strategy
 
@@ -600,7 +626,7 @@ class DeepModel(BaseModel[Union[GraphDataLoaderManager, DeepDataLoaderManager]])
         predictions: torch.Tensor,
         targets: torch.Tensor,
         dataset: str,
-        num_sequences: int,
+        num_timesteps: int,
         num_nodes: int,
         horizon_size: int,
         pred_col_names: list[str],
@@ -609,23 +635,23 @@ class DeepModel(BaseModel[Union[GraphDataLoaderManager, DeepDataLoaderManager]])
         Format predictions into a flat DataFrame aligned with correct timestamps.
         Handles both point forecasts (num_quantiles=1) and quantile forecasts.
 
-        predictions shape: [num_sequences, num_nodes, horizon_size, num_quantiles]
-        targets shape:     [num_sequences, num_nodes, horizon_size]
+        predictions shape: [num_timesteps, num_nodes, horizon_size, num_quantiles]
+        targets shape:     [num_timesteps, num_nodes, horizon_size]
         """
         num_quantiles = len(pred_col_names)
 
         # Reshape: [num_sequences * num_nodes, horizon_size, num_quantiles]
         pred_reshaped = (
             predictions
-            .view(num_sequences * num_nodes, horizon_size, num_quantiles)
+            .view(num_timesteps * num_nodes, horizon_size, num_quantiles)
             .numpy()
         )
         # Reshape: [num_sequences * num_nodes, horizon_size]
-        target_reshaped = targets.view(num_sequences * num_nodes, horizon_size).numpy()
+        target_reshaped = targets.view(num_timesteps * num_nodes, horizon_size).numpy()
 
         # Index arrays — np.repeat/tile is correct here, no issue
-        sequence_idx = np.repeat(np.arange(num_sequences), num_nodes)
-        node_idx     = np.tile(np.arange(num_nodes), num_sequences)
+        sequence_idx = np.repeat(np.arange(num_timesteps), num_nodes)
+        node_idx     = np.tile(np.arange(num_nodes), num_timesteps)
 
         dataset_time_splits = self.dataloadermanager.time_splits[
             self.dataloadermanager.time_splits[dataset]

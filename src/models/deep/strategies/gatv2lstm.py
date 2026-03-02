@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 from typing import Tuple, Optional, Any, TYPE_CHECKING 
 
 from .basestrategy import Strategy
-from ...utils.loss.baseloss import BaseLoss
+from ...utils.loss.losshandler import LossHandler
 from ....dataloading.dataloaders.deepdataloaders.datacontainers import DeepData, GraphData
 from ....utils.textformatting import warning_emoji
 
@@ -27,7 +27,7 @@ class StatelessGATv2LSTMStrategy(Strategy[GraphData]):
             return None
         return state.detach().to(device)
 
-    def training_step(self, model: torch.nn.Module, snapshot: GraphData, optimizer: Optimizer, loss_fn: BaseLoss) -> float:
+    def training_step(self, model: torch.nn.Module, snapshot: GraphData, optimizer: Optimizer, loss_fn: LossHandler) -> float:
         y_hat:  Tensor
         h:      Tensor
         c:      Tensor
@@ -46,7 +46,7 @@ class StatelessGATv2LSTMStrategy(Strategy[GraphData]):
         optimizer.step()
         return loss.item()
     
-    def validation_step(self, model: torch.nn.Module, snapshot: GraphData, loss_fn: BaseLoss) -> float:
+    def validation_step(self, model: torch.nn.Module, snapshot: GraphData, loss_fn: LossHandler) -> float:
         y_hat:  Tensor
         h:      Tensor
         c:      Tensor
@@ -61,7 +61,7 @@ class StatelessGATv2LSTMStrategy(Strategy[GraphData]):
         loss = loss_fn(y_hat, snapshot.y)
         return loss.item()
 
-    def forecast_step(self, model: torch.nn.Module, snapshot: GraphData, loss_fn: BaseLoss) -> Tuple[torch.Tensor, float]:
+    def forecast_step(self, model: torch.nn.Module, snapshot: GraphData, loss_fn: LossHandler) -> Tuple[torch.Tensor, float]:
         y_hat:  Tensor
         h:      Tensor
         c:      Tensor
@@ -102,7 +102,7 @@ class StatefullGATv2LSTMStrategy(Strategy[GraphData]):
             return None
         return state.detach().to(device)
 
-    def training_step(self, model: torch.nn.Module, snapshot: GraphData, optimizer: Optimizer, loss_fn: BaseLoss) -> float:
+    def training_step(self, model: torch.nn.Module, snapshot: GraphData, optimizer: Optimizer, loss_fn: LossHandler) -> float:
         y_hat:  Tensor
         h:      Tensor
         c:      Tensor
@@ -121,7 +121,7 @@ class StatefullGATv2LSTMStrategy(Strategy[GraphData]):
         optimizer.step()
         return loss.item()
     
-    def validation_step(self, model: torch.nn.Module, snapshot: GraphData, loss_fn: BaseLoss) -> float:
+    def validation_step(self, model: torch.nn.Module, snapshot: GraphData, loss_fn: LossHandler) -> float:
         y_hat:  Tensor
         h:      Tensor
         c:      Tensor
@@ -136,7 +136,7 @@ class StatefullGATv2LSTMStrategy(Strategy[GraphData]):
         loss = loss_fn(y_hat, snapshot.y)
         return loss.item()
 
-    def forecast_step(self, model: torch.nn.Module, snapshot: GraphData, loss_fn: BaseLoss) -> Tuple[torch.Tensor, float]:
+    def forecast_step(self, model: torch.nn.Module, snapshot: GraphData, loss_fn: LossHandler) -> Tuple[torch.Tensor, float]:
         y_hat:  Tensor
         h:      Tensor
         c:      Tensor

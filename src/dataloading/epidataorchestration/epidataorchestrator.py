@@ -49,6 +49,17 @@ class EpiDataOrchestrator:
         self._data_harmonized, self._data_context   = self.harmonizer.orchestrate(self.data_raw)        
         return self
     
+    @classmethod
+    def from_raw(cls, config: EpiConfig, 
+                data_raw: RawEpiData) -> 'EpiDataOrchestrator':
+        """
+        Bypass load_raw.
+        Use when RawEpiData is already available (e.g. cross-validation).
+        """
+        orch = cls(config)
+        orch._data_raw = data_raw
+        return orch
+
     def process_data(self) -> 'EpiDataOrchestrator':
             """Preprocess the harmonized data"""
             self.processor = EpiDataProcessor(

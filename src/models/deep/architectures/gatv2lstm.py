@@ -25,6 +25,7 @@ class GATv2LSTMArchitecture(nn.Module):
                  num_heads:         int,
                  horizon_size:      int, 
                  seq_length:        int,
+                 num_quantiles:     int,                 
                  self_loops :       bool,
         ): 
         super().__init__()
@@ -39,6 +40,7 @@ class GATv2LSTMArchitecture(nn.Module):
         self.num_heads      = num_heads 
         self.horizon_size   = horizon_size
         self.seq_length     = seq_length
+        self.num_quantiles  = num_quantiles
         self.self_loops     = self_loops
 
         # ONLY ONE GAT layer to prevent over-smoothing
@@ -56,7 +58,7 @@ class GATv2LSTMArchitecture(nn.Module):
         self.lstm_out_norm = nn.LayerNorm(hidden_size)
 
         # Final output layer
-        self.fc = nn.Linear(hidden_size, horizon_size)
+        self.fc = nn.Linear(hidden_size, horizon_size * self.num_quantiles)
 
     def forward(self,
                 x:              torch.Tensor,
@@ -90,7 +92,9 @@ class GATv2LSTMArchitecture(nn.Module):
         ht_lstm = self.lstm_out_norm(ht_lstm)
 
         # Final output
-        output = self.fc(ht_lstm)  # [num_nodes, horizon_size]
+        output = self.fc(ht_lstm)  # [num_nodes, horizon_size * num_quantiles]
+
+        output = output.view(self.num_nodes, self.horizon_size, self.num_quantiles)        
         
         return output, h, c
 
@@ -320,6 +324,8 @@ class GATv2LSTMModel(DeepModel):
         _num_nodes      = self.dataloadermanager.dataorchestrator.data_context.num_nodes
         _horizon_size   = self.dataloadermanager.dataorchestrator.config.horizon_size
         _seq_length     = self.dataloadermanager.dataorchestrator.config.sequence_length
+        _num_quantiles  = max(self.dataloadermanager.dataorchestrator.config._num_quantiles,1)
+
 
         self.model = GATv2LSTMArchitecture(
             num_features        = _num_features,
@@ -332,6 +338,7 @@ class GATv2LSTMModel(DeepModel):
             num_heads           = num_heads,
             horizon_size        = _horizon_size,
             self_loops          = self_loops,
+            num_quantiles       = _num_quantiles,
             seq_length          = _seq_length
         ).to(self.device)
         

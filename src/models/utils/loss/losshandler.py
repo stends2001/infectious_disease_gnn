@@ -1,5 +1,5 @@
 from typing import Optional, Dict, Any, List, TYPE_CHECKING
-import torch
+from torch import Tensor as Tensor
 
 from .standard_losses import MSELoss, MAELoss, HuberLoss, SmoothL1Loss, ExponentialDecayLoss, PolynomialDecayLoss, WeightedMSELoss
 from .outbreak_losses import FocalLoss, OutbreakWeightedLoss
@@ -8,6 +8,8 @@ from .classification import BCELoss, BCELogitLoss
 from .asymmetricmse import AsymmetricMSELoss
 from .quantile import QuantileLoss
 from .pinball import PinballLoss
+
+from ...issues import InvalidLossError
 
 LOSS_REGISTRY: Dict[str, type] = {
     'mse':              MSELoss,
@@ -51,18 +53,27 @@ class LossHandler:
             Keyword arguments to pass to loss function constructor
         """
         if loss_name not in LOSS_REGISTRY:
-            available = ', '.join(LOSS_REGISTRY.keys())
-            raise ValueError(
-                f"Unknown loss '{loss_name}'. Available: {available}"
+            available = list(LOSS_REGISTRY.keys())
+            raise InvalidLossError(
+                f'{loss_name}', available
             )
         
         loss_kwargs     = loss_kwargs or {}
         self.loss_name  = loss_name
         self.loss_fn    = LOSS_REGISTRY[loss_name](**loss_kwargs)
     
-    def __call__(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
-        """Compute loss."""
-        return self.loss_fn(y_pred, y_true)
+    def __call__(self, y_hat: Tensor, y: Tensor) -> Tensor:
+        # Non-quantile losses expect y_hat shape [nodes, horizon]
+        # but model always outputs [nodes, horizon, 1] for consistency.
+        # Squeeze the trailing dim here so individual losses don't need to care.
+        if self.loss_name != 'pinball':
+            if y_hat.shape[-1] == 1:
+                y_hat = y_hat.squeeze(-1)
+
+            if y_hat.shape != y.shape:
+                raise ValueError('unexpected shapes inside losshandler(). y_hat != y')
+        
+        return self.loss_fn(y_hat, y)
     
     def __repr__(self) -> str:
         return f"LossHandler({self.loss_fn})"

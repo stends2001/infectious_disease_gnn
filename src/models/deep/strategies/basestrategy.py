@@ -5,7 +5,9 @@ from torch import Tensor
 from torch.optim.optimizer import Optimizer
 
 from ....dataloading.dataloaders.deepdataloaders.datacontainers import DeepData, GraphData
-from ...utils.loss.baseloss import BaseLoss
+from ...utils.loss.losshandler import LossHandler
+
+from typing import List
 
 Type_snapshot = TypeVar('Type_snapshot', DeepData, GraphData)
 
@@ -23,7 +25,7 @@ class Strategy(ABC, Generic[Type_snapshot]):
     - reset_state
     """
     @abstractmethod
-    def training_step(self, model: torch.nn.Module, snapshot: Type_snapshot, optimizer: Optimizer, loss_fn: BaseLoss) -> float:
+    def training_step(self, model: torch.nn.Module, snapshot: Type_snapshot, optimizer: Optimizer, loss_fn: LossHandler) -> float:
         """
         Execute one training step
 
@@ -41,7 +43,7 @@ class Strategy(ABC, Generic[Type_snapshot]):
         pass
     
     @abstractmethod    
-    def validation_step(self, model: torch.nn.Module, snapshot: Type_snapshot, loss_fn) -> float:
+    def validation_step(self, model: torch.nn.Module, snapshot: Type_snapshot, loss_fn: LossHandler) -> float:
         """
         Execute one validation step
 
@@ -58,7 +60,7 @@ class Strategy(ABC, Generic[Type_snapshot]):
         pass
     
     @abstractmethod
-    def forecast_step(self, model: torch.nn.Module, snapshot: Type_snapshot, loss_fn) -> Tuple[Tensor, float]:
+    def forecast_step(self, model: torch.nn.Module, snapshot: Type_snapshot, loss_fn: LossHandler) -> Tuple[Tensor, float]:
         """
         Execute one validation step
 
