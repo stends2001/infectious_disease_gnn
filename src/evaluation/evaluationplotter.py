@@ -36,7 +36,9 @@ class EvaluationPlotter:
                     plot_type:      Literal['violin', 'box', 'map'] = 'violin', 
                     highlight_node: Optional[float] = None,
                     log:            bool = False,
-                    reverse_scale:  bool = False) -> ManagedFigure:
+                    reverse_scale:  bool = False,
+                    vmin:           Optional[float] = None,
+                    vmax:           Optional[float] = None) -> ManagedFigure:
         """
         Plot specified metric across models.
         
@@ -73,7 +75,9 @@ class EvaluationPlotter:
                 model_class_colors,
                 highlight_node, 
                 add_legend=True,
-                log = log
+                log = log,
+                vmin = vmin ,
+                vmax = vmax
             )
             plt.tight_layout()
         elif plot_type == 'map':
@@ -81,7 +85,8 @@ class EvaluationPlotter:
                                  metric, 
                                  model_name_colors,
                                  log,
-                                 reverse_scale)
+                                 reverse_scale,
+                                 vmin = vmin, vmax = vmax)
         else:
             raise ValueError("plot_type must be 'violin', 'box', or 'map'")
         
@@ -95,7 +100,9 @@ class EvaluationPlotter:
                                  model_name_colors: dict, model_class_colors: dict,
                                  highlight_node: Optional[int] = None,
                                  add_legend: bool = True,
-                                 log: bool = False) -> None:
+                                 log: bool = False,
+                                 vmin: Optional[float] = None, 
+                                 vmax: Optional[float] = None) -> None:
         """
         Plot violin or box plot on a given axes object.
         
@@ -132,11 +139,19 @@ class EvaluationPlotter:
         
         ylab = f"{metric} [log]" if log else f"{metric}"
 
+        # ax limits
+        if not vmin:
+            vmin = df[metric].min()
+        if not vmax:
+            vmax = df[metric].max()
+
+
         ax.set_title(f'{metric.upper()}')
         ax.set_ylabel(ylab)
         ax.set_xlabel('Model')
         ax.grid(alpha=0.3)
         ax.set_xticklabels(ax.get_xticklabels(), rotation=30, ha='center', fontsize=8)
+        ax.set_ylim(vmin, vmax)
 
         if highlight_node:
             # Plot red dot for the specified node for all models
@@ -161,6 +176,7 @@ class EvaluationPlotter:
         if add_legend:
             handles = [mpatches.Patch(color=c) for c in model_class_colors.values()]
             ax.legend(handles, model_class_colors.keys(), title='Model Class', loc='best')
+    
 
     def _plot_distribution(self, df: pd.DataFrame, 
                            metric: str, 
@@ -182,7 +198,9 @@ class EvaluationPlotter:
         plt.close()
         return fig
 
-    def _plot_map(self, metric_df: pd.DataFrame, metric: str, model_name_colors: dict, log: bool, reverse_scale: bool):
+    def _plot_map(self, metric_df: pd.DataFrame, metric: str, model_name_colors: dict, log: bool, reverse_scale: bool,
+                                 vmin: Optional[float] = None, 
+                                 vmax: Optional[float] = None):
         """Plot spatial map of metric values."""       
     
         if reverse_scale:
@@ -203,10 +221,10 @@ class EvaluationPlotter:
         if log:
             map_df[metric] =  np.log1p(pd.to_numeric(map_df[metric]))
 
-        vmin, vmax = map_df[metric].min(), map_df[metric].max()
-
-        if vmax < 1:
-            vmax = 1
+        if not vmin:
+            vmin = map_df[metric].min()
+        if not vmax:
+            vmax = map_df[metric].max()
 
         fig, axes = plt.subplots(nrows, ncols, figsize=figsize)
         axes = axes.flatten()

@@ -45,11 +45,11 @@ class BaseGraphOrchestrator:
         
         # extract metadata
         self.context_data    = data_orchestrator.data_context
-        self.epipopdata      = data_orchestrator.data_harmonized.data
+        self.epipopdata      = data_orchestrator.data_harmonized.epidata
 
         self.id_col          = id_col 
         self.tokens          = data_orchestrator.data_context.tokenization_map['nuts_node-idx']
-        self.shapes          = self._validate_shapedata(self.context_data.shapedata)
+        self.shapes          = self._validate_shapedata(self.context_data.shapedata_node)
         
         self.nuts_level      = self.context_data.nuts_level
         self.graph_dir       = os.path.join(get_project_utilities_env(),graph_dir, f'{self.nuts_level}')
