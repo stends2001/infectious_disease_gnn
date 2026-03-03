@@ -19,15 +19,17 @@ class SimpleGCNModule(nn.Module):
     """
 
     def __init__(self,
-                 num_features: int,
-                 num_nodes: int,
-                 hidden_size: int,
-                 emb_size: int,
-                 num_layers: int,
-                 dropout: float,
-                 horizon_size: int,
-                 seq_length: int,
-                 num_quantiles : int):
+                 num_features:  int,
+                 num_nodes:     int,
+                 hidden_size:   int,
+                 emb_size:      int,
+                 num_layers:    int,
+                 dropout:       float,
+                 horizon_size:  int,
+                 seq_length:    int,
+                 num_quantiles :int,
+                 self_loops:    bool,
+                 norm_edges:    bool):
 
         super().__init__()
 
@@ -40,13 +42,16 @@ class SimpleGCNModule(nn.Module):
         self.emb_size       = emb_size
         self.num_quantiles  = num_quantiles
 
+        self.self_loops     = self_loops
+        self.norm_edges     = norm_edges
+
         self.convs = nn.ModuleList()
-        self.convs.append(GCNConv(num_features + emb_size, hidden_size))
+        self.convs.append(GCNConv(num_features + emb_size, hidden_size, add_self_loops = self_loops, normalize=norm_edges))
 
         self.node_emb = nn.Embedding(num_nodes, emb_size)
 
         for _ in range(num_layers - 1):
-            self.convs.append(GCNConv(hidden_size, hidden_size))
+            self.convs.append(GCNConv(hidden_size, hidden_size, add_self_loops = self_loops, normalize=norm_edges))
 
         self.dropout = nn.Dropout(dropout)
 
@@ -128,7 +133,9 @@ class SimpleGCNModel(DeepModel):
                           hidden_size:  int = 64, 
                           num_layers:   int = 2,
                           emb_size:     int = 4,
-                          dropout:      float = 0.2):
+                          dropout:      float = 0.2,
+                          self_loops:   bool = False,
+                          norm_edges:   bool = False):
         self.model_hparams_set = True
 
         _num_features   = len(self.column_registration.get_by_type('feature'))
@@ -145,8 +152,10 @@ class SimpleGCNModel(DeepModel):
             num_layers      = num_layers,
             dropout         = dropout,
             horizon_size    = _horizon_size,
-            seq_length      =_seq_length,
-            num_quantiles= _num_quantiles
+            seq_length      = _seq_length,
+            num_quantiles   = _num_quantiles,
+            self_loops      = self_loops,
+            norm_edges      = norm_edges
     
         ).to(self.device)
 

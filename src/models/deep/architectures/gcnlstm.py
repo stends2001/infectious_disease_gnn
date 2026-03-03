@@ -51,7 +51,9 @@ class GCNLSTMArchitecture(nn.Module):
                  dropout:           float,
                  horizon_size:      int,
                  seq_length:        int,
-                 num_quantiles:     int):
+                 num_quantiles:     int,
+                 self_loops:        bool,
+                 norm_edges:        bool):
 
         super().__init__()
 
@@ -66,13 +68,16 @@ class GCNLSTMArchitecture(nn.Module):
         self.seq_length         = seq_length
         self.num_quantiles      = num_quantiles
 
+        self.self_loops     = self_loops
+        self.norm_edges     = norm_edges        
+
         # --- GCN stack ---
         # First layer: raw features -> gcn_hidden_dim
         # Subsequent layers: gcn_hidden_dim -> gcn_hidden_dim
         self.convs = nn.ModuleList()
-        self.convs.append(GCNConv(num_features, gcn_hidden_dim))
+        self.convs.append(GCNConv(num_features, gcn_hidden_dim, add_self_loops = self_loops, normalize=norm_edges))
         for _ in range(gcn_layers - 1):
-            self.convs.append(GCNConv(gcn_hidden_dim, gcn_hidden_dim))
+            self.convs.append(GCNConv(gcn_hidden_dim, gcn_hidden_dim, add_self_loops = self_loops, normalize=norm_edges))
 
         # BatchNorm per GCN layer — stabilises training when edge weights
         # vary a lot (commuter graph has high weight variance)
@@ -204,7 +209,9 @@ class GCNLSTMModel(DeepModel):
                           gcn_layers:        int   = 1,
                           lstm_hidden_size:  int   = 64,
                           lstm_layers:       int   = 1,
-                          dropout:           float = 0.2):
+                          dropout:           float = 0.2,
+                          self_loops:       bool = False,
+                          norm_edges:       bool = False):
         """
         Parameters
         ----------
@@ -237,7 +244,9 @@ class GCNLSTMModel(DeepModel):
             dropout             = dropout,
             horizon_size        = _horizon_size,
             seq_length          = _seq_length,
-            num_quantiles       = _num_quantiles
+            num_quantiles       = _num_quantiles,
+            self_loops      = self_loops,
+            norm_edges      = norm_edges
         ).to(self.device)
 
         self.config_info['model_hparams'] = {
