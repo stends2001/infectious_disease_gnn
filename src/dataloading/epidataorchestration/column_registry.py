@@ -53,14 +53,18 @@ class ColEntry:
         if self._transformation_group:
             return self._transformation_group
         else:
-            raise MissingTransformation(self.column_name)        
+            raise ValueError(f'attempted to access transformation group for {self.column_name}')
+            # print()
+            # raise MissingTransformation(self.column_name)        
 
     @property
     def transformation_params(self) -> Dict[str, Any]:
         if self._transformation_params:
             return self._transformation_params
         else:
-            raise MissingTransformation(self.column_name)
+            raise ValueError(f'attempted to access transformation_params for {self.column_name}')        
+        # else:
+        #     raise MissingTransformation(self.column_name)
     
     def __repr__(self) -> str:
         representation = (

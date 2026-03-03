@@ -86,10 +86,7 @@ class PredictionManager:
     def add_horizon_predictions(self, 
                                 dataset:                    Literal['train','val','test'], 
                                 horizon_df:                 pd.DataFrame, 
-                                horizon:                    int, 
-                                additional_transformation:  bool = False, 
-                                transf:                     Optional[str] = None, 
-                                transf_args:                Optional[Dict[str,Union[str,float]]] = None):
+                                horizon:                    int):
         """
         Adds a prediction df to the prediction manager
         Internally validates columns, temporal-axis, and everything else.
@@ -107,22 +104,6 @@ class PredictionManager:
                 
         # get prediction_collection
         prediction_collection = self._return_dataset(dataset)
-
-        # ===================================================================================
-        # TODO
-        # this piece needs to be rewritten. Probably put into 
-        # col registry somehow
-        # Apply additional transformations if needed
-        if additional_transformation:
-            if transf == 'poisson_sampling':
-                if 'sampling_mode' in transf_args.keys():
-                    sampling_mode = transf_args['sampling_mode'] 
-                    df_filtered[self.pred_cols] = convert_poisson_predictions(df_filtered[self.pred_cols], sampling_mode)
-                else:
-                    raise ValueError('When using poisson_sampling, please supply "sampling_mode"')
-            else:
-                raise ValueError(f'Only "poisson_sampling" supported for additional_transformation')
-        # ===================================================================================
 
         # Add both normalized and denormalized versions, as well as a national aggregate for the denormalized
         df_transformed      = df_filtered.copy()
@@ -241,27 +222,37 @@ class PredictionManager:
         if normalization_method:
 
             col_entry_target    = self.column_registration.get_by_name('target')
-            transformation_dict = col_entry_target.transformation_params            
 
-            # normalize all columns that need to be
-            for col in self.column_registration.pred_columns + ['target']:
-                if col in df.columns:
-                    df_denorm = self.reverse_transformations[normalization_method](
-                        df_denorm, transformation_dict['normalization'], column=col
-                    )
-                # de-log all columns that need to be
-                if 'log' in transformation_dict:
-                    df_denorm = self.reverse_transformations['log'](
-                        df_denorm, transformation_dict['log'], column=col
-                    )
+            if col_entry_target.transformation:
+            
+                transformation_dict = col_entry_target.transformation_params            
 
-            if self.epiconfig.predict_difference and 'delta' in transformation_dict:
-                anchor_col = transformation_dict['delta']['anchor_col']
+                # normalize all columns that need to be
                 for col in self.column_registration.pred_columns + ['target']:
                     if col in df.columns:
-                        df_denorm[col] = df_denorm[col] + df_denorm[anchor_col]
-                df_denorm = df_denorm.drop(columns=[anchor_col])
+                        df_denorm = self.reverse_transformations[normalization_method](
+                            df_denorm, transformation_dict['normalization'], column=col
+                        )
+                    # de-log all columns that need to be
+                    if 'log' in transformation_dict:
+                        df_denorm = self.reverse_transformations['log'](
+                            df_denorm, transformation_dict['log'], column=col
+                        )
+
+                if self.epiconfig.predict_difference and 'delta' in transformation_dict:
+                    anchor_col = transformation_dict['delta']['anchor_col']
+                    for col in self.column_registration.pred_columns + ['target']:
+                        if col in df.columns:
+                            df_denorm[col] = df_denorm[col] + df_denorm[anchor_col]
+                    df_denorm = df_denorm.drop(columns=[anchor_col])
         
+        # ---- POISON - CASES ----
+        if self.epiconfig.target_column == 'cases':
+            for col in self.column_registration.pred_columns:
+                if col in df_denorm.columns:
+                    df_denorm[col] = convert_poisson_predictions(df_denorm[col], mode='mean')
+        # ------------------------        
+
         return df_denorm
         
     def _validate_columns(self, data: pd.DataFrame) -> pd.DataFrame:

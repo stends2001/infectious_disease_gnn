@@ -752,17 +752,17 @@ class EpiFeatureBuilder:
         """
         dfc = df.copy()
         
-        # if lag = target => normalize lag onto target
-        if self.epiconfig.lag_column != self.epiconfig.target_column:
-            reference_normalization = None
-
-        else:
-            reference_normalization = 'target'
-
         for lag in range(0, self.epiconfig.lag_num):
             feature     = f'{self.epiconfig.lag_column}_lag{lag}'
             dfc[feature]= dfc.groupby(self.epiconfig.id_column)[self.epiconfig.lag_column].shift(lag)
             
+            if self.epiconfig.lag_column == self.epiconfig.target_column:
+                reference_normalization = 'target'
+            elif lag == 0:
+                reference_normalization = 'self'
+            else:
+                reference_normalization = f'{self.epiconfig.lag_column}_lag0'
+
             self.column_registration.add_column(
                 feature, 
                 'feature',
@@ -961,8 +961,7 @@ class EpiNormalizer:
                 # not in combination with previous condition. If target == lag, the lag column follows the normalization of target
                 elif col == self.epiconfig.lag_column:
                     cols_to_log += [f'{self.epiconfig.lag_column}_lag{lag}' for lag in range(0, self.epiconfig.lag_num)]
-                    if self.column_registration.get_by_name(f'{self.epiconfig.lag_column}_lag0').transformation_group is None:
-                        self._update_colregistry_postlog(f'{self.epiconfig.lag_column}_lag0')
+                    self._update_colregistry_postlog(f'{self.epiconfig.lag_column}_lag0')
 
                 # else register log column-specifically
                 else:
@@ -1093,11 +1092,15 @@ class EpiDataFinalizer:
         while pred doesn't exist in the data, models will end up with these columns.
         if prediction_quantiles are inputted in EpiConfig, these will be created here.
         """
+
+        needs_normalization  = False if self.epiconfig.target_column == 'cases' else True
+        transformation_group = 'target'if self.epiconfig.target_column != 'cases' else None
+
         self.column_registration.add_column(
             'pred',
             'pred',
-            needs_normalization=True,
-            transformation_group='target'
+            needs_normalization=needs_normalization,
+            transformation_group=transformation_group
         )      
         quantiles = self.epiconfig.quantiles
 
@@ -1106,8 +1109,8 @@ class EpiDataFinalizer:
                 self.column_registration.add_column(
                     f'pred_q{quantile_idx}',
                     'pred',
-                    needs_normalization=True,
-                    transformation_group='target'
+                    needs_normalization=needs_normalization,
+                    transformation_group=transformation_group
                 )                     
 
     def _add_horizons(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -1120,12 +1123,15 @@ class EpiDataFinalizer:
             # Shift from the base target
             df[target_col] = df.groupby(self.epiconfig.id_column)[f'target'].shift(-additional_steps)
             
+            needs_normalization  = False if self.epiconfig.target_column == 'cases' else True
+            transformation_group = 'target'if self.epiconfig.target_column != 'cases' else None
+
             # Register in column registry
             self.column_registration.add_column(
                 target_col,
                 'target',
-                transformation_group='target',
-                needs_normalization=True
+                needs_normalization=needs_normalization,
+                transformation_group=transformation_group
             )
         
         if self.epiconfig.verbose > 1:
@@ -1147,15 +1153,17 @@ class EpiDataFinalizer:
         if self.epiconfig.target_column == 'cases':
             if self.epiconfig.prediction_mode == 'regression':
                 for col in self.column_registration.target_columns:
-                    df[col] = df[col].astype(int)     
+                    if col in df.columns.tolist():
+                        df[col] = df[col].astype(int)     
 
                 if self.epiconfig.verbose > 1:
                     print(f"{checkmark} target column(s) set as integer")    
 
             elif self.epiconfig.prediction_mode == 'classification':
                 for col in self.column_registration.target_columns:
-                    df.loc[df[col] > 0, col] = 1  
-                    df[col] = df[col].astype(int)
+                    if col in df.columns.tolist():                  
+                        df.loc[df[col] > 0, col] = 1  
+                        df[col] = df[col].astype(int)
 
                 if self.epiconfig.verbose > 1:
                     print(f"{checkmark} target column(s) set as class")        
@@ -1188,6 +1196,7 @@ class EpiDataFinalizer:
                     # if referral-based normalization
                     else:
                         reference_entry = self.column_registration.get_by_name(col_entry.transformation_group)
+                        print(f'for col {col_entry.column_name}: reference: {reference_entry.column_name}')
                         params = reference_entry.transformation_params
                 
                     # Reverse normalization

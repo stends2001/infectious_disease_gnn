@@ -465,15 +465,7 @@ class DeepModel(BaseModel[Union[GraphDataLoaderManager, DeepDataLoaderManager]])
                 }
             )
 
-            if self.loss.loss_name in ['poisson', 'outbreakpoisson']:
-                self.predictions.add_horizon_predictions(
-                    dataset, horizon_data, hh,
-                    additional_transformation=True,
-                    transf='poisson_sampling',
-                    transf_args={'sampling_mode': 'mean'}
-                )
-            else:
-                self.predictions.add_horizon_predictions(dataset, horizon_data, hh)
+            self.predictions.add_horizon_predictions(dataset, horizon_data, hh)
 
         if self.verbose > 1:
             print(f"{dataset.capitalize()} loss: {avg_loss:.4f}")
