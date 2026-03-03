@@ -22,7 +22,7 @@ model_colors = {
     'simplegcnmodel'    : '#B77914',
     'gatv2model'        : '#F1C884',
     'gatv2lstmmodel'    : '#14B787',
-    'tgcnmodel'         : "#14B78676",
+    'gcntcnmodel'       : "#14B78676",
     'gcnlstmmodel'      : "#14B78676",
     
 }
