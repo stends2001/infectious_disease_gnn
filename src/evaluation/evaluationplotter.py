@@ -140,9 +140,9 @@ class EvaluationPlotter:
         ylab = f"{metric} [log]" if log else f"{metric}"
 
         # ax limits
-        if not vmin:
+        if vmin is None:
             vmin = df[metric].min()
-        if not vmax:
+        if vmax is None:
             vmax = df[metric].max()
 
 
@@ -151,7 +151,7 @@ class EvaluationPlotter:
         ax.set_xlabel('Model')
         ax.grid(alpha=0.3)
         ax.set_xticklabels(ax.get_xticklabels(), rotation=30, ha='center', fontsize=8)
-        ax.set_ylim(vmin, vmax)
+        ax.set_ylim([vmin, vmax])
 
         if highlight_node:
             # Plot red dot for the specified node for all models

@@ -98,6 +98,100 @@ class QuantileRegressionMetricsCalculator(MetricsCalculatorBase):
         # WIS = mean over components, then mean over timestamps
         return float(np.mean(np.stack(components, axis=1)))
 
+    def coverage_score(self, y: np.ndarray, yhats: np.ndarray) -> float:
+        """
+        Returns a single scalar: fraction of timestamps where y falls within any predicted interval.
+        """
+        assert self.quantiles is not None  # narrows type for linter
+        n_intervals = len(self.quantiles) // 2
+        inside = np.zeros_like(y, dtype=bool)
+
+        for i in range(n_intervals):
+            lower = yhats[:, i]
+            upper = yhats[:, yhats.shape[1]-1-i]
+            inside |= (y >= lower) & (y <= upper)
+
+        return float(np.mean(inside))
+    
+    def sharpness_score(self, y: np.ndarray, yhats: np.ndarray) -> float:
+        """
+        Returns a scalar where higher means sharper predictions.
+        """
+        assert self.quantiles is not None  # narrows type for linter
+        n_intervals = len(self.quantiles) // 2
+        widths = []
+
+        for i in range(n_intervals):
+            lower = yhats[:, i]
+            upper = yhats[:, yhats.shape[1]-1-i]
+            widths.append(upper - lower)
+
+        mean_width: float = np.mean(np.stack(widths, axis=1))
+        return 1 / (1 + mean_width)  # simple transform: smaller width → higher score    
+
+    def node_forecast_score(self, y: np.ndarray, yhats: np.ndarray, alpha=0.5) -> float:
+        """
+        Combines coverage and sharpness into one scalar per node.
+        alpha: weight for coverage vs sharpness (0..1)
+        """
+        cov = self.coverage_score(y, yhats)
+        sharp = self.sharpness_score(y, yhats)
+        return alpha * cov + (1 - alpha) * sharp
+
+    def norm_wis(self, y: np.ndarray, yhats: np.ndarray) -> float:
+        """
+        Returns a single scalar per node summarizing the quality of quantile forecasts.
+        Inspired by WIS, normalized to [0,1], higher is better.
+
+        Parameters
+        ----------
+        y        : (T,)      ground truth
+        yhats    : (T, Q)    quantile predictions, columns ordered q0 ... qQ
+        quantiles: (Q,)      list of quantiles corresponding to yhats
+        """
+
+        assert self.quantiles is not None  # narrows type for linter
+        n_intervals = len(self.quantiles) // 2
+        mid = n_intervals
+
+        # Components: interval widths and penalties
+        widths = []
+        penalties = []
+        inside_flags = np.zeros_like(y, dtype=bool)
+
+        for i in range(n_intervals):
+            lower = yhats[:, i]
+            upper = yhats[:, len(self.quantiles)-1-i]
+            alpha = self.quantiles[i] * 2
+
+            width = upper - lower
+            penalty_lower = (2 / alpha) * np.maximum(lower - y, 0)
+            penalty_upper = (2 / alpha) * np.maximum(y - upper, 0)
+
+            widths.append(width)
+            penalties.append(penalty_lower + penalty_upper)
+
+            # For coverage check
+            inside_flags |= (y >= lower) & (y <= upper)
+
+        # Median absolute error
+        median_error = np.abs(y - yhats[:, mid])
+
+        # Combine components like WIS
+        wis_like = np.mean(np.stack(widths + penalties + [median_error], axis=1), axis=1)  # per timestamp
+
+        # Convert to a 0-1 score
+        # Step 1: scale by max possible value (or 1+mean width for normalization)
+        mean_wis = np.mean(wis_like)
+        mean_width = np.mean(np.stack(widths, axis=1))
+        score = 1 / (1 + mean_wis)  # simple monotone transform: smaller WIS → higher score
+
+        # Step 2: adjust for coverage (optional additive factor)
+        coverage = np.mean(inside_flags)  # fraction of y inside any interval
+        final_score = score * coverage   # high only if WIS is low AND coverage is good
+
+        return float(final_score)
+
     @property
     def _requires_quantiles(self) -> bool:
         return True 
@@ -131,6 +225,33 @@ class PointRegressionMetricsCalculator(MetricsCalculatorBase):
             return pd.NA
         corr = cast(float, spearmanr(y, yhat, nan_policy = 'omit').statistic)     # type: ignore
         return corr        
+
+    def mbe(self, y, yhat):
+        """part of ccc: mean bias error"""
+        mean_y, mean_yhat = y.mean(), yhat.mean()
+        return mean_yhat - mean_y
+    
+    def vr(self, y, yhat):
+        """part of ccc: variance ratio"""
+        var_y, var_yhat = y.var(ddof = 1), yhat.var(ddof = 1)
+        if var_y == 0 or var_yhat == 0:
+            return pd.NA 
+        sd_y, sd_yhat = np.sqrt(var_y), np.sqrt(var_yhat)
+        return sd_yhat / sd_y
+
+    def bcf(self, y, yhat):
+        """part of ccc: bias correction factor"""    
+        mbe             = self.mbe(y, yhat)
+
+        var_y, var_yhat = y.var(ddof = 1), yhat.var(ddof = 1)
+        if var_y == 0 or var_yhat == 0:
+            return pd.NA 
+        sd_y, sd_yhat = np.sqrt(var_y), np.sqrt(var_yhat)
+        variance_ratio =  sd_yhat / sd_y
+
+        delta = mbe / sd_y
+        cb = (2 * variance_ratio) / (1 + variance_ratio**2 + delta**2)    
+        return cb
 
     def ccc(self, y, yhat):
         mean_y, mean_yhat = y.mean(), yhat.mean()

@@ -1196,7 +1196,6 @@ class EpiDataFinalizer:
                     # if referral-based normalization
                     else:
                         reference_entry = self.column_registration.get_by_name(col_entry.transformation_group)
-                        print(f'for col {col_entry.column_name}: reference: {reference_entry.column_name}')
                         params = reference_entry.transformation_params
                 
                     # Reverse normalization

@@ -8,6 +8,6 @@ from .baselines import PersistenceModel, ClimateologyModel, ConstantModel, Clima
 
 # from .shallow.noderf import NodeRFModel
 
-from .deep import SimpleGCNModel, GATv2LSTMModel, LSTMModel, GCNLSTMModel, GCNTCNModel
+from .deep import SimpleGCNModel, GATv2LSTMModel, LSTMModel, GCNLSTMModel, GCNTCNModel, GCN2Model, DecoupledGCNModel
 
 # from .deep import SimpleGCNModel, GATv2LSTMModel, NodeLSTMModel, NodeBiLSTMModel, NodeGRUModel, SeqNodeLSTMModel,GATv2Model

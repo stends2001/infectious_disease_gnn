@@ -7,7 +7,7 @@ from .poissonloss import PoissonLoss, NegativeBinomialLoss,ZeroInflatedPoissonLo
 from .classification import BCELoss, BCELogitLoss
 from .asymmetricmse import AsymmetricMSELoss
 from .quantile import QuantileLoss
-from .pinball import PinballLoss
+from .pinball import PinballLoss, PinchPinballLoss
 
 from ...issues import InvalidLossError
 
@@ -30,6 +30,7 @@ LOSS_REGISTRY: Dict[str, type] = {
     'bce':              BCELoss,    
     'bcelogit':         BCELogitLoss,
     'pinball':          PinballLoss,
+    'pinchpinball':     PinchPinballLoss
 }
 
 
@@ -66,7 +67,7 @@ class LossHandler:
         # Non-quantile losses expect y_hat shape [nodes, horizon]
         # but model always outputs [nodes, horizon, 1] for consistency.
         # Squeeze the trailing dim here so individual losses don't need to care.
-        if self.loss_name != 'pinball':
+        if self.loss_name not in ['pinball','pinchpinball']:
             if y_hat.shape[-1] == 1:
                 y_hat = y_hat.squeeze(-1)
 

@@ -102,7 +102,7 @@ class DeepModel(BaseModel[Union[GraphDataLoaderManager, DeepDataLoaderManager]])
         self.min_delta          = min_delta
 
         # ==== LOSS ==== #
-        if loss == 'pinball':
+        if loss in ['pinball','pinchpinball']:
             if loss_kwargs is None:
                 loss_kwargs = {}
 
@@ -498,7 +498,7 @@ class DeepModel(BaseModel[Union[GraphDataLoaderManager, DeepDataLoaderManager]])
 
     def _validate_global_hparams(self):        
         if self.epiconfig.quantiles:
-            if self.loss.loss_name != 'pinball':
+            if self.loss.loss_name not in ['pinball','pinchpinball']:
                 raise ValueError('quantiles given to DeepModel, yet loss is not pinball.')
 
     def _get_optimizer(self, 
