@@ -42,7 +42,7 @@ class EpiConfig:
 
         horizon_leadtime    = 3,
 
-        sequence_length     = 4
+        sequence_length     = 4,
 
         feature_popsize     = True,      
         feature_popdens     = True,
@@ -134,6 +134,8 @@ class EpiConfig:
     feature_popdens:        bool = False
     feature_gisd:           bool = False
     feature_popage:         bool = False
+    feature_climateology:   bool = False   
+    feature_kreise_classes: bool = False 
     
     # ============= NORMALIZATION =============
     normalization_method:   Optional[Literal['minmax', 'zscore']] = 'zscore'
@@ -303,6 +305,9 @@ class EpiConfig:
             if not self.feature_popage:
                 limitation_errors.append(EpiConfigLimitationError('Currently only popsize supported if popage is included as well'))
         
+        if self.feature_climateology:
+            limitation_errors.append(EpiConfigLimitationError('Currently no climateology features supported'))
+
         if len(limitation_errors):
             raise IssueReport(limitation_errors, 'EpiConfig couldnt be created')
 
@@ -334,7 +339,7 @@ class EpiConfig:
             'temporal'      :   ['temporal_frequency','min_date','max_date','split_trainval','split_valtest'],
             'geography'     :   ['nuts_level','split_berlin'],
             'task config'   :   ['horizon_size','horizon_leadtime','quantiles','prediction_mode','predict_difference'],
-            'features'      :   ['time_index_d','time_index_w','time_index_m','lag_column','lag_num','sequence_length','incidence_scalar', 'feature_popsize','feature_popdens','feature_gisd','feature_popage'],
+            'features'      :   ['time_index_d','time_index_w','time_index_m','lag_column','lag_num','sequence_length','incidence_scalar', 'feature_popsize','feature_popdens','feature_gisd','feature_popage','feature_climateology','feature_kreise_classes'],
             'normalization' :   ['normalization_method','log_transform','log_shift'],    
             'column names'  :   ['temporal_column','target_column','id_column','pred_column'],
             'others'        :   ['verbose'],
@@ -409,6 +414,10 @@ class EpiConfig:
         }
 
         return return_dict  
+    
+    def get_kreise_classes_data(self) -> Path:
+        """Path to kreise classification CSV file."""
+        return self.data_path / f'processed/germany/sociodemography/kreise_classifications_2024.csv' 
     
     # ============= SUMMARIES =============
     

@@ -50,6 +50,7 @@ class RawEpiData:
     _population_density:     Optional[pd.DataFrame] = None
     _gisd:                   Optional[pd.DataFrame] = None
     _population_age:         Optional[pd.DataFrame] = None
+    _kreise_classes:         Optional[pd.DataFrame] = None
     
     @property
     def population_berlin(self) -> pd.DataFrame:
@@ -78,6 +79,13 @@ class RawEpiData:
         if df is None: 
             raise EpiDataOrchestrationError(f'Attempted to access population_age at {self.__class__.__name__} but no such data found')
         return df         
+    
+    @property
+    def kreise_classes(self) -> pd.DataFrame:
+        df = self._kreise_classes
+        if df is None: 
+            raise EpiDataOrchestrationError(f'Attempted to access kreise_classes at {self.__class__.__name__} but no such data found')
+        return df         
 
     def __repr__(self):
         representation = (f"<{self.__class__.__name__}(disease {checkmark}, "
@@ -97,6 +105,9 @@ class RawEpiData:
 
         if self._population_age is not None:
             representation += f", population_age {checkmark}"
+
+        if self._kreise_classes is not None:
+            representation += f", kreise_classes {checkmark}"            
 
         return representation +")>"
 
@@ -185,6 +196,7 @@ class HarmonizedEpiData:
     _population_density: Optional[pd.DataFrame] = None
     _gisd:               Optional[pd.DataFrame] = None    
     _population_age:     Optional[pd.DataFrame] = None    
+    _kreise_classes:     Optional[pd.DataFrame] = None
 
     @property
     def population_density(self) -> pd.DataFrame:
@@ -205,7 +217,14 @@ class HarmonizedEpiData:
         df = self._population_age
         if df is None: 
             raise EpiDataOrchestrationError(f'Attempted to access population_age at {self.__class__.__name__} but no such data found')
-        return df                     
+        return df             
+
+    @property
+    def kreise_classes(self) -> pd.DataFrame:
+        df = self._kreise_classes
+        if df is None: 
+            raise EpiDataOrchestrationError(f'Attempted to access kreise_classes at {self.__class__.__name__} but no such data found')
+        return df                  
 
     def __repr__(self):
         representation = f"<{self.__class__.__name__}(epidata {checkmark}"
@@ -217,7 +236,10 @@ class HarmonizedEpiData:
             representation += f", gisd {checkmark}"      
 
         if self._population_age is not None:
-            representation += f", population_age {checkmark}"                  
+            representation += f", population_age {checkmark}"             
+
+        if self._kreise_classes is not None:
+            representation += f", kreise_classes {checkmark}"                       
                           
         representation += ")>"
         return representation
@@ -244,6 +266,7 @@ class ProcessedEpiData:
     _population_density: Optional[pd.DataFrame] = None
     _gisd:               Optional[pd.DataFrame] = None      
     _population_age:     Optional[pd.DataFrame] = None      
+    _kreise_classes:     Optional[pd.DataFrame] = None
     
     @property
     def population_size(self) -> pd.DataFrame:
@@ -272,6 +295,13 @@ class ProcessedEpiData:
         if df is None: 
             raise EpiDataOrchestrationError(f'Attempted to access population_age at {self.__class__.__name__} but no such data found')
         return df      
+    
+    @property
+    def kreise_classes(self) -> pd.DataFrame:
+        df = self._kreise_classes
+        if df is None: 
+            raise EpiDataOrchestrationError(f'Attempted to access kreise_classes at {self.__class__.__name__} but no such data found')
+        return df       
 
     def __repr__(self):
         representation = (f"<{self.__class__.__name__}(epidata {checkmark}")
@@ -286,7 +316,10 @@ class ProcessedEpiData:
             representation += f", gisd {checkmark}"      
 
         if self._population_age is not None:
-            representation += f", population_age {checkmark}"            
+            representation += f", population_age {checkmark}"      
+
+        if self._kreise_classes is not None:
+            representation += f", kreise_classes {checkmark}"       
 
         representation += ")>"
         return representation

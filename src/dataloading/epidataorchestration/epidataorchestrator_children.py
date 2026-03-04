@@ -217,6 +217,28 @@ class EpiDataReader:
         
         return df
 
+    def _load_kreise_classes(self) -> pd.DataFrame:
+        """
+        loads kreise classification data
+
+        df looks like:
+        _____________________
+        | 'nuts3_key' | ... |
+
+        for many columns.
+        """          
+        filepath = self.epiconfig.get_kreise_classes_data()
+        
+        df = pd.read_csv(
+            filepath,
+            dtype= str
+            )
+                
+        if self.epiconfig.verbose > 1:
+            print(f"{checkmark} Loaded kreise classes")
+        
+        return df
+
     def orchestrate(self) -> RawEpiData:
         time_start = time.time()
 
@@ -231,7 +253,8 @@ class EpiDataReader:
             _population_berlin   = self._load_population_data_berlin_districts() if self.epiconfig.split_berlin     else None,   
             _population_density  = self._load_population_density()               if self.epiconfig.feature_popdens  else None,
             _gisd                = self._load_gisd()                             if self.epiconfig.feature_gisd     else None,
-            _population_age      = self._load_population_age()                   if self.epiconfig.feature_popage   else None
+            _population_age      = self._load_population_age()                   if self.epiconfig.feature_popage   else None,
+            _kreise_classes      = self._load_kreise_classes()                   if self.epiconfig.feature_kreise_classes else None,
         )
 
         time_end = time.time()
@@ -491,7 +514,7 @@ class EpiDataHarmonizer:
         population_density_data = None
         gisd_data               = None
         population_age          = None   
-
+        kreise_classes          = None
 
         if self.epiconfig.feature_popdens:
             population_density_data = self._apply_tokenization(rawdata.population_density, 
@@ -509,6 +532,12 @@ class EpiDataHarmonizer:
             population_age = self._apply_tokenization(rawdata.population_age, 
                                                       tokenization_map['nuts_node-idx'],
                                                       f'{self.epiconfig.nuts_level}_key', 
+                                                      self.epiconfig.id_column)              
+
+        if self.epiconfig.feature_kreise_classes:
+            kreise_classes = self._apply_tokenization(rawdata.kreise_classes, 
+                                                      tokenization_map['nuts_node-idx'],
+                                                      f'{self.epiconfig.nuts_level}_key', 
                                                       self.epiconfig.id_column)                  
 
         if isinstance(shapedata, pd.DataFrame):
@@ -519,7 +548,8 @@ class EpiDataHarmonizer:
 
             _population_density  = population_density_data,
             _gisd                = gisd_data,
-            _population_age      = population_age
+            _population_age      = population_age,
+            _kreise_classes      = kreise_classes
         )
         
         ctxdata = ContextEpiData(
@@ -626,6 +656,7 @@ class EpiDataProcessor:
         population_density_data = None
         gisd_data               = None      
         population_age          = None   
+        kreise_classes          = None
 
         if self.config.feature_popdens:
             population_density_data = self._filter_years(harmonizeddata.population_density)
@@ -634,13 +665,17 @@ class EpiDataProcessor:
             gisd_data = self._filter_years(harmonizeddata.gisd)
                    
         if self.config.feature_popage:
-            population_age = self._filter_years(harmonizeddata.population_age)                       
+            population_age = self._filter_years(harmonizeddata.population_age)               
+
+        if self.config.feature_kreise_classes:
+            kreise_classes = harmonizeddata.kreise_classes                 
 
         processed_data = ProcessedEpiData(epidata            = epipopdata,
                                           
                                           _population_density= population_density_data,
                                           _gisd              = gisd_data,
-                                          _population_age    = population_age
+                                          _population_age    = population_age,
+                                          _kreise_classes    = kreise_classes
                                           )
         time_end = time.time()
         if self.config.verbose > 2:
@@ -804,6 +839,23 @@ class EpiFeatureBuilder:
 
         return df.dropna().reset_index(drop=True)
 
+    def _encode_categorical_columns(self, df: pd.DataFrame) -> pd.DataFrame:
+
+        cols_to_encode = [c for c in df.columns.tolist() if c != self.epiconfig.id_column]
+
+        df_encoded = pd.get_dummies(
+            df.copy(),
+            columns=cols_to_encode,
+            drop_first=False  # keep all categories
+        )
+        one_hot_cols = [c for c in df_encoded.columns if c != self.epiconfig.id_column]
+        df_encoded[one_hot_cols] = df_encoded[one_hot_cols].astype(int)
+
+        for col in one_hot_cols:
+            self.column_registration.add_column(col, 'feature', False)
+
+        return df_encoded
+
     def orchestrate(self, processed_data: 'ProcessedEpiData') -> 'FeatureEpiData':
         time_start   = time.time()
         feature_data = processed_data.epidata.copy()
@@ -852,6 +904,11 @@ class EpiFeatureBuilder:
                                           
             feature_data = pd.merge(feature_data, processed_feature_popage, on = [self.epiconfig.id_column, 'year'])               
 
+        if self.epiconfig.feature_kreise_classes:
+            kreise_classes_encoded = self._encode_categorical_columns(processed_data.kreise_classes)
+
+            feature_data = pd.merge(feature_data, kreise_classes_encoded, on = self.epiconfig.id_column)  
+
         # Delta transform: must happen before lags and target shift,
         # so that lag features and the forecast target are all in delta-space
         if self.epiconfig.predict_difference:
@@ -868,6 +925,7 @@ class EpiFeatureBuilder:
             if self.epiconfig.verbose > 1:
                 print(f'{checkmark} delta transform applied')
 
+        
         feature_data = self._add_time_index(feature_data)
         feature_data = self._lag_variable(feature_data)
         feature_data = self._shift_target(feature_data)
@@ -1053,10 +1111,9 @@ class EpiNormalizer:
 
     def orchestrate(self, feature_data: 'FeatureEpiData') -> 'NormalizedEpiData':
         time_start      = time.time()
-        split_data      = self._set_splits(feature_data.epidata.copy())
-
+        split_data      = self._set_splits(feature_data.epidata.copy())    
         # depending on config, logging may not be done
-        split_data      = self._orchestrate_logging(split_data)
+        split_data      = self._orchestrate_logging(split_data)      
         normalized_data = self._normalize(split_data)
 
         time_end = time.time()
