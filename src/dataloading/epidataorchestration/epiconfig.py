@@ -114,7 +114,7 @@ class EpiConfig:
     nuts_level:             Literal['nuts1', 'nuts2', 'nuts3'] = 'nuts3'
     split_berlin:           bool = True
     
-    # ============= TASK CONFIG =============
+    # ============= TASK =============
     horizon_size:           int = 1
     horizon_leadtime:       int = 1
     quantiles:              Optional[List[float]] = None
@@ -151,6 +151,7 @@ class EpiConfig:
     # ============= OTHER =============
     verbose:                Literal[0,1,2] = 0
 
+    # ============= DUNDER ============ #
     def __post_init__(self):
 
         # Validate input
@@ -162,6 +163,29 @@ class EpiConfig:
         self._set_hidden_attributes()
 
         self._classify_attributes()
+
+    # ============ Methods =========== #
+    def equals(self, other: 'EpiConfig', level = Literal[1,2]) -> bool:
+        """
+        returns whether or not two EpiConfig instances are equal
+
+        Parameters
+        ----------
+        other: 'EpiConfig'
+            the other epiconfig to be compares
+        level: Literal[1,2]
+            - 1: compares all attributes
+            - 2: compares task attributes only (MAIN + Temporal + geographical + task)
+        """
+        if level == 1:
+            return self == other
+        else:
+            attributes_groups   = ["main", "temporal", 'geography','task']
+            attributes_to_check = [item for key in attributes_groups for item in self.attributes_classified_dict.get(key, [])]
+            for attr in attributes_to_check:
+                if getattr(self, attr) != getattr(other, attr):
+                    return False 
+            return True
 
     # ============ CONFIG LOADING/SAVING ==============
     def save_config(self, config_name: str):
@@ -338,7 +362,7 @@ class EpiConfig:
             'main'          :   ['disease'],
             'temporal'      :   ['temporal_frequency','min_date','max_date','split_trainval','split_valtest'],
             'geography'     :   ['nuts_level','split_berlin'],
-            'task config'   :   ['horizon_size','horizon_leadtime','quantiles','prediction_mode','predict_difference'],
+            'task'          :   ['horizon_size','horizon_leadtime','quantiles','prediction_mode','predict_difference'],
             'features'      :   ['time_index_d','time_index_w','time_index_m','lag_column','lag_num','sequence_length','incidence_scalar', 'feature_popsize','feature_popdens','feature_gisd','feature_popage','feature_climateology','feature_kreise_classes'],
             'normalization' :   ['normalization_method','log_transform','log_shift'],    
             'column names'  :   ['temporal_column','target_column','id_column','pred_column'],
