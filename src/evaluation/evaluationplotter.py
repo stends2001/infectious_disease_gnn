@@ -33,12 +33,15 @@ class EvaluationPlotter:
                     metric:         str, 
                     horizon:        int,
                     dataset:        str = 'test',
-                    plot_type:      Literal['violin', 'box', 'map'] = 'violin', 
+                    plot_type:      Literal['violin', 'box', 'kde', 'map','best_map'] = 'violin', 
                     highlight_node: Optional[float] = None,
                     log:            bool = False,
                     reverse_scale:  bool = False,
                     vmin:           Optional[float] = None,
-                    vmax:           Optional[float] = None) -> ManagedFigure:
+                    vmax:           Optional[float] = None,
+                    best_lowest:    bool            = False,
+                    margin_sd:      Optional[float] = None
+                    ) -> ManagedFigure:
         """
         Plot specified metric across models.
         
@@ -80,8 +83,31 @@ class EvaluationPlotter:
                 vmax = vmax
             )
             plt.tight_layout()
+
+        elif plot_type == 'kde':
+            fig, ax = plt.subplots(1,1, figsize = (8,5))
+            self._plot_kde_on_ax(ax, 
+                                 metrics_df,
+                                 metric,
+                                 model_name_colors,
+                                 model_class_colors,
+                                 add_legend=True,
+                                 log = log,
+                                 vmin = vmin,
+                                 vmax = vmax)
+            
+        elif plot_type == 'best_map':
+            fig = self._plot_metric_best_map(metrics_df,
+                                 metric,
+                                 model_name_colors,
+                                 margin_sd = margin_sd,                            
+                                 best_lowest=best_lowest,
+
+)
+
+
         elif plot_type == 'map':
-            fig = self._plot_map(metrics_df, 
+            fig = self._plot_metric_map(metrics_df, 
                                  metric, 
                                  model_name_colors,
                                  log,
@@ -93,10 +119,55 @@ class EvaluationPlotter:
         plt.close()
         return fig
 
+    def _plot_kde_on_ax(self, 
+                ax: Axes, 
+                df: pd.DataFrame, 
+                metric: str, 
+                model_name_colors: dict, 
+                model_class_colors: dict,
+                add_legend: bool = True,
+                log: bool = False,
+                vmin: Optional[float] = None, 
+                vmax: Optional[float] = None):
+        
+        if log:
+            df[metric] = np.log1p(df[metric])   
+
+        ylab = f"{metric} [log]" if log else f"{metric}" 
+        if vmin is None:
+            vmin = df[metric].min()
+        if vmax is None:
+            vmax = df[metric].max()
+
+        sns.kdeplot(
+            df,
+            x=metric,
+            hue='model',
+            common_norm=False,
+            common_grid=True,
+            fill=True,
+            palette=model_name_colors,
+            ax=ax,
+            alpha=0.3,
+            linewidth=1.5
+        )
+
+        ax.set_title(f'{metric.upper()}')
+        ax.set_xlabel(ylab)
+        ax.set_ylabel('density')
+        ax.grid(alpha=0.3)
+        ax.set_xlim([vmin, vmax])            
+
+        # Legend
+        if add_legend:
+            handles = [mpatches.Patch(color=c) for c in model_class_colors.values()]
+            ax.legend(handles, model_class_colors.keys(), title='Model Class', loc='best')
+            
     def _plot_distribution_on_ax(self, 
                                  ax: Axes, 
                                  df: pd.DataFrame, 
-                                 metric: str, plot_type: str,
+                                 metric: str, 
+                                 plot_type: str,
                                  model_name_colors: dict, model_class_colors: dict,
                                  highlight_node: Optional[int] = None,
                                  add_legend: bool = True,
@@ -125,7 +196,11 @@ class EvaluationPlotter:
         add_legend : bool
             Whether to add legend to this plot
         """
-        plot_func = sns.violinplot if plot_type == 'violin' else sns.boxplot
+        match plot_type:
+            case 'violin':
+                plot_func = sns.violinplot 
+            case 'box':
+                plot_func = sns.boxplot
 
         if log:
             df[metric] = np.log1p(df[metric])
@@ -177,28 +252,7 @@ class EvaluationPlotter:
             handles = [mpatches.Patch(color=c) for c in model_class_colors.values()]
             ax.legend(handles, model_class_colors.keys(), title='Model Class', loc='best')
     
-
-    def _plot_distribution(self, df: pd.DataFrame, 
-                           metric: str, 
-                           plot_type: str,
-                           model_name_colors: dict, 
-                           model_class_colors: dict,
-                           node: Optional[int]) -> Figure:
-        """
-        Plot violin or box plot (legacy wrapper for backward compatibility).
-        Creates a new figure and calls _plot_distribution_on_ax.
-        """
-        fig, ax = plt.subplots(1, 1, figsize=(12, 5))
-        self._plot_distribution_on_ax(
-            ax, df, metric, plot_type, 
-            model_name_colors, model_class_colors,
-            node, add_legend=True
-        )
-        plt.tight_layout()
-        plt.close()
-        return fig
-
-    def _plot_map(self, metric_df: pd.DataFrame, metric: str, model_name_colors: dict, log: bool, reverse_scale: bool,
+    def _plot_metric_map(self, metric_df: pd.DataFrame, metric: str, model_name_colors: dict, log: bool, reverse_scale: bool,
                                  vmin: Optional[float] = None, 
                                  vmax: Optional[float] = None):
         """Plot spatial map of metric values."""       
@@ -272,6 +326,59 @@ class EvaluationPlotter:
         fig.suptitle(f'{metric} distribution',fontweight = 'bold')
         plt.tight_layout()
         plt.show()
+
+    def _plot_metric_best_map(self, 
+                            metric_df: pd.DataFrame, 
+                            metric: str, 
+                            model_name_colors: dict,
+                            margin_sd: float = 1.0,   # set None to disable
+                            best_lowest: bool = False
+                            ):
+        model_cols   = list(metric_df['model'].unique())
+        metrics_df_l = metric_df[[self.evaluator.id_col, 'model', metric]]
+        metrics_df_w = (metrics_df_l
+                        .pivot_table(index=self.evaluator.id_col, columns='model', values=metric)
+                        .reset_index())
+
+        # Best model per node
+        if best_lowest:
+            metrics_df_w['best'] = metrics_df_w[model_cols].idxmin(axis=1)
+        else:
+            metrics_df_w['best'] = metrics_df_w[model_cols].idxmax(axis=1)            
+
+        # Margin masking: gap between top-2 scores
+        if margin_sd is not None:
+            sorted_vals = np.sort(metrics_df_w[model_cols].values, axis=1)
+            gap = sorted_vals[:, -1] - sorted_vals[:, -2]   # top1 - top2
+            threshold = gap.std() * margin_sd
+            metrics_df_w['best'] = np.where(gap < threshold, 'uncertain', metrics_df_w['best'])
+
+        # Map color column
+        color_map = {**model_name_colors, 'uncertain': "#ffffff"}
+        metrics_df_w['color'] = metrics_df_w['best'].map(color_map)
+
+        # Merge with geodata
+        ctx = list(self.evaluator.evaluated_models.values())[0]\
+                .dataloadermanager.dataorchestrator.data_context
+        gdf      = ctx.shapedata_node
+        map_data = gpd.GeoDataFrame(pd.merge(gdf, metrics_df_w, on=self.evaluator.id_col))
+
+        fig, ax = plt.subplots(1, 1, figsize=(10, 8))
+
+        map_data.plot(ax=ax, color=map_data['color'], linewidth=0.3, edgecolor='white')
+
+        ctx.shapedata_nuts2.plot(ax=ax, facecolor='none', linewidth=0.5, edgecolor='grey')
+        ctx.shapedata_nuts1.plot(ax=ax, facecolor='none', linewidth=1.0, edgecolor='black')
+        ctx.shapedata_nuts0.plot(ax=ax, facecolor='none', linewidth=1.5, edgecolor='black')
+
+        # Legend
+        handles = [mpatches.Patch(color=c, label=m) for m, c in color_map.items()]
+        ax.legend(handles=handles, title='Best model', loc='best', fontsize=8)
+
+        ax.set_title(f'Best model by {metric}', fontweight='bold')
+        plt.tight_layout()
+        plt.close()
+        return fig
 
     def _validate_metric(self, metric: str) -> None:
         if metric not in self.evaluator.metric_calculator.supported_metrics:
