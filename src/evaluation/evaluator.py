@@ -150,9 +150,9 @@ class Evaluator:
         for mlname, ml in self.evaluated_models.items():
             if epiconfig is None:
                 epiconfig = ml.epiconfig
-            # else:
-            #     if epiconfig != ml.epiconfig:
-            #         raise ValueError('incompatible prediction modes accross models found!')
+            else:
+                if not epiconfig.equals(ml.epiconfig, level = 2):
+                    raise ValueError('incompatible prediction modes accross models found!')
         if epiconfig is None: 
             raise ValueError('epiconfig is still None')            
                 

@@ -165,7 +165,7 @@ class EpiConfig:
         self._classify_attributes()
 
     # ============ Methods =========== #
-    def equals(self, other: 'EpiConfig', level = Literal[1,2]) -> bool:
+    def equals(self, other: 'EpiConfig', level: Literal[1,2]) -> bool:
         """
         returns whether or not two EpiConfig instances are equal
 
