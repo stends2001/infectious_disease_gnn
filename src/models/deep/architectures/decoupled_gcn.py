@@ -164,7 +164,13 @@ class DecoupledGCNModule(nn.Module):
         flat_features = num_features * seq_length
 
         # Input projection: flattened temporal features → hidden space
-        self.input_proj = nn.Linear(flat_features, hidden_size)
+        self.temporal_encoder = nn.GRU(
+            input_size   = num_features,
+            hidden_size  = hidden_size,
+            num_layers   = 2,
+            batch_first  = False,
+            dropout      = dropout,
+        )
         self.input_norm = nn.LayerNorm(hidden_size)
 
         # Stack of decoupled layers — each layer has its own node embedding
@@ -210,10 +216,9 @@ class DecoupledGCNModule(nn.Module):
         """
 
         # Flatten temporal dimension into features
-        h = x.reshape(self.num_nodes, -1)           # [num_nodes, features * seq_len]
-
-        # Input projection
-        h = self.input_proj(h)
+        x_seq = x.permute(2, 0, 1)              # [seq_len, num_nodes, num_features]
+        _, h_n = self.temporal_encoder(x_seq)   # h_n: [num_gru_layers, num_nodes, hidden_size]
+        h = h_n[-1]                             # take last layer: [num_nodes, hidden_size]
         h = self.input_norm(h)
         h = F.relu(h)
         h = self.dropout(h)
