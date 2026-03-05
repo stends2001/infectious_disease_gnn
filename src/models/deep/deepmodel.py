@@ -474,7 +474,7 @@ class DeepModel(BaseModel[Union[GraphDataLoaderManager, DeepDataLoaderManager]])
         return self
 
     @classmethod
-    def load(cls, model_name: str) -> 'DeepModel':
+    def load(cls, model_name: str) -> Type['DeepModel']:
         """
         Load a trained model.
 
@@ -617,7 +617,7 @@ class DeepModel(BaseModel[Union[GraphDataLoaderManager, DeepDataLoaderManager]])
         self,
         predictions: torch.Tensor,
         targets: torch.Tensor,
-        dataset: str,
+        dataset: Literal['train','val','test'],
         num_timesteps: int,
         num_nodes: int,
         horizon_size: int,
@@ -645,16 +645,28 @@ class DeepModel(BaseModel[Union[GraphDataLoaderManager, DeepDataLoaderManager]])
         sequence_idx = np.repeat(np.arange(num_timesteps), num_nodes)
         node_idx     = np.tile(np.arange(num_nodes), num_timesteps)
 
-        dataset_time_splits = self.dataloadermanager.time_splits[
+        global_indices = self.dataloadermanager.time_splits[
             self.dataloadermanager.time_splits[dataset]
-        ].reset_index(drop=True)  # ⚠️ drop=True to avoid keeping old integer index as a column
+        ].index
 
-        timestamps = dataset_time_splits.loc[sequence_idx, self.epiconfig.temporal_column].values
+        offset = (self.dataloadermanager.dataorchestrator.config.sequence_length - 1) if dataset == 'train' else 0
+
+        timestamps = self.dataloadermanager.time_splits.loc[
+            global_indices[sequence_idx + offset], self.epiconfig.temporal_column
+        ].values
+        
 
         results = pd.DataFrame({
             self.epiconfig.temporal_column: timestamps,
             self.epiconfig.id_column: node_idx,
         })
+
+        # Sanity check: first and last timestamp should match expected range
+        expected = self.predictions.temporal_summary.get_daterange_dataset(dataset, reference='t0')
+        assert pd.Timestamp(timestamps[0]) == pd.Timestamp(expected[0]), \
+            f"First timestamp mismatch: got {timestamps[0]}, expected {expected[0]}"
+        assert pd.Timestamp(timestamps[-num_nodes]) == pd.Timestamp(expected[1]), \
+            f"Last timestamp mismatch: got {timestamps[-num_nodes]}, expected {expected[1]}"
 
         # One column per horizon per quantile: e.g. q_0.1_0, q_0.5_0, q_0.9_0, ...
         for hh in range(horizon_size):
