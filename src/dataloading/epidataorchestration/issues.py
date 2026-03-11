@@ -20,7 +20,13 @@ class EpiConfigLimitationError(Error):
     """
     """    
     def __init__(self, message: str, *, code: str | None = None, context: str | None = None):
-        super().__init__(message, code=code, context=context)        
+        super().__init__(message, code=code, context=context)  
+
+class InvalidCovariatePath(Error):
+    """
+    """    
+    def __init__(self, message: str, *, code: str | None = None, context: str | None = None):
+        super().__init__(message, code=code, context=context)      
 # ======== COLUMN_REGISTRY ====== #
 
 class ColumnRegistryError(Error):

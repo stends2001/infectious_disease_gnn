@@ -9,7 +9,7 @@ from ...utils.helpers import get_data_env
 from ...utils.textformatting import align, return_header_line
 from ...issues.errors import WissdatenMountingError
 from ...issues import IssueReport
-from .issues import EpiConfigWarning, EpiConfigValidationError, EpiConfigLimitationError
+from .issues import EpiConfigWarning, EpiConfigValidationError, EpiConfigLimitationError, InvalidCovariatePath
 
 @dataclass
 class EpiConfig:
@@ -112,7 +112,7 @@ class EpiConfig:
     
     # ============= GEOGRAPHY =============
     nuts_level:             Literal['nuts1', 'nuts2', 'nuts3'] = 'nuts3'
-    split_berlin:           bool = True
+    split_berlin:           bool = False
     
     # ============= TASK =============
     horizon_size:           int = 1
@@ -136,6 +136,8 @@ class EpiConfig:
     feature_popage:         bool = False
     feature_climateology:   bool = False   
     feature_kreise_classes: bool = False 
+    feature_borders:        bool = False
+    feature_vax:            bool = False
     
     # ============= NORMALIZATION =============
     normalization_method:   Optional[Literal['minmax', 'zscore']] = 'zscore'
@@ -194,7 +196,7 @@ class EpiConfig:
         the directory returned by `get_config_path()`.
         """
         config_dict = dataclasses.asdict(self)
-        path        = self.get_config_path() / f'{config_name}.yaml'
+        path        = self.config_path / f'{config_name}.yaml'
         with open(path, 'w') as f:
             yaml.dump(config_dict, f, default_flow_style=False, sort_keys=False)    
 
@@ -215,21 +217,21 @@ class EpiConfig:
     # ============= VALIDATION FUNCTIONS ==============
     def _validate_datapaths(self) -> None:
 
+        datapath_errors = []
+
         if not Path(get_data_env()).exists():
             raise WissdatenMountingError(get_data_env())
 
-        path_checks = [
-            ("Disease data",            self.get_disease_path),
-            ("Population data",         self.get_population_path),
-            ("Shape data",              self.get_nuts_shapefile_path),
-            ("Nuts names",              self.get_nuts_harmonization_path),
-            ("Berlin population data",  self.get_population_berlin_districts_path),
-        ]
-        for name, path_func in path_checks:
-            path = path_func()
+        path_attributes = [attr for attr in dir(self) if attr.endswith("_path")]
+
+        for path_attr in path_attributes:
+            path = getattr(self, path_attr)
             if not path.exists():
-                raise FileNotFoundError(f"{name} not found: {path}")
+                datapath_errors.append(InvalidCovariatePath(f"{path_attr} not found: {path}"))
             
+        if len(datapath_errors):
+            raise IssueReport(datapath_errors, 'EpiConfig couldnt be created')
+
     def _validate_input(self) -> None:
         """
         Validates discrepancies in the initialization of an EpiConfig instance. These represent
@@ -280,6 +282,9 @@ class EpiConfig:
                     if self.quantiles[idx_l] + self.quantiles[idx_r] != 1.0:                 
                         validation_errors.append(EpiConfigValidationError(f'Invalid input for quantiles ({self.quantiles}). Must be symmetric around quantile 0.5'))                                   
 
+        if self.split_berlin:
+            validation_errors.append(EpiConfigValidationError(f'Depcrecated: split_berlin must be False'))            
+
         if len(validation_errors):
             raise IssueReport(validation_errors, context = "EpiConfig could not be created")
         
@@ -305,32 +310,18 @@ class EpiConfig:
             ))            
         
         # features
-        # population density
-        if self.feature_popdens:
-            if self.nuts_level != 'nuts3':
-                limitation_errors.append(EpiConfigLimitationError('Currently population-density-feature data only exists for nuts3. Please remove this feature, or switch to nuts3.'))
-            
-            if self.split_berlin:
-                limitation_errors.append(EpiConfigLimitationError('Currently population-density-feature data only exists for Berlin as entirety, not split. Please adjust.'))
         # gisd
         if self.feature_gisd:
-            if self.nuts_level not in ['nuts2','nuts3']:
-                limitation_errors.append(EpiConfigLimitationError('GISD data only available for nuts2 or nuts3. Please adjust'))
-            if self.split_berlin:
-                limitation_errors.append(EpiConfigLimitationError('Crrently GISD data only exists for Berlin as entirety, not split. Please adjust.'))
             if pd.to_datetime(self.max_date) > pd.to_datetime('2021-12-31'):
                 limitation_errors.append(EpiConfigLimitationError('Currently GISD data only available until 2021 while simulation max date exceeds that. Either remove the gisd data as feature, or decrease the timespawn.'))
-        # population age
-        if self.feature_popage:
-            if self.nuts_level != 'nuts3':
-                limitation_errors.append(EpiConfigLimitationError('population age only available when nuts is nuts3'))
-            
-        if self.feature_popsize:
-            if not self.feature_popage:
-                limitation_errors.append(EpiConfigLimitationError('Currently only popsize supported if popage is included as well'))
+            if self.nuts_level == 'nuts1':
+                limitation_errors.append(EpiConfigLimitationError('Currently GISD data only available for nuts levels 2 and 3. Please Adjust'))                
         
         if self.feature_climateology:
             limitation_errors.append(EpiConfigLimitationError('Currently no climateology features supported'))
+
+        if self.feature_vax:
+            limitation_errors.append(EpiConfigLimitationError('Currently no vax feature supported'))            
 
         if len(limitation_errors):
             raise IssueReport(limitation_errors, 'EpiConfig couldnt be created')
@@ -363,7 +354,7 @@ class EpiConfig:
             'temporal'      :   ['temporal_frequency','min_date','max_date','split_trainval','split_valtest'],
             'geography'     :   ['nuts_level','split_berlin'],
             'task'          :   ['horizon_size','horizon_leadtime','quantiles','prediction_mode','predict_difference'],
-            'features'      :   ['time_index_d','time_index_w','time_index_m','lag_column','lag_num','sequence_length','incidence_scalar', 'feature_popsize','feature_popdens','feature_gisd','feature_popage','feature_climateology','feature_kreise_classes'],
+            'features'      :   ['time_index_d','time_index_w','time_index_m','lag_column','lag_num','sequence_length','incidence_scalar', 'feature_popsize','feature_popdens','feature_gisd','feature_popage','feature_climateology','feature_kreise_classes','feature_borders','feature_vax'],
             'normalization' :   ['normalization_method','log_transform','log_shift'],    
             'column names'  :   ['temporal_column','target_column','id_column','pred_column'],
             'others'        :   ['verbose'],
@@ -391,58 +382,62 @@ class EpiConfig:
         return Path(get_data_env())
     
     # ============== PATH-RETURNING ===================
-    def get_config_path(self) -> Path:
+    @property
+    def config_path(self) -> Path:
 
         return Path("config/epiconfigs")
 
-    def get_disease_path(self) -> Path:
+    @property
+    def disease_path(self) -> Path:
         """Path to disease CSV file."""
         return self.data_path / 'processed/germany/epidemiology/casedata/survstat' / f'{self.disease}.csv'
     
-    def get_population_path(self) -> Path:
+    # features
+    @property    
+    def population_size_path(self) -> Path:
         """Path to population size of nuts3 CSV file."""
-        return self.data_path / 'processed/germany/sociodemography/population_size_03.csv'
+        return self.data_path / 'processed/germany/gnenv_covariates/population_size.csv'
     
-    def get_population_density_path(self) -> Path:
+    @property    
+    def population_density_path(self) -> Path:
         """Path to population density CSV file."""
-        return self.data_path / f'processed/germany/sociodemography/population_density_{self.nuts_level}.csv'        
+        return self.data_path / f'processed/germany/gnenv_covariates/population_density.csv'        
 
-    def get_gisd_path(self) -> Path:
+    @property
+    def gisd_path(self) -> Path:
         """Path to gisd CSV file."""
-        return self.data_path / f'processed/germany/sociodemography/gisd_{self.nuts_level}.csv'        
+        return self.data_path / f'processed/germany/gnenv_covariates/gisd.csv'    
 
-    def get_population_age_path(self) -> Path:
+    @property
+    def population_age_path(self) -> Path:
         """Path to population age CSV file."""
-        return self.data_path / f'processed/germany/sociodemography/population_age_{self.nuts_level}.csv'        
-
-    def get_population_berlin_districts_path(self) -> Path:
-        """Path to berlin - districts population (2024) CSV file."""
-        return self.data_path / 'processed/germany/sociodemography/population_size_berlin_districts_03.csv'    
+        return self.data_path / f'processed/germany/gnenv_covariates/population_age.csv'        
     
-    def get_nuts_shapefile_path(self) -> Path:
+    @property    
+    def shapefile_path(self) -> Path:
         """Path to shapefile of specified nuts-level. Is to be tokenized."""
-        return self.data_path / f'processed/germany/geospatial/shapefiles/shape_{self.nuts_level}.shp'
+        return self.data_path / f'processed/germany/geospatial/shapefiles/nuts_shapes.shp'    
     
-    def get_nuts_harmonization_path(self) -> Path:
+    @property    
+    def nuts_harmonization_path(self) -> Path:
         """Path to NUTS names file."""
-        return self.data_path / 'processed/germany/geospatial/harmonization/nuts.tsv'
-    
-    def get_shapefile_paths(self) -> Dict[str,Path]:
-        """Path to all shapefiles of Germany -> to not be tokenized."""
-
-        return_dict = {
-            'nuts0':    self.data_path / f'processed/germany/geospatial/shapefiles/shape_nuts0.shp'  ,
-            'nuts1':    self.data_path / f'processed/germany/geospatial/shapefiles/shape_nuts1.shp'  ,
-            'nuts2':    self.data_path / f'processed/germany/geospatial/shapefiles/shape_nuts2.shp'  ,
-            'nuts3':    self.data_path / f'processed/germany/geospatial/shapefiles/shape_nuts3.shp'  ,
-        }
-
-        return return_dict  
-    
-    def get_kreise_classes_data(self) -> Path:
+        return self.data_path / 'processed/germany/geospatial/harmonization/nuts_harmonization.tsv'
+        
+    @property        
+    def kreise_classes_data(self) -> Path:
         """Path to kreise classification CSV file."""
-        return self.data_path / f'processed/germany/sociodemography/kreise_classifications_2024.csv' 
+        return self.data_path / f'processed/germany/gnenv_covariates/kreise_classes.csv' 
     
+    @property    
+    def borders_data(self) -> Path:
+        """Path to borders CSV file."""
+        return self.data_path / f'processed/germany/gnenv_covariates/borders.csv' 
+    
+    @property    
+    def vacmap_data(self) -> Path:
+        """Path to vacmap CSV file."""
+        return self.data_path / f'processed/germany/gnenv_covariates/vacmap.csv'     
+
     # ============= SUMMARIES =============
     
     def minimal_summary(self) -> str: 
