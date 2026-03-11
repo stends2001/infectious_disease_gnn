@@ -3,11 +3,11 @@ import geopandas as gpd
 from dataclasses import dataclass
 from typing import Literal, Dict, Optional, TYPE_CHECKING
 
-from .issues import EpiDataOrchestrationError
+from .issues import EpiDataOrchestrationError, NonExistentAttributeEpiDataContainer
 from ...utils.textformatting import checkmark
 
 if TYPE_CHECKING:
-    from .temporal_summary import EpiDataTemporalSummary
+    from src.dataloading.epidataorchestration.temporal_summary import EpiDataTemporalSummary
 
 @dataclass
 class RawEpiData:
@@ -41,73 +41,82 @@ class RawEpiData:
     """
 
     disease:                pd.DataFrame
-    population:             pd.DataFrame
-    shapedata_node:         gpd.GeoDataFrame
-    shapedata_collection:   Dict[str, gpd.GeoDataFrame]
+    population_size:        pd.DataFrame
+    shapedata:              gpd.GeoDataFrame
     nuts_harm:              pd.DataFrame    
     
-    _population_berlin:      Optional[pd.DataFrame] = None
     _population_density:     Optional[pd.DataFrame] = None
-    _gisd:                   Optional[pd.DataFrame] = None
     _population_age:         Optional[pd.DataFrame] = None
-    _kreise_classes:         Optional[pd.DataFrame] = None
+    _gisd:                   Optional[pd.DataFrame] = None    
+    _kreise_classes:         Optional[pd.DataFrame] = None 
+    _borders:                Optional[pd.DataFrame] = None 
+    _vacmap:                 Optional[pd.DataFrame] = None
     
-    @property
-    def population_berlin(self) -> pd.DataFrame:
-        df = self._population_berlin
-        if df is None: 
-            raise EpiDataOrchestrationError(f'Attempted to access population_berlin at {self.__class__.__name__} but no such data found')
-        return df
-
     @property
     def population_density(self) -> pd.DataFrame:
         df = self._population_density
         if df is None: 
-            raise EpiDataOrchestrationError(f'Attempted to access population_density at {self.__class__.__name__} but no such data found')
+            raise NonExistentAttributeEpiDataContainer(self.__class__.__name__, 'population_density')
         return df   
-
-    @property
-    def gisd(self) -> pd.DataFrame:
-        df = self._gisd
-        if df is None: 
-            raise EpiDataOrchestrationError(f'Attempted to access gisd at {self.__class__.__name__} but no such data found')
-        return df
 
     @property
     def population_age(self) -> pd.DataFrame:
         df = self._population_age
         if df is None: 
-            raise EpiDataOrchestrationError(f'Attempted to access population_age at {self.__class__.__name__} but no such data found')
-        return df         
-    
+            raise NonExistentAttributeEpiDataContainer(self.__class__.__name__, 'population_age')
+        return df           
+
+    @property
+    def gisd(self) -> pd.DataFrame:
+        df = self._gisd
+        if df is None: 
+            raise NonExistentAttributeEpiDataContainer(self.__class__.__name__, 'gisd')
+        return df
+
     @property
     def kreise_classes(self) -> pd.DataFrame:
         df = self._kreise_classes
         if df is None: 
-            raise EpiDataOrchestrationError(f'Attempted to access kreise_classes at {self.__class__.__name__} but no such data found')
-        return df         
+            raise NonExistentAttributeEpiDataContainer(self.__class__.__name__, 'kreise_classes')
+        return df    
+         
+    @property
+    def borders(self) -> pd.DataFrame:
+        df = self._borders
+        if df is None: 
+            raise NonExistentAttributeEpiDataContainer(self.__class__.__name__, 'borders')
+        return df    
+
+    @property
+    def vacmap(self) -> pd.DataFrame:
+        df = self._vacmap
+        if df is None: 
+            raise NonExistentAttributeEpiDataContainer(self.__class__.__name__, 'vacmap')
+        return df          
 
     def __repr__(self):
         representation = (f"<{self.__class__.__name__}(disease {checkmark}, "
-                f"population {checkmark}, "
-                f"shapedata_node {checkmark}, "
-                f"shapedata_collection {checkmark}, "                
+                f"population_size {checkmark}, "
+                f"shapedata {checkmark}, "               
                 f"nuts_harm {checkmark}")
         
-        if self._population_berlin is not None:
+        if self._population_density is not None:
             representation += f", population_berlin {checkmark}"
         
-        if self._population_density is not None:
-            representation += f", population_density {checkmark}"
+        if self._population_age is not None:
+            representation += f", population_age {checkmark}"
 
         if self._gisd is not None:
             representation += f", gisd {checkmark}"
 
-        if self._population_age is not None:
-            representation += f", population_age {checkmark}"
-
         if self._kreise_classes is not None:
-            representation += f", kreise_classes {checkmark}"            
+            representation += f", kreise_classes {checkmark}"
+
+        if self._borders is not None:
+            representation += f", borders {checkmark}"            
+
+        if self._vacmap is not None:
+            representation += f", vacmap {checkmark}"                  
 
         return representation +")>"
 
@@ -144,11 +153,8 @@ class ContextEpiData:
 
     """    
     nuts_level:             Literal['nuts1', 'nuts2', 'nuts3']
-    shapedata_node:         gpd.GeoDataFrame
-    shapedata_nuts0:        gpd.GeoDataFrame
-    shapedata_nuts1:        gpd.GeoDataFrame
-    shapedata_nuts2:        gpd.GeoDataFrame
-    shapedata_nuts3:        gpd.GeoDataFrame            
+    shapedata:              gpd.GeoDataFrame   
+    nuts_shapedata:         gpd.GeoDataFrame     
     population_size:        pd.DataFrame
     nuts_harm:              pd.DataFrame
     tokenization_map:       Dict[str, Dict[(int | str), (int | str)]]
@@ -161,11 +167,8 @@ class ContextEpiData:
     def __repr__(self):
         representation = (f"<{self.__class__.__name__}(nuts_level = {self.nuts_level}, "
                 f"num_nodes = {self.num_nodes}, "
-                f"shapedata_node {checkmark}, "
-                f"shapedata_nuts0 {checkmark}, "
-                f"shapedata_nuts1 {checkmark}, "
-                f"shapedata_nuts2 {checkmark}, "
-                f"shapedata_nuts3 {checkmark}, "             
+                f"shapedata {checkmark}, "             
+                f"nuts_shapedata {checkmark}, "                  
                 f"population_size {checkmark}, "                                                                       
                 f"nuts_harm {checkmark}, "
                 f"tokenization_map {checkmark}, "
@@ -193,54 +196,87 @@ class HarmonizedEpiData:
     """        
     epidata:     pd.DataFrame
 
-    _population_density: Optional[pd.DataFrame] = None
-    _gisd:               Optional[pd.DataFrame] = None    
+    _population_size:    Optional[pd.DataFrame] = None
+    _population_density: Optional[pd.DataFrame] = None 
     _population_age:     Optional[pd.DataFrame] = None    
+    _gisd:               Optional[pd.DataFrame] = None  
     _kreise_classes:     Optional[pd.DataFrame] = None
+    _borders:            Optional[pd.DataFrame] = None
+    _vacmap:             Optional[pd.DataFrame] = None
+
+    @property
+    def population_size(self) -> pd.DataFrame:
+        df = self._population_size
+        if df is None: 
+            raise NonExistentAttributeEpiDataContainer(self.__class__.__name__, 'population_size')
+        return df 
 
     @property
     def population_density(self) -> pd.DataFrame:
         df = self._population_density
         if df is None: 
-            raise EpiDataOrchestrationError(f'Attempted to access population_density at {self.__class__.__name__} but no such data found')
-        return df         
-
-    @property
-    def gisd(self) -> pd.DataFrame:
-        df = self._gisd
-        if df is None: 
-            raise EpiDataOrchestrationError(f'Attempted to access gisd at {self.__class__.__name__} but no such data found')
+            raise NonExistentAttributeEpiDataContainer(self.__class__.__name__, 'population_density')
         return df         
 
     @property
     def population_age(self) -> pd.DataFrame:
         df = self._population_age
         if df is None: 
-            raise EpiDataOrchestrationError(f'Attempted to access population_age at {self.__class__.__name__} but no such data found')
+            raise NonExistentAttributeEpiDataContainer(self.__class__.__name__, 'population_age')
         return df             
+
+    @property
+    def gisd(self) -> pd.DataFrame:
+        df = self._gisd
+        if df is None: 
+            raise NonExistentAttributeEpiDataContainer(self.__class__.__name__, 'gisd')
+        return df         
 
     @property
     def kreise_classes(self) -> pd.DataFrame:
         df = self._kreise_classes
         if df is None: 
-            raise EpiDataOrchestrationError(f'Attempted to access kreise_classes at {self.__class__.__name__} but no such data found')
-        return df                  
+            raise NonExistentAttributeEpiDataContainer(self.__class__.__name__, 'kreise_classes')
+        return df     
+
+    @property
+    def borders(self) -> pd.DataFrame:
+        df = self._borders
+        if df is None: 
+            raise NonExistentAttributeEpiDataContainer(self.__class__.__name__, 'borders')
+        return df   
+
+    @property
+    def vacmap(self) -> pd.DataFrame:
+        df = self._vacmap
+        if df is None: 
+            raise NonExistentAttributeEpiDataContainer(self.__class__.__name__, 'vacmap')
+        return df                        
 
     def __repr__(self):
         representation = f"<{self.__class__.__name__}(epidata {checkmark}"
 
+        if self._population_size is not None:
+            representation += f", _population_size {checkmark}"
+
         if self._population_density is not None:
             representation += f", population_density {checkmark}"
+        
+        if self._population_age is not None:
+            representation += f", population_age {checkmark}"
 
         if self._gisd is not None:
-            representation += f", gisd {checkmark}"      
-
-        if self._population_age is not None:
-            representation += f", population_age {checkmark}"             
+            representation += f", gisd {checkmark}"
 
         if self._kreise_classes is not None:
-            representation += f", kreise_classes {checkmark}"                       
-                          
+            representation += f", kreise_classes {checkmark}"
+
+        if self._borders is not None:
+            representation += f", borders {checkmark}"            
+
+        if self._vacmap is not None:
+            representation += f", vacmap {checkmark}"    
+
         representation += ")>"
         return representation
 
@@ -264,44 +300,60 @@ class ProcessedEpiData:
 
     _population_size:    Optional[pd.DataFrame] = None
     _population_density: Optional[pd.DataFrame] = None
-    _gisd:               Optional[pd.DataFrame] = None      
-    _population_age:     Optional[pd.DataFrame] = None      
+    _population_age:     Optional[pd.DataFrame] = None         
+    _gisd:               Optional[pd.DataFrame] = None       
     _kreise_classes:     Optional[pd.DataFrame] = None
+    _borders:            Optional[pd.DataFrame] = None
+    _vacmap:             Optional[pd.DataFrame] = None    
     
     @property
     def population_size(self) -> pd.DataFrame:
         df = self._population_size
         if df is None: 
-            raise EpiDataOrchestrationError(f'Attempted to access population_size at {self.__class__.__name__} but no such data found')
+            raise NonExistentAttributeEpiDataContainer(self.__class__.__name__, 'population_size')
         return df      
     
     @property
     def population_density(self) -> pd.DataFrame:
         df = self._population_density
         if df is None: 
-            raise EpiDataOrchestrationError(f'Attempted to access population_density at {self.__class__.__name__} but no such data found')
+            raise NonExistentAttributeEpiDataContainer(self.__class__.__name__, 'population_density')
         return df      
+        
+    @property
+    def population_age(self) -> pd.DataFrame:
+        df = self._population_age
+        if df is None: 
+            raise NonExistentAttributeEpiDataContainer(self.__class__.__name__, 'population_age')
+        return df 
     
     @property
     def gisd(self) -> pd.DataFrame:
         df = self._gisd
         if df is None: 
-            raise EpiDataOrchestrationError(f'Attempted to access gisd at {self.__class__.__name__} but no such data found')
-        return df      
-    
-    @property
-    def population_age(self) -> pd.DataFrame:
-        df = self._population_age
-        if df is None: 
-            raise EpiDataOrchestrationError(f'Attempted to access population_age at {self.__class__.__name__} but no such data found')
-        return df      
+            raise NonExistentAttributeEpiDataContainer(self.__class__.__name__, 'gisd')
+        return df           
     
     @property
     def kreise_classes(self) -> pd.DataFrame:
         df = self._kreise_classes
         if df is None: 
-            raise EpiDataOrchestrationError(f'Attempted to access kreise_classes at {self.__class__.__name__} but no such data found')
+            raise NonExistentAttributeEpiDataContainer(self.__class__.__name__, 'kreise_classes')
         return df       
+
+    @property
+    def borders(self) -> pd.DataFrame:
+        df = self._borders
+        if df is None: 
+            raise NonExistentAttributeEpiDataContainer(self.__class__.__name__, 'borders')
+        return df   
+
+    @property
+    def vacmap(self) -> pd.DataFrame:
+        df = self._vacmap
+        if df is None: 
+            raise NonExistentAttributeEpiDataContainer(self.__class__.__name__, 'vacmap')
+        return df          
 
     def __repr__(self):
         representation = (f"<{self.__class__.__name__}(epidata {checkmark}")
@@ -312,14 +364,21 @@ class ProcessedEpiData:
         if self._population_density is not None:
             representation += f", population_density {checkmark}"
 
-        if self._gisd is not None:
-            representation += f", gisd {checkmark}"      
-
         if self._population_age is not None:
             representation += f", population_age {checkmark}"      
 
+        if self._gisd is not None:
+            representation += f", gisd {checkmark}"      
+
         if self._kreise_classes is not None:
             representation += f", kreise_classes {checkmark}"       
+
+        if self._borders is not None:
+            representation += f", borders {checkmark}"       
+
+        if self._vacmap is not None:
+            representation += f", vacmap {checkmark}"       
+
 
         representation += ")>"
         return representation
@@ -333,10 +392,10 @@ class FeatureEpiData:
     ----------
     epidata: pd.DataFrame
     """        
-    epidata:               pd.DataFrame
+    data:               pd.DataFrame
 
     def __repr__(self):
-        representation = (f"<{self.__class__.__name__}(epidata {checkmark}")
+        representation = (f"<{self.__class__.__name__}(data {checkmark}")
         representation += ")>"
         return representation  
 
@@ -349,10 +408,10 @@ class NormalizedEpiData:
     ----------
     epidata: pd.DataFrame
     """     
-    epidata:     pd.DataFrame  
+    data:     pd.DataFrame  
 
     def __repr__(self):
-        representation = (f"<{self.__class__.__name__}(epidata {checkmark}")
+        representation = (f"<{self.__class__.__name__}(data {checkmark}")
         representation += ")>"
         return representation
 

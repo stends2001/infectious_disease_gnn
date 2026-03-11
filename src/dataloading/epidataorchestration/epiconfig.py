@@ -424,17 +424,17 @@ class EpiConfig:
         return self.data_path / 'processed/germany/geospatial/harmonization/nuts_harmonization.tsv'
         
     @property        
-    def kreise_classes_data(self) -> Path:
+    def kreise_classes_path(self) -> Path:
         """Path to kreise classification CSV file."""
-        return self.data_path / f'processed/germany/gnenv_covariates/kreise_classes.csv' 
+        return self.data_path / f'processed/germany/gnenv_covariates/kreis_classes.csv' 
     
     @property    
-    def borders_data(self) -> Path:
+    def borders_path(self) -> Path:
         """Path to borders CSV file."""
         return self.data_path / f'processed/germany/gnenv_covariates/borders.csv' 
     
     @property    
-    def vacmap_data(self) -> Path:
+    def vacmap_path(self) -> Path:
         """Path to vacmap CSV file."""
         return self.data_path / f'processed/germany/gnenv_covariates/vacmap.csv'     
 

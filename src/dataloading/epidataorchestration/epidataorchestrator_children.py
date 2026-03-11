@@ -12,7 +12,7 @@ from .column_registry import ColumnRegistration
 from .epidatacontainers import RawEpiData, HarmonizedEpiData, ContextEpiData, ProcessedEpiData, FeatureEpiData, NormalizedEpiData, FinalizedEpiData
 from .normalization import apply_minmax_scaling, apply_zscore_scaling, pipeline_minmax_normalization, pipeline_zscore_normalization
 from .normalization import reverse_log, reverse_minmax_scaling, reverse_zscore_scaling
-from .issues import EpiDataOrchestrationError, MissingEpiDataContainer
+from .issues import EpiDataOrchestrationError
 
 if TYPE_CHECKING:
     from .epiconfig import EpiConfig
@@ -43,7 +43,7 @@ class EpiDataReader:
         __________________________________________________________
         | 'week' | 'nuts3_key' | 'cases' | 'year ' | 'timestamp' |
         """        
-        filepath = self.epiconfig.get_disease_path()
+        filepath = self.epiconfig.disease_path
                 
         df = pd.read_csv(
             filepath,
@@ -57,111 +57,49 @@ class EpiDataReader:
         
         return df
     
-    def _load_population_data(self) -> pd.DataFrame:
+    def _load_population_size_data(self) -> pd.DataFrame:
         """
         loads population data
 
         df looks like:
-        _____________________________________________
-        | 'nuts3_key' | 'year ' | 'population_size' |
+        _____________________________________________________________
+        | 'nuts_level' | 'nuts_key' | 'timestamp' | 'population_size |       
         """         
-        filepath = self.epiconfig.get_population_path()
+        filepath = self.epiconfig.population_size_path
         
         df = pd.read_csv(
             filepath,
-            dtype   = {'nuts3': str}
-        ).rename(columns = {'nuts3':'nuts3_key'})
+            dtype   = {'nuts_key': str},
+            parse_dates = ['timestamp']
+        )
         
+        df['year'] = df['timestamp'].dt.year
+        df = df.drop(columns = ['timestamp'])
+
         if self.epiconfig.verbose > 1:
             print(f"{checkmark} Loaded raw population data")
         
         return df
-    
-    def _load_population_data_berlin_districts(self) -> pd.DataFrame:
-        """
-        loads population data (I created myself) for districts in Berlin
-
-        df looks like:
-        ___________________________________
-        | 'nuts3_key' | 'population_size' |
-        """          
-        filepath = self.epiconfig.get_population_berlin_districts_path()
-        
-        df = pd.read_csv(
-            filepath,
-            dtype={'nuts3': str}
-            ).rename(columns = {'nuts3':'nuts3_key'})
-        
-        if self.epiconfig.verbose > 1:
-            print(f"{checkmark} Loaded raw berlin districts population data")
-        
-        return df        
-
-    def _load_node_shapedata(self) -> gpd.GeoDataFrame:
-        """
-        loads shapedata for the specified nuts level
-
-        gdf looks like:
-        _____________________________________________________
-        | 'nuts{int}_key' | 'nuts{int}_name' | 'geometry ' |
-
-        where 'nuts{int}' is variable and depends on the input in epiconfig.
-        """          
-        filepath = self.epiconfig.get_nuts_shapefile_path()
-        
-        gdf = gpd.read_file(filepath).drop(columns=['level'], errors='ignore')
-        
-        if self.epiconfig.verbose > 1:
-            print(f"{checkmark} Loaded raw shapedata ({len(gdf)} regions)")
-        
-        return gdf
-    
-    def _load_shapedata_collection(self) -> Dict[str, gpd.GeoDataFrame]:
-        """
-        Loads all background shapedata: shapedata for all nuts levels, that won't be changed depending on nuts resolution in config
-        Returned in a dictionary with keys ['nuts0' - 'nuts3'] and the gdfs as values
-        """
-        filepaths = self.epiconfig.get_shapefile_paths()
-
-        shapefiles= {key:  gpd.read_file(filepaths[key]).drop(columns=['level'], errors='ignore') for key in list(filepaths.keys())}
-
-        return shapefiles
-        
-    def _load_nuts_harm(self) -> pd.DataFrame:
-        """
-        loads harmonization data for nuts divisions in Germany
-
-        df looks like:
-        _________________________________________________________________________________________
-        | 'nuts3_key' | 'nuts2_key' | 'nuts1_key' | 'nuts3_name' | 'nuts2_name' | 'nuts1_name' |
-        """  
-        # main file, additions-file
-        filepath = self.epiconfig.get_nuts_harmonization_path()   
-        
-        df = pd.read_csv(filepath, sep='\t', dtype=str)
-        
-        if self.epiconfig.verbose > 1:
-            print(f"{checkmark} Loaded raw NUTS names")
-        
-        return df
-
+  
     def _load_population_density(self) -> pd.DataFrame:
         """
         loads population density data for the specified nuts level
 
         df looks like:
-        _____________________________________________________
-        | '{nuts_level}_key' | 'year' | 'population_density ' |
+        __________________________________________________________________
+        | 'nuts_level' | 'nuts_key' | 'timestamp' | 'population_density' |
 
-        where '{nuts_level}' is self.nuts_level in epiconfig.
         """          
-        filepath = self.epiconfig.get_population_density_path()
+        filepath = self.epiconfig.population_density_path
         
         df = pd.read_csv(
             filepath,
-            dtype={f'{self.epiconfig.nuts_level}_key': str}
-            )
+            dtype   = {'nuts_key': str},
+            parse_dates = ['timestamp']
+        )
         
+        df['year'] = df['timestamp'].dt.year
+        df = df.drop(columns = ['timestamp'])
         if self.epiconfig.verbose > 1:
             print(f"{checkmark} Loaded population density")
         
@@ -172,45 +110,82 @@ class EpiDataReader:
         loads population density data for the specified nuts level
 
         df looks like:
-        _____________________________________________________________________________________________
-        | '{nuts_level}_key' | 'year' | 'age_group0' | ... | 'age_group16' | 'population_size' |
+        _______________________________________________________________________________
+        | 'nuts_level' | 'nuts_key' | '{age_group0}' | ... | '{age_group16}' | 'year' |
 
-        where '{nuts_level}' is self.nuts_level in epiconfig.
+        where age_groups have certain names, namely: 'under_3_years' for example.
         """          
-        filepath = self.epiconfig.get_population_age_path()
+        filepath = self.epiconfig.population_age_path
         
         df = pd.read_csv(
             filepath,
-            dtype={f'{self.epiconfig.nuts_level}': str},
-            parse_dates=['timestamp']
-            )
+            dtype   = {'nuts_key': str},
+            parse_dates = ['timestamp']
+        )
         
-        df = df.rename(columns = {self.epiconfig.nuts_level : f'{self.epiconfig.nuts_level}_key'})
-        timestamp: pd.Series[pd.Timestamp]  = df['timestamp']    
-        df['year'] = timestamp.dt.year
-        df.drop(columns = 'timestamp', inplace = True)
-
+        df['year'] = df['timestamp'].dt.year
+        df = df.drop(columns = ['timestamp'])
         if self.epiconfig.verbose > 1:
             print(f"{checkmark} Loaded population age")
         
         return df        
+
+    def _load_shapedata(self) -> gpd.GeoDataFrame:
+        """
+        loads shapedata for the specified nuts level
+
+        gdf looks like:
+        __________________________________________
+        | 'nuts_level' | 'nuts_key' | 'geometry' |
+
+        """          
+        filepath = self.epiconfig.shapefile_path
+        
+        gdf = gpd.read_file(filepath).drop(columns=['level'], errors='ignore')
+        
+        if self.epiconfig.verbose > 1:
+            print(f"{checkmark} Loaded raw shapedata ({len(gdf)} regions)")
+        
+        return gdf
+      
+    def _load_nuts_harm(self) -> pd.DataFrame:
+        """
+        loads harmonization data for nuts divisions in Germany
+
+        df looks like:
+        _________________________________________________________________________________________
+        | 'nuts3_key' | 'nuts2_key' | 'nuts1_key' | 'nuts3_name' | 'nuts2_name' | 'nuts1_name' |
+        """  
+        # main file, additions-file
+        filepath = self.epiconfig.nuts_harmonization_path   
+        
+        df = pd.read_csv(filepath, sep='\t', dtype=str)
+        
+        if self.epiconfig.verbose > 1:
+            print(f"{checkmark} Loaded raw NUTS names")
+        
+        return df
 
     def _load_gisd(self) -> pd.DataFrame:
         """
         loads population density data for the specified nuts level
 
         df looks like:
-        _____________________________________________________
-        | '{nuts_level}_key' | 'year' | 'gisd ' |
+        __________________________________________________________
+        | 'nuts_level' | 'nuts_key' | 'gisd_score' | 'timestamp' |
 
         where '{nuts_level}' is self.nuts_level in epiconfig.
         """          
-        filepath = self.epiconfig.get_gisd_path()
+        filepath = self.epiconfig.gisd_path
         
         df = pd.read_csv(
             filepath,
-            dtype={f'{self.epiconfig.nuts_level}_key': str}
-            )
+            dtype   = {'nuts_key': str},
+            parse_dates = ['timestamp']
+        )
+        
+        df['year'] = df['timestamp'].dt.year
+        df = df.drop(columns = ['timestamp'])
                 
         if self.epiconfig.verbose > 1:
             print(f"{checkmark} Loaded gisd")
@@ -219,15 +194,17 @@ class EpiDataReader:
 
     def _load_kreise_classes(self) -> pd.DataFrame:
         """
-        loads kreise classification data
-
-        df looks like:
-        _____________________
-        | 'nuts3_key' | ... |
-
-        for many columns.
+['nuts_level', 'nuts_key', 'settlement_location_central',
+       'settlement_location_peripheral', 'settlement_location_very_central',
+       'settlement_location_very_peripheral',
+       'settlement_type_large_independent_city',
+       'settlement_type_small_independent_city',
+       'settlement_type_sparsely_populated_rural', 'settlement_type_urban',
+       'settlement_type_urbanizing_rural', 'east', 'west', 'kreis_type_kreis',
+       'kreis_type_kreisfreie_stadt', 'kreis_type_landkreis',
+       'kreis_type_regionalverband', 'kreis_type_stadtkreis']
         """          
-        filepath = self.epiconfig.get_kreise_classes_data()
+        filepath = self.epiconfig.kreise_classes_path
         
         df = pd.read_csv(
             filepath,
@@ -239,22 +216,55 @@ class EpiDataReader:
         
         return df
 
+    def _load_borders_data(self) -> pd.DataFrame:
+        """
+['nuts_level', 'nuts_key', 'Austria', 'Belgium', 'Czech', 'Denmark',
+       'France', 'Luxembourg', 'Netherlands', 'Poland', 'Switzerland', 'none']
+        """          
+        filepath = self.epiconfig.borders_path
+        
+        df = pd.read_csv(
+            filepath,
+            dtype   = {'nuts_key': str},
+            )
+                
+        if self.epiconfig.verbose > 1:
+            print(f"{checkmark} Loaded border data")
+        
+        return df
+
+    def _load_vacmap_data(self) -> pd.DataFrame:
+        """
+        ...
+        """          
+        filepath = self.epiconfig.vacmap_path
+        
+        df = pd.read_csv(
+            filepath,
+            dtype   = {'nuts_key': str},
+            )
+                
+        if self.epiconfig.verbose > 1:
+            print(f"{checkmark} Loaded border data")
+        
+        return df
+
     def orchestrate(self) -> RawEpiData:
         time_start = time.time()
 
         rawdata = RawEpiData(
             disease             = self._load_disease_data(),
-            population          = self._load_population_data(),
-            shapedata_node      = self._load_node_shapedata(),
-            shapedata_collection= self._load_shapedata_collection(),
+            population_size     = self._load_population_size_data(),
+            shapedata           = self._load_shapedata(),
             nuts_harm           = self._load_nuts_harm(),
 
             # optional data
-            _population_berlin   = self._load_population_data_berlin_districts() if self.epiconfig.split_berlin     else None,   
-            _population_density  = self._load_population_density()               if self.epiconfig.feature_popdens  else None,
-            _gisd                = self._load_gisd()                             if self.epiconfig.feature_gisd     else None,
-            _population_age      = self._load_population_age()                   if self.epiconfig.feature_popage   else None,
-            _kreise_classes      = self._load_kreise_classes()                   if self.epiconfig.feature_kreise_classes else None,
+            _population_density  = self._load_population_density()               if self.epiconfig.feature_popdens          else None,
+            _population_age      = self._load_population_age()                   if self.epiconfig.feature_popage           else None,
+            _kreise_classes      = self._load_kreise_classes()                   if self.epiconfig.feature_kreise_classes   else None,
+            _gisd                = self._load_gisd()                             if self.epiconfig.feature_gisd             else None,
+            _borders             = self._load_borders_data()                     if self.epiconfig.feature_borders          else None,    
+            _vacmap              = self._load_vacmap_data()                      if self.epiconfig.feature_vax              else None,                     
         )
 
         time_end = time.time()
@@ -282,37 +292,7 @@ class EpiDataHarmonizer:
     def __init__(self, epiconfig: 'EpiConfig'):
         self.epiconfig = epiconfig    
 
-    def _add_berlin_districts(self, population_nuts3: pd.DataFrame, population_berlin_districts: pd.DataFrame) -> pd.DataFrame:
-        """
-        when berlin to be split -> add population data by district
-        based on population data for nuts3 and for berlin districts, concatenate into one df with 412 nuts3 values.
-        """
-        # get all berlin - population and find the percentages per district 
-        total_population_berlin                                     = sum(population_berlin_districts['population_size'])
-        relative_population_size_berlin_districts                   = population_berlin_districts.copy()
-        relative_population_size_berlin_districts['population_size']= relative_population_size_berlin_districts['population_size'] / total_population_berlin
-
-        # for every year, multiply these percentages with the total population in Berlin for the districts and concatenate to df
-        df_11000 = population_nuts3[population_nuts3['nuts3'] == berlin_id][['year', 'population_size']].set_index('year')
-            
-        yearly_dfs = []  # Collect dataframes to concatenate later
-
-        for year, base_pop in df_11000['population_size'].items():
-            yearly_rows = relative_population_size_berlin_districts.copy()
-            yearly_rows['year'] = int(year) # type: ignore[assignment]
-            yearly_rows['population_size'] = yearly_rows['population_size'] * base_pop
-            yearly_rows['population_size'] = yearly_rows['population_size'].astype(int)
-            
-            yearly_dfs.append(yearly_rows)
-
-        result_df = pd.concat(yearly_dfs, ignore_index=True)
-        combined  = pd.concat([population_nuts3, result_df], ignore_index=True)
-
-        if self.epiconfig.verbose > 1:
-            print(f'{checkmark} berlin districts - population data included')          
-        return combined
-
-    def _mutate_berlin_district_ids(self, epidemiology_df: pd.DataFrame) -> pd.DataFrame:
+    def _mutate_berlin_districts(self, epidemiology_df: pd.DataFrame) -> pd.DataFrame:
         """
         When berlin not to be split -> mutate all nuts3 values of the districts into
         berlin ones (11000) for the subsequent aggregation onto nuts3/nuts2/nuts1 levels.
@@ -323,16 +303,6 @@ class EpiDataHarmonizer:
             print(f'{checkmark} berlin districts renamed into berlin city')  
 
         return epidemiology_df
-
-    def _aggregate_by_nuts(self, epidemiology_df: pd.DataFrame, population_df: pd.DataFrame) -> Tuple[pd.DataFrame,pd.DataFrame]:
-        """aggregates epidemiology and population data per nuts level"""
-        epi_df_aggr = epidemiology_df.groupby(['timestamp', f'{self.epiconfig.nuts_level}_key']).aggregate({'cases':'sum'}).reset_index()     
-        pop_df_aggr = population_df.groupby(['year', f'{self.epiconfig.nuts_level}_key']).aggregate({'population_size':'sum'}).reset_index() 
-
-        if self.epiconfig.verbose > 1:
-            print(f'{checkmark} epidemiology and population data aggregated on nuts')    
-
-        return epi_df_aggr, pop_df_aggr
 
     def _add_nuts_column(self, df: pd.DataFrame) -> pd.DataFrame:
         """adds nuts-level column"""
@@ -345,6 +315,19 @@ class EpiDataHarmonizer:
         if self.epiconfig.verbose > 1:
             print(f'{checkmark} nuts column added')  
         return df
+
+    def _aggregate_by_nuts(self, epidemiology_df: pd.DataFrame) -> pd.DataFrame:
+        """aggregates epidemiology and population data per nuts level"""
+        cases_nuts_aggregated = epidemiology_df.groupby(['timestamp', f'{self.epiconfig.nuts_level}_key']).aggregate({'cases':'sum'}).reset_index()     
+
+        if self.epiconfig.verbose > 1:
+            print(f'{checkmark} epidemiology data aggregated on nuts')    
+
+        return cases_nuts_aggregated
+
+    def _extract_nuts_column(self, df: pd.DataFrame, nuts_level: str) -> pd.DataFrame:
+        df = df[df['nuts_level'] == nuts_level].reset_index(drop = True).drop(columns = 'nuts_level')
+        return df.rename(columns = {'nuts_key':f'{nuts_level}_key'})
 
     def _merge_epipopdata(self, epidemiology_df: pd.DataFrame, population_df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -467,22 +450,15 @@ class EpiDataHarmonizer:
         """
         time_start = time.time()
 
-        if self.epiconfig.split_berlin:
-            if rawdata.population_berlin is None:
-                raise EpiDataOrchestrationError("'population_berlin' attribute is not found in rawdata")
-            
-            population_data = self._add_berlin_districts(rawdata.population, rawdata.population_berlin)
-            raw_epidata     = rawdata.disease
-        else:
-            raw_epidata     = self._mutate_berlin_district_ids(rawdata.disease)
-            population_data = rawdata.population
-
+        raw_epidata         = self._mutate_berlin_districts(rawdata.disease)
         epidemiology_data   = self._add_nuts_column(raw_epidata)
-        population_data     = self._add_nuts_column(population_data)
-        aggregated_dfs      = self._aggregate_by_nuts(epidemiology_data, population_data)
-        epipopdata          = self._merge_epipopdata(aggregated_dfs[0], aggregated_dfs[1])
-        nutsnames           = self._get_nuts_data(rawdata.nuts_harm)
 
+        nuts_cases          = self._aggregate_by_nuts(epidemiology_data)
+        nuts_population     = self._extract_nuts_column(rawdata.population_size, self.epiconfig.nuts_level)
+        nuts_shapedata      = self._extract_nuts_column(rawdata.shapedata.copy(), self.epiconfig.nuts_level)
+
+        epipopdata          = self._merge_epipopdata(nuts_cases, nuts_population)
+        nutsnames           = self._get_nuts_data(rawdata.nuts_harm)
         epipopdata          = self._resample(epipopdata, self.epiconfig.temporal_frequency)
 
         tokenization_map_id = self._return_tokenization_map(epipopdata, f'{self.epiconfig.nuts_level}_key')
@@ -497,7 +473,7 @@ class EpiDataHarmonizer:
                                               tokenization_map['nuts_node-idx'],
                                               f'{self.epiconfig.nuts_level}_key',
                                               self.epiconfig.id_column)
-        shapedata  = self._apply_tokenization(rawdata.shapedata_node, 
+        nuts_shapedata  = self._apply_tokenization(nuts_shapedata, 
                                               tokenization_map['nuts_node-idx'],
                                               f'{self.epiconfig.nuts_level}_key', 
                                               self.epiconfig.id_column)
@@ -505,60 +481,89 @@ class EpiDataHarmonizer:
                                               tokenization_map['nuts_node-idx'],
                                               f'{self.epiconfig.nuts_level}_key',         
                                               self.epiconfig.id_column)
-        population_data = self._apply_tokenization(population_data,
+        population_data = self._apply_tokenization(nuts_population,
                                                    tokenization_map['nuts_node-idx'],
                                                    f'{self.epiconfig.nuts_level}_key',
                                                    self.epiconfig.id_column)
 
         # extra features
+        population_size_data    = None
         population_density_data = None
+        population_age          = None           
         gisd_data               = None
-        population_age          = None   
         kreise_classes          = None
+        borders                 = None 
+        vacmap                  = None
 
-        if self.epiconfig.feature_popdens:
-            population_density_data = self._apply_tokenization(rawdata.population_density, 
+        if self.epiconfig.feature_popsize:
+            population_size_data = self._extract_nuts_column(rawdata.population_size, self.epiconfig.nuts_level)
+            population_size_data = self._apply_tokenization(population_size_data, 
                                                                tokenization_map['nuts_node-idx'],
                                                                f'{self.epiconfig.nuts_level}_key', 
-                                                               self.epiconfig.id_column)
+                                                               self.epiconfig.id_column)           
+
+        if self.epiconfig.feature_popdens:
+            population_density_data = self._extract_nuts_column(rawdata.population_density, self.epiconfig.nuts_level)
+            population_density_data = self._apply_tokenization(population_density_data, 
+                                                               tokenization_map['nuts_node-idx'],
+                                                               f'{self.epiconfig.nuts_level}_key', 
+                                                               self.epiconfig.id_column)                
+
+        if self.epiconfig.feature_popage:
+            population_age = self._extract_nuts_column(rawdata.population_age, self.epiconfig.nuts_level)
+            population_age = self._apply_tokenization(population_age, 
+                                                               tokenization_map['nuts_node-idx'],
+                                                               f'{self.epiconfig.nuts_level}_key', 
+                                                               self.epiconfig.id_column)     
             
         if self.epiconfig.feature_gisd:
-            gisd_data = self._apply_tokenization(rawdata.gisd, 
+            gisd_data = self._extract_nuts_column(rawdata.gisd, self.epiconfig.nuts_level)            
+            gisd_data = self._apply_tokenization(gisd_data, 
                                                  tokenization_map['nuts_node-idx'],
                                                  f'{self.epiconfig.nuts_level}_key', 
                                                  self.epiconfig.id_column)                        
 
-        if self.epiconfig.feature_popage:
-            population_age = self._apply_tokenization(rawdata.population_age, 
-                                                      tokenization_map['nuts_node-idx'],
-                                                      f'{self.epiconfig.nuts_level}_key', 
-                                                      self.epiconfig.id_column)              
-
         if self.epiconfig.feature_kreise_classes:
-            kreise_classes = self._apply_tokenization(rawdata.kreise_classes, 
-                                                      tokenization_map['nuts_node-idx'],
-                                                      f'{self.epiconfig.nuts_level}_key', 
-                                                      self.epiconfig.id_column)                  
+            kreise_classes = self._extract_nuts_column(rawdata.kreise_classes, self.epiconfig.nuts_level)            
+            kreise_classes = self._apply_tokenization(kreise_classes, 
+                                                 tokenization_map['nuts_node-idx'],
+                                                 f'{self.epiconfig.nuts_level}_key', 
+                                                 self.epiconfig.id_column)                
 
-        if isinstance(shapedata, pd.DataFrame):
-            shapedata = gpd.GeoDataFrame(shapedata)
+        if self.epiconfig.feature_borders:
+            borders = self._extract_nuts_column(rawdata.borders, self.epiconfig.nuts_level)            
+            borders = self._apply_tokenization(borders, 
+                                                 tokenization_map['nuts_node-idx'],
+                                                 f'{self.epiconfig.nuts_level}_key', 
+                                                 self.epiconfig.id_column)   
+
+        if self.epiconfig.feature_vax:
+            vacmap = self._extract_nuts_column(rawdata.vacmap, self.epiconfig.nuts_level)            
+            vacmap = self._apply_tokenization(vacmap, 
+                                                 tokenization_map['nuts_node-idx'],
+                                                 f'{self.epiconfig.nuts_level}_key', 
+                                                 self.epiconfig.id_column)                              
+
+        if isinstance(nuts_shapedata, pd.DataFrame):
+            nuts_shapedata = gpd.GeoDataFrame(nuts_shapedata)
 
         harmdata = HarmonizedEpiData(
             epidata             = epipopdata,
 
-            _population_density  = population_density_data,
-            _gisd                = gisd_data,
-            _population_age      = population_age,
-            _kreise_classes      = kreise_classes
+            _population_size    = population_size_data,
+            _population_density = population_density_data,
+            _population_age     = population_age,
+            _gisd               = gisd_data,            
+            _kreise_classes     = kreise_classes,
+            _borders            = borders,
+            _vacmap             = vacmap
+
         )
         
         ctxdata = ContextEpiData(
             nuts_level          = self.epiconfig.nuts_level,
-            shapedata_node      = shapedata,
-            shapedata_nuts0     = rawdata.shapedata_collection['nuts0'],
-            shapedata_nuts1     = rawdata.shapedata_collection['nuts1'],
-            shapedata_nuts2     = rawdata.shapedata_collection['nuts2'],
-            shapedata_nuts3     = rawdata.shapedata_collection['nuts3'],
+            shapedata           = rawdata.shapedata.copy(),
+            nuts_shapedata      = nuts_shapedata,
             population_size     = population_data,
             nuts_harm           = nutsnames,
             tokenization_map    = tokenization_map,
@@ -645,37 +650,53 @@ class EpiDataProcessor:
     def orchestrate(self, harmonizeddata: 'HarmonizedEpiData') -> 'ProcessedEpiData':
         
         time_start = time.time()
-        epipopdata = self._add_incidence_column(harmonizeddata.epidata.copy())
+        epidata = self._add_incidence_column(harmonizeddata.epidata.copy())
+        epidata = epidata.drop(columns = 'population_size')
 
-        if self.config.target_column != 'cases':
-            epipopdata = self._drop_cases_column(epipopdata)        
-
-        epipopdata = self._filter_dates(epipopdata)
+        if self.config.target_column == 'incidence':
+            epidata = self._drop_cases_column(epidata)  
+              
+        epidata = self._filter_dates(epidata)
 
         # extra features; initiating them on None
-        population_density_data = None
-        gisd_data               = None      
-        population_age          = None   
+        population_size         = None
+        population_density_data = None    
+        population_age          = None
+        gisd_data               = None             
         kreise_classes          = None
+        borders                 = None 
+        vacmap                  = None
+
+        if self.config.feature_popsize:
+            population_size = self._filter_years(harmonizeddata.population_size)
 
         if self.config.feature_popdens:
             population_density_data = self._filter_years(harmonizeddata.population_density)
-
-        if self.config.feature_gisd:
-            gisd_data = self._filter_years(harmonizeddata.gisd)
                    
         if self.config.feature_popage:
             population_age = self._filter_years(harmonizeddata.population_age)               
 
-        if self.config.feature_kreise_classes:
-            kreise_classes = harmonizeddata.kreise_classes                 
+        if self.config.feature_gisd:
+            gisd_data = self._filter_years(harmonizeddata.gisd)            
 
-        processed_data = ProcessedEpiData(epidata            = epipopdata,
-                                          
+        if self.config.feature_kreise_classes:
+            kreise_classes = harmonizeddata.kreise_classes             
+
+        if self.config.feature_borders:
+            borders        = harmonizeddata.borders
+
+        if self.config.feature_vax:
+            # won't be run. But there's an issue here for now: episeasons => years
+            vacmap        = self._filter_years(harmonizeddata.vacmap)            
+
+        processed_data = ProcessedEpiData(epidata = epidata,   
+                                          _population_size   = population_size,
                                           _population_density= population_density_data,
+                                          _population_age    = population_age,                                          
                                           _gisd              = gisd_data,
-                                          _population_age    = population_age,
-                                          _kreise_classes    = kreise_classes
+                                          _kreise_classes    = kreise_classes,
+                                          _borders           = borders,
+                                          _vacmap            = vacmap
                                           )
         time_end = time.time()
         if self.config.verbose > 2:
@@ -839,31 +860,19 @@ class EpiFeatureBuilder:
 
         return df.dropna().reset_index(drop=True)
 
-    def _encode_categorical_columns(self, df: pd.DataFrame) -> pd.DataFrame:
-
-        cols_to_encode = [c for c in df.columns.tolist() if c != self.epiconfig.id_column]
-
-        df_encoded = pd.get_dummies(
-            df.copy(),
-            columns=cols_to_encode,
-            drop_first=False  # keep all categories
-        )
-        one_hot_cols = [c for c in df_encoded.columns if c != self.epiconfig.id_column]
-        df_encoded[one_hot_cols] = df_encoded[one_hot_cols].astype(int)
-
-        for col in one_hot_cols:
-            self.column_registration.add_column(col, 'feature', False)
-
-        return df_encoded
-
     def orchestrate(self, processed_data: 'ProcessedEpiData') -> 'FeatureEpiData':
         time_start   = time.time()
         feature_data = processed_data.epidata.copy()
 
-        feature_data = feature_data.drop(columns=['population_size'], errors='ignore')
-        if self.epiconfig.verbose > 1:
-            print(f'{checkmark} population size removed')
-
+        if self.epiconfig.feature_popsize:
+            self.column_registration.add_column(
+                'population_size',
+                'feature',
+                needs_normalization=True,
+                transformation_group='self'
+            )            
+            feature_data = pd.merge(feature_data, processed_data.population_size, on = [self.epiconfig.id_column, 'year'])   
+                     
         if self.epiconfig.feature_popdens:
             self.column_registration.add_column(
                 'population_density',
@@ -875,7 +884,7 @@ class EpiFeatureBuilder:
 
         if self.epiconfig.feature_gisd:
             self.column_registration.add_column(
-                f'gisd',
+                f'gisd_score',
                 'feature',
                 needs_normalization=False
             )               
@@ -885,30 +894,41 @@ class EpiFeatureBuilder:
             processed_feature_popage = processed_data.population_age
 
             for cc in processed_feature_popage.columns:
-                if cc not in ['year',self.epiconfig.id_column,'population_size']:
+                if cc not in ['year',self.epiconfig.id_column]:
                     self.column_registration.add_column(
                         cc,
                         'feature',
                         needs_normalization=False
                     )         
-                elif cc == 'population_size':
-                    if self.epiconfig.feature_popsize:
-                        self.column_registration.add_column(
-                            cc,
-                            'feature',
-                            needs_normalization=True,
-                            transformation_group='self'
-                        )  
-                    else:
-                        processed_feature_popage.drop(columns = ['population_size'], inplace = True)
                                           
             feature_data = pd.merge(feature_data, processed_feature_popage, on = [self.epiconfig.id_column, 'year'])               
 
         if self.epiconfig.feature_kreise_classes:
-            kreise_classes_encoded = self._encode_categorical_columns(processed_data.kreise_classes)
+            for cc in processed_data.kreise_classes.columns:
+                if cc != self.epiconfig.id_column:
+                    self.column_registration.add_column(
+                        cc,
+                        'feature',
+                        needs_normalization=False
+                    )     
 
-            feature_data = pd.merge(feature_data, kreise_classes_encoded, on = self.epiconfig.id_column)  
+            feature_data = pd.merge(feature_data, processed_data.kreise_classes, on = self.epiconfig.id_column)  
 
+        if self.epiconfig.feature_borders:
+            for cc in processed_data.borders.columns:
+                if cc != self.epiconfig.id_column:
+                    self.column_registration.add_column(
+                        cc,
+                        'feature',
+                        needs_normalization=False
+                    )     
+            feature_data = pd.merge(feature_data, processed_data.borders, on = self.epiconfig.id_column)                              
+
+        if self.epiconfig.feature_vax:
+            # TODO 
+            pass
+
+        
         # Delta transform: must happen before lags and target shift,
         # so that lag features and the forecast target are all in delta-space
         if self.epiconfig.predict_difference:
@@ -936,7 +956,7 @@ class EpiFeatureBuilder:
         if self.epiconfig.verbose > 2:
             print(f'Execution of EpiFeatureBuilder took {round(time_end - time_start,3)}s')
 
-        return FeatureEpiData(epidata=feature_data)
+        return FeatureEpiData(data=feature_data)
 
 # ============= NORMALIZER CLASS ============= 
 class EpiNormalizer:
@@ -1111,7 +1131,7 @@ class EpiNormalizer:
 
     def orchestrate(self, feature_data: 'FeatureEpiData') -> 'NormalizedEpiData':
         time_start      = time.time()
-        split_data      = self._set_splits(feature_data.epidata.copy())    
+        split_data      = self._set_splits(feature_data.data.copy())    
         # depending on config, logging may not be done
         split_data      = self._orchestrate_logging(split_data)      
         normalized_data = self._normalize(split_data)
@@ -1121,7 +1141,7 @@ class EpiNormalizer:
             print(f'Execution of EpiNormalizer took {round(time_end - time_start,3)}s')        
         if self.epiconfig.verbose > 1:
             print("")
-        return NormalizedEpiData(epidata=normalized_data)
+        return NormalizedEpiData(data=normalized_data)
 
 # ============= FINALIZER CLASS ============= 
 class EpiDataFinalizer:
@@ -1270,7 +1290,7 @@ class EpiDataFinalizer:
 
     def orchestrate(self, normalized_data: NormalizedEpiData) -> 'FinalizedEpiData':
         time_start = time.time()
-        dfc         = normalized_data.epidata
+        dfc         = normalized_data.data
 
         dfc = self._add_horizons(dfc)
         self._create_pred_col_entry()
