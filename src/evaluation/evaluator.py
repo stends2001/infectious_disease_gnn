@@ -113,8 +113,14 @@ class Evaluator:
         if predictions_compilation is None:
             raise IndexError(f'predictions_compilation is invalid') 
 
-        predictions_compilation[self.id_col] = predictions_compilation[self.id_col].astype("category")
-        predictions_compilation['model']  = predictions_compilation['model'].astype("category")
+        predictions_compilation[self.id_col] = predictions_compilation[self.id_col].astype("category") # fine to keep alphabetically
+
+        # for model keep order
+        predictions_compilation["model"] = pd.Categorical( 
+            predictions_compilation["model"],
+            categories=predictions_compilation["model"].unique(),
+            ordered=True
+        )
        
         return predictions_compilation.reset_index(drop=True)
 

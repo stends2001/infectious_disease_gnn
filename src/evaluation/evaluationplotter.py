@@ -269,7 +269,7 @@ class EvaluationPlotter:
         
         ctx = models[0].dataloadermanager.dataorchestrator.data_context
 
-        gdf = ctx.shapedata_node
+        gdf = ctx.nuts_shapedata
 
         map_df = gpd.GeoDataFrame(pd.merge(metric_df, gdf, on=['nuts_node']))
         if log:
@@ -301,9 +301,9 @@ class EvaluationPlotter:
                 legend=False       # no legend on any subplot
             )
 
-            ctx.shapedata_nuts2.plot(ax = axes[idx], facecolor = 'none', linewidth = 1, edgecolor = 'grey')
-            ctx.shapedata_nuts1.plot(ax = axes[idx], facecolor = 'none', linewidth = 1, edgecolor = 'black')
-            ctx.shapedata_nuts0.plot(ax = axes[idx], facecolor = 'none', linewidth = 2, edgecolor = 'black')    
+            ctx.shapedata[ctx.shapedata['nuts_level'] == 'nuts2'].plot(ax=axes[idx], facecolor='none', linewidth=0.5, edgecolor='grey')
+            ctx.shapedata[ctx.shapedata['nuts_level'] == 'nuts1'].plot(ax=axes[idx], facecolor='none', linewidth=1.0, edgecolor='black')
+            ctx.shapedata[ctx.shapedata['nuts_level'] == 'nuts0'].plot(ax=axes[idx], facecolor='none', linewidth=1.5, edgecolor='black')
             axes[idx].set_title(model_name)
 
         # --- colorbar in the last (empty) axis ---
@@ -360,16 +360,16 @@ class EvaluationPlotter:
         # Merge with geodata
         ctx = list(self.evaluator.evaluated_models.values())[0]\
                 .dataloadermanager.dataorchestrator.data_context
-        gdf      = ctx.shapedata_node
+        gdf      = ctx.nuts_shapedata
         map_data = gpd.GeoDataFrame(pd.merge(gdf, metrics_df_w, on=self.evaluator.id_col))
 
         fig, ax = plt.subplots(1, 1, figsize=(10, 8))
 
         map_data.plot(ax=ax, color=map_data['color'], linewidth=0.3, edgecolor='white')
 
-        ctx.shapedata_nuts2.plot(ax=ax, facecolor='none', linewidth=0.5, edgecolor='grey')
-        ctx.shapedata_nuts1.plot(ax=ax, facecolor='none', linewidth=1.0, edgecolor='black')
-        ctx.shapedata_nuts0.plot(ax=ax, facecolor='none', linewidth=1.5, edgecolor='black')
+        ctx.shapedata[ctx.shapedata['nuts_level'] == 'nuts2'].plot(ax=ax, facecolor='none', linewidth=0.5, edgecolor='grey')
+        ctx.shapedata[ctx.shapedata['nuts_level'] == 'nuts1'].plot(ax=ax, facecolor='none', linewidth=1.0, edgecolor='black')
+        ctx.shapedata[ctx.shapedata['nuts_level'] == 'nuts0'].plot(ax=ax, facecolor='none', linewidth=1.5, edgecolor='black')
 
         # Legend
         handles = [mpatches.Patch(color=c, label=m) for m, c in color_map.items()]
