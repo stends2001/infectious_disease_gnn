@@ -1,4 +1,4 @@
-from typing import Union, List, Literal, Union, Optional, Dict
+from typing import Self, List, Literal, Dict, Any, Union, Optional
 import pandas as pd
 from tqdm import tqdm 
 
@@ -18,40 +18,47 @@ class Evaluator:
 
     Parameters
     ----------
-    models: List of models
+    models: List[BaseModel[Any]]
+        list of any models
+
+    Attributes
+    -------
+    plotter             -> EvalutionPlotter class
+    data_compilation    -> EvaluationPredictionsCompilation class
     """
 
-    def __init__(self, models: List[BaseModel]):
+    def __init__(self, models: List[BaseModel[Any]]):
         models_list             = models if isinstance(models, list) else [models]
         self.evaluated_models   = {ml.name: ml for ml in models_list}
         self.model_names        = list(self.evaluated_models.keys())
         self.epiconfig          = self._validate_epiconfigs()
-        
+
         # Column names
         self.target_col     = 'target'
         self.pred_cols      = models[0].pred_cols
         self.id_col         = self.epiconfig.id_column
-        self.temporal_col   = self.epiconfig.temporal_column
-        
+        self.temporal_col   = self.epiconfig.temporal_column          
+                
         # Storage
-        self.evaluation_entries: Dict[str, pd.DataFrame]         = {}
+        self.evaluation_entries: Dict[str, pd.DataFrame] = {}
 
+        # Extensions
         self.plotter                = EvaluationPlotter(self)
         self.data_compilation       = EvaluationPredictionsCompilation(self.model_names)
-        self.metric_calculator      = self._setup_metric_calculator()
+        self.metric_calculator      = self._return_metric_calculator()      
 
     @check_dataset()
     def add_evaluation(self, 
-                       horizon:     int  = 0,
-                       dataset:     Literal['train', 'val', 'test'] = 'test') -> 'Evaluator':
+                       horizon: int  = 0,
+                       dataset: Literal['train', 'val', 'test'] = 'test') -> Self:
         """
         Add evaluation entry for specified horizon.
         
         Parameters
         -----------
-        horizon : int
+        horizon: int
             Prediction horizon
-        dataset : str
+        dataset: Literal['train', 'val', 'test'] = 'test'
             Which dataset to evaluate
         """
         horizon_str = f'horizon_{horizon}'
@@ -71,9 +78,9 @@ class Evaluator:
 
         return self
   
-    def _setup_metric_calculator(self) -> PointRegressionMetricsCalculator | QuantileRegressionMetricsCalculator:
+    def _return_metric_calculator(self) -> Union[PointRegressionMetricsCalculator, QuantileRegressionMetricsCalculator]:
         """
-        Iniates self.metric_calculator class
+        Iniates self.metric_calculator class, based on epiconfig
         which is either of:
         - ClassificationMetrics
         - RegressionPointPredictionMetrics
@@ -98,24 +105,21 @@ class Evaluator:
         | timestamp | node | target | model | pred-cols ... |
 
         """
-        predictions_compilation = None
+        frames: List[pd.DataFrame] = []
 
         for name, model in self.evaluated_models.items():
             model_predictions           = model.predictions.get_preds(dataset).get(horizon, is_original = False, spatially_aggregated= False)
-            model_predictions['model'] = name
+            model_predictions['model']  = name
+            frames.append(model_predictions)
+        
+        if not frames:
+            raise ValueError('No predictions found in evaluated_models')
 
-            if predictions_compilation is None:
-                predictions_compilation= model_predictions
+        predictions_compilation = pd.concat(frames)
 
-            else:
-                predictions_compilation = pd.concat([predictions_compilation, model_predictions])
+        predictions_compilation[self.id_col] = predictions_compilation[self.id_col].astype("category") # fine to keep node - tokens alphabetically
 
-        if predictions_compilation is None:
-            raise IndexError(f'predictions_compilation is invalid') 
-
-        predictions_compilation[self.id_col] = predictions_compilation[self.id_col].astype("category") # fine to keep alphabetically
-
-        # for model keep order
+        # model values will be kept in the same order as user plugged them in
         predictions_compilation["model"] = pd.Categorical( 
             predictions_compilation["model"],
             categories=predictions_compilation["model"].unique(),
@@ -125,27 +129,33 @@ class Evaluator:
         return predictions_compilation.reset_index(drop=True)
 
     def _compile_metrics(self, df: pd.DataFrame) -> pd.DataFrame:
-        
-        records = []
-        groups = df.groupby([self.id_col, "model"], observed=True)
+        """
+        compile metrics of set horizon and dataset in the following form:
+        ___________________________________
+        | node | model | metric-cols ... |
 
-        for (node, model), group in tqdm(groups, total=groups.ngroups):
+        """        
+        records = []
+        groups = df.groupby([self.id_col, "model"], observed=True) # observed => whether to drop category-combinations that don't appear in data
+
+        for (node, modelname), group in tqdm(groups, desc='computing metrics nodewise', total = groups.ngroups):
             y    = group[self.target_col].to_numpy()
             yhat = group[self.pred_cols].to_numpy() 
 
             if yhat.ndim == 2 and yhat.shape[1] == 1:
                 yhat = yhat.squeeze(1)
 
-            row  = {self.id_col: node, "model": model}             
+            row  = {self.id_col: node, "model": modelname}             
             for metric_name in self.metric_calculator.supported_metrics:
-                row[metric_name] = getattr(self.metric_calculator, metric_name)(y, yhat)
+                metric_value: Optional[float]   = getattr(self.metric_calculator, metric_name)(y, yhat)
+                row[metric_name]                =  pd.NA if metric_value is None else metric_value
             records.append(row)
 
-        metrics_df = pd.DataFrame(records)
-
+        metrics_df  = pd.DataFrame(records)
         metric_cols = self.metric_calculator.supported_metrics
         metrics_df[metric_cols] = metrics_df[metric_cols].apply(
-            pd.to_numeric, errors='coerce'
+            pd.to_numeric, 
+            errors='coerce'
         )
 
         return metrics_df
@@ -153,21 +163,28 @@ class Evaluator:
     def _validate_epiconfigs(self) -> 'EpiConfig':
         """cross checks all prediction modes"""
         epiconfig = None
-        for mlname, ml in self.evaluated_models.items():
+        compared  = None
+
+        for model_name, ml in self.evaluated_models.items():
+
             if epiconfig is None:
                 epiconfig = ml.epiconfig
+                compared  = model_name
+
             else:
+                # just compare task - level, not featurewise
                 if not epiconfig.equals(ml.epiconfig, level = 2):
-                    raise ValueError('incompatible prediction modes accross models found!')
+                    raise ValueError(f'Incompatible prediction modes accross models found! Models {compared} and {model_name} shouldnt be compared to one another.')
+                
         if epiconfig is None: 
-            raise ValueError('epiconfig is still None')            
+            raise ValueError(f'No valid EpiConfig found among {list(self.evaluated_models.keys())}')            
                 
         return epiconfig
 
     def __repr__(self) -> str:
-
         representation = [f"<{self.__class__.__name__}("]
         representation.append(f'models: {self.model_names},')
         representation.append(f'\n\tdata_compilation: {self.data_compilation}') 
+        representation.append(f'\n\tmetric_calculator: {self.metric_calculator}')         
         representation.append(")>")       
         return "".join(representation)

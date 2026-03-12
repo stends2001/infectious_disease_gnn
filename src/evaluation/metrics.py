@@ -1,18 +1,14 @@
 from abc import ABC, abstractmethod
 import numpy as np
 import pandas as pd 
-from typing import Optional, List, TypeVar, cast
+from typing import Optional, List, TypeVar, cast, Union
 from scipy.stats import spearmanr, pearsonr
 
 import inspect
 
 class MetricsCalculatorBase(ABC):
     """
-    compute metrics for dataframe, when predictions
-    represent regression-quantile-predictions  
-
-    The following (1) metrics are calculated nodewise
-    - WIS
+    Parent class for MetricsCalculators.
 
     Parameters
     ----------
@@ -43,6 +39,7 @@ class MetricsCalculatorBase(ABC):
         self._validate_input()
 
     def _validate_input(self):
+        """validate quantile - requirement: uncertainty vs point - predictions"""
         if self._requires_quantiles and self.quantiles is None:
             raise ValueError(f'_require_quantiles set to True while quantiles is None')
         
@@ -50,17 +47,16 @@ class MetricsCalculatorBase(ABC):
             raise ValueError(f'_require_quantiles set to False while quantiles supplied')        
 
     def _return_supported_metrics(self) -> List[str]:
-        """return a list of metric-methods implemented"""
-        methods = [
-            name for name, member in inspect.getmembers(self.__class__, predicate=inspect.isfunction)
-            if member.__qualname__.split(".")[0] == self.__class__.__name__
-            and not name.startswith("_")
-        ]   
-        return methods 
+        return [
+            name for name, member in inspect.getmembers(self, predicate=inspect.ismethod)
+            if not name.startswith("_")
+            and name not in vars(MetricsCalculatorBase)  # exclude base class non-private methods
+        ]
 
     @property
     @abstractmethod
     def _requires_quantiles(self) -> bool:
+        """each childclass must implement this boolean flag; whether or not quantiles are required"""
         pass
 
     def __repr__(self) -> str:
@@ -68,15 +64,34 @@ class MetricsCalculatorBase(ABC):
         return representation
 
 class QuantileRegressionMetricsCalculator(MetricsCalculatorBase):  
+    """
+    Metrics-calculator for Uncertainty predictions
+    
+    Includes the following (5) metrics in methods, each
+    of which takes in y and yhats, and returns a float
 
+    Methods
+    -------
+    - wis
+    - coverage_score
+    - sharpness_score
+    - node_forecast_score
+    - norm_wis
+    """
     def wis(self, y: np.ndarray, yhats: np.ndarray) -> float:
         """
+        WIS: an all-in-one metric for uncertainty - predictions
+
         Parameters
         ----------
-        y     : (T,)      ground truth
-        yhats : (T, Q)    quantile predictions, columns ordered q0 ... qQ
+        y: np.ndarray
+            target - shape N; number of nodes
+        yhats: np.ndarray
+            predictions - shape N,Q; number of nodes, number of quantiles. 
+            Quantiles must be ordered
         """
         assert self.quantiles is not None  # narrows type for linter
+
         n_intervals = len(self.quantiles) // 2
         mid         = n_intervals
 
@@ -100,11 +115,21 @@ class QuantileRegressionMetricsCalculator(MetricsCalculatorBase):
 
     def coverage_score(self, y: np.ndarray, yhats: np.ndarray) -> float:
         """
-        Returns a single scalar: fraction of timestamps where y falls within any predicted interval.
+        Coverage score: fraction of timestamps where y falls within any predicted interval.
+        Sharpness, or thickness of quantile (interval) is not evaluated.
+
+        Parameters
+        ----------
+        y: np.ndarray
+            target - shape N; number of nodes
+        yhats: np.ndarray
+            predictions - shape N,Q; number of nodes, number of quantiles. 
+            Quantiles must be ordered        
         """
         assert self.quantiles is not None  # narrows type for linter
+
         n_intervals = len(self.quantiles) // 2
-        inside = np.zeros_like(y, dtype=bool)
+        inside      = np.zeros_like(y, dtype=bool)
 
         for i in range(n_intervals):
             lower = yhats[:, i]
@@ -115,9 +140,18 @@ class QuantileRegressionMetricsCalculator(MetricsCalculatorBase):
     
     def sharpness_score(self, y: np.ndarray, yhats: np.ndarray) -> float:
         """
-        Returns a scalar where higher means sharper predictions.
+        Sharpness score: thin-interval is rewarded. where higher means sharper predictions.
+
+        Parameters
+        ----------
+        y: np.ndarray
+            target - shape N; number of nodes
+        yhats: np.ndarray
+            predictions - shape N,Q; number of nodes, number of quantiles. 
+            Quantiles must be ordered        
         """
-        assert self.quantiles is not None  # narrows type for linter
+        assert self.quantiles is not None  # narrows type for linter    
+
         n_intervals = len(self.quantiles) // 2
         widths = []
 
@@ -126,33 +160,49 @@ class QuantileRegressionMetricsCalculator(MetricsCalculatorBase):
             upper = yhats[:, yhats.shape[1]-1-i]
             widths.append(upper - lower)
 
-        mean_width: float = np.mean(np.stack(widths, axis=1))
-        return 1 / (1 + mean_width)  # simple transform: smaller width → higher score    
+        mean_width: float = np.mean(np.stack(widths, axis=1)) # type: ignore
+        
+        # simple transform: smaller width → higher score  
+        sharpness_score = 1 / (1 + mean_width)       
+        return sharpness_score
 
-    def node_forecast_score(self, y: np.ndarray, yhats: np.ndarray, alpha=0.5) -> float:
+    def node_forecast_score(self, y: np.ndarray, yhats: np.ndarray, alpha: float = 0.5) -> float:
         """
-        Combines coverage and sharpness into one scalar per node.
-        alpha: weight for coverage vs sharpness (0..1)
-        """
-        cov = self.coverage_score(y, yhats)
-        sharp = self.sharpness_score(y, yhats)
-        return alpha * cov + (1 - alpha) * sharp
-
-    def norm_wis(self, y: np.ndarray, yhats: np.ndarray) -> float:
-        """
-        Returns a single scalar per node summarizing the quality of quantile forecasts.
-        Inspired by WIS, normalized to [0,1], higher is better.
+        Node Forecast score: all-in-one scalar per node; evaluated coverage and sharpness.
 
         Parameters
         ----------
-        y        : (T,)      ground truth
-        yhats    : (T, Q)    quantile predictions, columns ordered q0 ... qQ
-        quantiles: (Q,)      list of quantiles corresponding to yhats
+        y: np.ndarray
+            target - shape N; number of nodes
+        yhats: np.ndarray
+            predictions - shape N,Q; number of nodes, number of quantiles. 
+            Quantiles must be ordered        
+        alpha: float
+            weight for coverage vs sharpness (0-1)
+            this is not really a variable that can be tweeked! done here.
+        """        
+        cov     = self.coverage_score(y, yhats)
+        sharp   = self.sharpness_score(y, yhats)
+        score   = alpha * cov + (1 - alpha) * sharp
+        return score
+
+    def norm_wis(self, y: np.ndarray, yhats: np.ndarray) -> float:
         """
+        Normalized wis score. Inspired by WIS, this returns a value in [0,1] where higher is better
+
+        Parameters
+        ----------
+        y: np.ndarray
+            target - shape N; number of nodes
+        yhats: np.ndarray
+            predictions - shape N,Q; number of nodes, number of quantiles. 
+            Quantiles must be ordered        
+        """  
 
         assert self.quantiles is not None  # narrows type for linter
+
         n_intervals = len(self.quantiles) // 2
-        mid = n_intervals
+        mid         = n_intervals
 
         # Components: interval widths and penalties
         widths = []
@@ -183,7 +233,6 @@ class QuantileRegressionMetricsCalculator(MetricsCalculatorBase):
         # Convert to a 0-1 score
         # Step 1: scale by max possible value (or 1+mean width for normalization)
         mean_wis = np.mean(wis_like)
-        mean_width = np.mean(np.stack(widths, axis=1))
         score = 1 / (1 + mean_wis)  # simple monotone transform: smaller WIS → higher score
 
         # Step 2: adjust for coverage (optional additive factor)
@@ -197,97 +246,157 @@ class QuantileRegressionMetricsCalculator(MetricsCalculatorBase):
         return True 
 
 class PointRegressionMetricsCalculator(MetricsCalculatorBase):
+    """
+    Metrics-calculator for point predictions
+    
+    Includes the following (12) metrics in methods, each
+    of which takes in y and yhats, and returns a float
 
-    def mse(self, y, yhat):
+    Methods
+    -------
+    - rmse    
+    - mse
+    - mae
+    - smape
+    - mape   
+    - ccc     
+    - r2
+    - pearson
+    - spearman
+    - mbe 
+    - vr
+    - bcf
+    """
+    def mse(self, y: np.ndarray, yhat: np.ndarray) -> float:
+        """simple mse"""
         return float(np.mean((y - yhat) ** 2))
 
-    def mae(self, y, yhat):
-        return float(np.mean(np.abs(y - yhat)))
-
-    def r2(self, y, yhat):
-        ss_res = np.sum((y - yhat) ** 2)
-        ss_tot = np.sum((y - np.mean(y)) ** 2)
-        if ss_tot == 0:
-            return pd.NA
-        return float(1 - ss_res / ss_tot)
-
-    def rmse(self, y, yhat):
+    def rmse(self, y: np.ndarray, yhat: np.ndarray) -> float:
+        """simple mse"""        
         return float(np.sqrt(self.mse(y, yhat)))
 
-    def pearson(self, y, yhat):
-        if np.all(y == y[0]) or np.all(yhat == yhat[0]):
-            return pd.NA
-        corr = cast(float, pearsonr(y, yhat).statistic)     # type: ignore
-        return corr
+    def mae(self, y: np.ndarray, yhat: np.ndarray) -> float:
+        """simple mae"""        
+        return float(np.mean(np.abs(y - yhat)))
 
-    def spearman(self, y, yhat):
-        if np.all(y == y[0]) or np.all(yhat == yhat[0]):
-            return pd.NA
-        corr = cast(float, spearmanr(y, yhat, nan_policy = 'omit').statistic)     # type: ignore
-        return corr        
-
-    def mbe(self, y, yhat):
-        """part of ccc: mean bias error"""
-        mean_y, mean_yhat = y.mean(), yhat.mean()
-        return mean_yhat - mean_y
-    
-    def vr(self, y, yhat):
-        """part of ccc: variance ratio"""
-        var_y, var_yhat = y.var(ddof = 1), yhat.var(ddof = 1)
-        if var_y == 0 or var_yhat == 0:
-            return pd.NA 
-        sd_y, sd_yhat = np.sqrt(var_y), np.sqrt(var_yhat)
-        return sd_yhat / sd_y
-
-    def bcf(self, y, yhat):
-        """part of ccc: bias correction factor"""    
-        mbe             = self.mbe(y, yhat)
-
-        var_y, var_yhat = y.var(ddof = 1), yhat.var(ddof = 1)
-        if var_y == 0 or var_yhat == 0:
-            return pd.NA 
-        sd_y, sd_yhat = np.sqrt(var_y), np.sqrt(var_yhat)
-        variance_ratio =  sd_yhat / sd_y
-
-        delta = mbe / sd_y
-        cb = (2 * variance_ratio) / (1 + variance_ratio**2 + delta**2)    
-        return cb
-
-    def ccc(self, y, yhat):
-        mean_y, mean_yhat = y.mean(), yhat.mean()
-        var_y = y.var(ddof=1)
-        var_yhat = yhat.var(ddof=1)
-        if var_y == 0 or var_yhat == 0:
-            return pd.NA
-        cov = np.sum((y - mean_y) * (yhat - mean_yhat)) / (len(y) - 1)
-        numerator = 2 * cov
-        denominator = var_y + var_yhat + (mean_y - mean_yhat) ** 2
-        if denominator == 0:
-            return pd.NA
-        return float(numerator / denominator)
-    
-    def smape(self, y, yhat, epsilon=1e-6):
+    def smape(self, y: np.ndarray, yhat: np.ndarray, epsilon: float=1e-6) -> Optional[float]:
+        """simple smape. Returns None when target includes only zeroes"""
         mask = ~((y == 0) & (yhat == 0))
+
         y, yhat = y[mask], yhat[mask]
+        
         if len(y) == 0:
-            return pd.NA
-        y = np.where(y == 0, epsilon, y)
+            return None
+        
+        y    = np.where(y == 0, epsilon, y)
         yhat = np.where(yhat == 0, epsilon, yhat)
         denominator = np.maximum((np.abs(y) + np.abs(yhat)) / 2, epsilon)
         return float(np.mean(np.abs(y - yhat) / denominator) * 100)
 
-    def mape(self, y, yhat, epsilon=1e-6):
+    def mape(self, y: np.ndarray, yhat: np.ndarray, epsilon: float=1e-6) -> Optional[float]:
+        """simple mape. Returns None when target includes only zeroes"""        
         mask = y != 0
         y, yhat = y[mask], yhat[mask]
+        
         if len(y) == 0:
-            return pd.NA
+            return None
+        
         denominator = np.maximum(np.abs(y), epsilon)
         return float(np.mean(np.abs(y - yhat) / denominator) * 100)
+
+    def r2(self, y: np.ndarray, yhat: np.ndarray) -> Optional[float]:
+        """
+        Coefficient of determination: the fraction of the data's variance explained by model
+        When zero variance in target: returns None
+        """
+        ss_res = np.sum((y - yhat) ** 2)
+        ss_tot = np.sum((y - np.mean(y)) ** 2)
+        
+        if ss_tot == 0:
+            return None
+        
+        return float(1 - ss_res / ss_tot)
+
+    def pearson(self, y: np.ndarray, yhat: np.ndarray) -> Optional[float]:
+        """
+        Pearson correlation
+        When zero variance in target or zero variance in predictions, 
+        returns None
+        """
+        if np.all(y == y[0]) or np.all(yhat == yhat[0]):
+            return None 
+        
+        corr = cast(float, pearsonr(y, yhat).statistic)     # type: ignore
+        return corr
+
+    def spearman(self, y: np.ndarray, yhat: np.ndarray) -> Optional[float]:
+        """
+        Spearman correlation
+        When zero variance in target or zero variance in predictions, 
+        returns None
+        """        
+        if np.all(y == y[0]) or np.all(yhat == yhat[0]):
+            return None 
+        
+        corr = cast(float, spearmanr(y, yhat, nan_policy = 'omit').statistic)     # type: ignore
+        return corr        
+
+    def mbe(self, y: np.ndarray, yhat: np.ndarray) -> float:
+        """part of ccc: mean bias error"""
+        mean_y, mean_yhat = y.mean(), yhat.mean()
+        return mean_yhat - mean_y
+    
+    def vr(self, y: np.ndarray, yhat: np.ndarray) -> Optional[float]:
+        """part of ccc: variance ratio. when variation in target or in predictions is 0, None is returned"""
+        var_y, var_yhat = y.var(ddof = 1), yhat.var(ddof = 1)
+        
+        if var_y == 0 or var_yhat == 0:
+            return None
+        
+        sd_y, sd_yhat = np.sqrt(var_y), np.sqrt(var_yhat)
+        return sd_yhat / sd_y
+
+    def bcf(self, y: np.ndarray, yhat: np.ndarray) -> Optional[float]:
+        """
+        Bias correction factor (part of CCC).
+        Returns None when variation in target or predictions is 0.
+        """
+        vr = self.vr(y, yhat)
+        if vr is None:
+            return None
+
+        mbe   = self.mbe(y, yhat)
+        sd_y  = float(np.sqrt(y.var(ddof=1)))
+        delta = mbe / sd_y
+
+        return float((2 * vr) / (1 + vr**2 + delta**2))
+
+    def ccc(self, y: np.ndarray, yhat: np.ndarray) -> Optional[float]:
+        """
+        part of cross concordance coefficient: a mix of pearson and a matching coefficienct 
+        when variation in target or in predictions is 0, None is returned
+        """            
+        mean_y, mean_yhat = y.mean(), yhat.mean()
+        var_y = y.var(ddof=1)
+        var_yhat = yhat.var(ddof=1)
+        
+        if var_y == 0 or var_yhat == 0:
+            return None
+        
+        cov = np.sum((y - mean_y) * (yhat - mean_yhat)) / (len(y) - 1)
+        numerator = 2 * cov
+        denominator = var_y + var_yhat + (mean_y - mean_yhat) ** 2
+        
+        if denominator == 0:
+            return None
+        
+        return float(numerator / denominator)
     
     @property
     def pred_col(self) -> str:
         if len(self.pred_cols) > 1:
             raise ValueError('PointRegressionMetricsCalculator expects a List of only 1 prediction column')
+        
         return self.pred_cols[0]
 
     @property
