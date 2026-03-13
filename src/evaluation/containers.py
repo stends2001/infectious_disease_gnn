@@ -1,8 +1,6 @@
 from typing import Dict, List, Literal
 import pandas as pd
 
-from src.issues import Error 
-
 class EvaluationPredictionsCompilation:
     """ 
     Stores all predictions and metrics within the evaluator. The main attribute is

@@ -6,7 +6,7 @@ from .containers import EvaluationPredictionsCompilation
 from .metrics import QuantileRegressionMetricsCalculator, PointRegressionMetricsCalculator
 
 from ..utils import check_dataset, warning_emoji
-from ..models.base.basemodel import BaseModel
+from ..models.base.basemodel import BaseModel, DLM
 from ..dataloading import EpiConfig
 
 from .evaluationplotter import EvaluationPlotter
@@ -27,7 +27,7 @@ class Evaluator:
     data_compilation    -> EvaluationPredictionsCompilation class
     """
 
-    def __init__(self, models: List[BaseModel[Any]]):
+    def __init__(self, models: List[BaseModel[DLM]]):
         models_list             = models if isinstance(models, list) else [models]
         self.evaluated_models   = {ml.name: ml for ml in models_list}
         self.model_names        = list(self.evaluated_models.keys())
