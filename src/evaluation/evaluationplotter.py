@@ -1,26 +1,24 @@
-import matplotlib.pyplot as plt 
-import seaborn as sns
-from typing import Literal, Optional, List, Union, TYPE_CHECKING, Tuple, assert_never
+from typing import Literal, Optional, List, Union, TYPE_CHECKING, assert_never
 import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
 import geopandas as gpd
+import numpy as np
+
+import seaborn as sns
+
+import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
-import matplotlib.dates as mdates
 from matplotlib.figure import Figure
 from matplotlib.axes import Axes
 from matplotlib.lines import Line2D
-import numpy as np
-from ..utils import testcolor, check_dataset
-from ..plotting import ManagedFigure, calculate_subplot_layout
-
-if TYPE_CHECKING:
-    from .evaluator import Evaluator
-
 from matplotlib.cm import ScalarMappable
 from matplotlib.colors import Normalize
 
 from .issues import MetricError
+
+from ..plotting import ManagedFigure, calculate_subplot_layout
+
+if TYPE_CHECKING:
+    from .evaluator import Evaluator
 
 class EvaluationPlotter:
     """
@@ -57,7 +55,7 @@ class EvaluationPlotter:
                     reverse_scale:  bool = False,
                     vmin:           Optional[float] = None,
                     vmax:           Optional[float] = None,
-                    margin_sd:      Optional[float] = None
+                    margin_fraction:Optional[float] = None
                     ) -> ManagedFigure:
         """
         Plot specified metric across models.
@@ -87,7 +85,7 @@ class EvaluationPlotter:
             the minimal value for the metric. When None, will be inferred
         vmax: Optional[float] = None
             the maximaml value for the metric. When None, will be inferred.
-        margin_sd: Optional[float] = None
+        margin_fraction: Optional[float] = None
             # TODO
         """       
         horizon_str         = f'horizon_{horizon}'
@@ -111,79 +109,74 @@ class EvaluationPlotter:
         
         match plot_type:
             case 'violin' | 'box' | 'kde':
-                fig, ax = plt.subplots(1, 1, figsize=(12, 5))
+                fig, ax = plt.subplots(1, 1, figsize=(8, 5) if plot_type =='kde' else (12, 5))
                 self._plot_distribution_on_ax(
                     ax                  = ax, 
-                    df                  = metrics_df, 
+                    metric_df           = metrics_df, 
                     metric              = metric, 
                     plot_type           = plot_type, 
                     model_name_colors   = model_name_colors, 
                     model_class_colors  = model_class_colors,
-                    highlight_node      = highlight_node, 
                     add_legend          = legend,
                     log                 = log,
                     vmin                = vmin,
-                    vmax                = vmax
+                    vmax                = vmax,
+                    highlight_node      = highlight_node,                     
                 )
             case 'best_map':
                 fig, ax = plt.subplots(1, 1, figsize=(10, 10))
                 self._plot_metric_best_map(
                     ax                  = ax,
-                    df                  = metrics_df,
+                    metric_df           = metrics_df,
                     metric              = metric,
                     model_name_colors   = model_name_colors,
+                    vmin                = vmin,
+                    vmax                = vmax,                    
                     reverse_scale       = reverse_scale,
                     highlight_node      = highlight_node,
                     legend              = legend,
-                    margin_sd           = margin_sd,
-    )
+                    margin_fraction     = margin_fraction
+                )
 
-#         elif plot_type == 'map':
-#             fig = self._plot_metric_map(metrics_df, 
-#                                  metric, 
-#                                  model_name_colors,
-#                                  log,
-#                                  reverse_scale,
-#                                  vmin = vmin, vmax = vmax)
-#         else:
-#             raise ValueError("plot_type must be 'violin', 'box', or 'map'")
-        
-        plt.close()
+            case 'map': 
+                fig = self._plot_metric_map(
+                    metric_df           = metrics_df,
+                    metric              = metric,
+                    reverse_scale       = reverse_scale,
+                    legend              = legend,
+                    log                 = log,
+                    vmin                = vmin, 
+                    vmax                = vmax,
+                    highlight_node      = highlight_node,                    
+                )
+
+            case _:
+                assert_never(plot_type)
+
+        plt.close()                
         return ManagedFigure(fig)
 
     def _plot_distribution_on_ax(self, 
                                  ax: Axes, 
-                                 df: pd.DataFrame, 
+                                 metric_df: pd.DataFrame, 
                                  metric: str, 
                                  plot_type: Literal['violin','box','kde'],
-                                 model_name_colors: dict, model_class_colors: dict,
-                                 highlight_node: Optional[int] = None,
-                                 add_legend: bool = True,
-                                 log: bool = False,
-                                 vmin: Optional[float] = None, 
-                                 vmax: Optional[float] = None):
+                                 model_name_colors: dict, 
+                                 model_class_colors: dict,
+                                 add_legend: bool,
+                                 log: bool,
+                                 vmin: float, 
+                                 vmax: float,
+                                 highlight_node: Optional[int] = None
+                                 ):
         """
         Plot violin or box plot on a given axes object.
         
         Parameters
         ----------
-        ax : Axes
-            Matplotlib axes to plot on
-        df : pd.DataFrame
-            Long-format dataframe with columns: node, model, value
-        metric : str
-            Name of the metric being plotted
-        plot_type : str
-            'violin' or 'box'
-        model_name_colors : dict
-            Mapping of model names to colors
-        model_class_colors : dict
-            Mapping of model classes to colors
-        highlight_node : Optional[int]
-            If provided, highlights this specific node
-        add_legend : bool
-            Whether to add legend to this plot
+        # TODO
         """
+        df = metric_df.copy()
         metric_label = f"{metric}"
 
         if log:
@@ -262,20 +255,21 @@ class EvaluationPlotter:
                         if len(vals) > 0:
                             ax.axvline(
                                 x=vals[0],
-                                color= color,
+                                color=color,
                                 alpha=0.85,
                                 linewidth=1.5,
                                 linestyle='--',
                             )
-                        dot_y = ax.get_ylim()[1] * 0.03  # 3% up from baseline — fits dot fully above 0
-                        for model, color in model_name_colors.items():
-                            vals = node_rows[node_rows['model'] == model][metric].values
-                            if len(vals) > 0:
-                                ax.scatter(
-                                    x=vals[0], y=dot_y,
-                                    color=color, edgecolors='black',
-                                    zorder=10, s=80,
-                                )
+
+                    dot_y = ax.get_ylim()[1] * 0.03  # ← after all vlines, ymax is stable
+                    for model, color in model_name_colors.items():
+                        vals = node_rows[node_rows['model'] == model][metric].values
+                        if len(vals) > 0:
+                            ax.scatter(
+                                x=vals[0], y=dot_y,
+                                color=color, edgecolors='black',
+                                zorder=10, s=80,
+                            )
 
         if add_legend:
             handles: list[Union[mpatches.Patch, Line2D]]
@@ -297,117 +291,144 @@ class EvaluationPlotter:
             ax.legend(handles=handles, title='Model Class', loc='best')
   
     def _plot_metric_map(self, 
-                         metric_df: pd.DataFrame,
-                         metric: str, 
-                         model_name_colors: dict, 
-                         log: bool, 
-                         reverse_scale: bool,
-                         vmin: Optional[float] = None, 
-                         vmax: Optional[float] = None):
+                         metric_df:         pd.DataFrame,
+                         metric:            str, 
+                         reverse_scale:     bool,
+                         legend:            bool,
+                         log:               bool,
+                         vmin:              float,
+                         vmax:              float,
+                         highlight_node:    Optional[int] = None) -> Figure:
         """Plot spatial map of metric values."""       
-    
-        if reverse_scale:
-            cmap = "coolwarm_r"
-        else:
-            cmap = "coolwarm"
+        axes_np: np.ndarray
+        axes:    List[Axes]        
+        
+        df  = metric_df.copy()
+        cmap= 'coolwarm'
+
+        # good metric value : blue
+        if not reverse_scale:
+            cmap += "_r"
 
         models = list(self.evaluator.evaluated_models.values())
+
         # Calculate layout
-        n_models = len(self.evaluator.evaluated_models)
-        nrows, ncols, figsize = calculate_subplot_layout(n_models+1, target_width=8, target_height=6)
+        n_models                = len(self.evaluator.evaluated_models)
+        nrows, ncols, figsize   = calculate_subplot_layout(n_models+1, target_width=8, target_height=6)
         
-        ctx = models[0].dataloadermanager.dataorchestrator.data_context
+        # reference data
+        ctx     = models[0].dataloadermanager.dataorchestrator.data_context
+        gdf     = ctx.nuts_shapedata
 
-        gdf = ctx.nuts_shapedata
+        # map data
+        map_df  = gpd.GeoDataFrame(pd.merge(df, gdf, on=['nuts_node']))
 
-        map_df = gpd.GeoDataFrame(pd.merge(metric_df, gdf, on=['nuts_node']))
+        # make metric log
         if log:
             map_df[metric] =  np.log1p(pd.to_numeric(map_df[metric]))
 
-        if not vmin:
-            vmin = map_df[metric].min()
-        if not vmax:
-            vmax = map_df[metric].max()
+        fig, axes_np    = plt.subplots(nrows, ncols, figsize=figsize)
+        axes            = axes_np.flatten().tolist()
 
-        fig, axes = plt.subplots(nrows, ncols, figsize=figsize)
-        axes = axes.flatten()
-
-        idx = -1
-
-        for model_name, model in self.evaluator.evaluated_models.items():
-
-            idx += 1
+        # axes filling with model metrics
+        for idx, model_name in enumerate(self.evaluator.evaluated_models.keys()):
 
             data = map_df[map_df['model'] == model_name].reset_index(drop = False)
-
-
+            
+            # gdf.plot() color map
             data.plot(
-                ax=axes[idx],
-                column=metric,
-                cmap=cmap,
-                vmin=vmin,
-                vmax=vmax,
-                legend=False       # no legend on any subplot
+                ax      = axes[idx],
+                column  = metric,
+                cmap    = cmap,
+                vmin    = vmin,
+                vmax    = vmax,
+                legend  = False  # legend will come in the final axis
             )
-
+            # gdf.plot() context nuts values
             ctx.shapedata[ctx.shapedata['nuts_level'] == 'nuts2'].plot(ax=axes[idx], facecolor='none', linewidth=0.5, edgecolor='grey')
             ctx.shapedata[ctx.shapedata['nuts_level'] == 'nuts1'].plot(ax=axes[idx], facecolor='none', linewidth=1.0, edgecolor='black')
             ctx.shapedata[ctx.shapedata['nuts_level'] == 'nuts0'].plot(ax=axes[idx], facecolor='none', linewidth=1.5, edgecolor='black')
+            
+            # gdf.plot() highlight node - edge
+            if highlight_node is not None:
+                highlight = gdf[gdf[self.evaluator.id_col] == highlight_node]
+                highlight.plot(ax=axes[idx], facecolor='none', linewidth=2, edgecolor='darkgreen')
+
+            # basic axis layout
             axes[idx].set_title(model_name)
+            axes[idx].set_xticks([])
+            axes[idx].set_yticks([])
 
         # --- colorbar in the last (empty) axis ---
         last_ax = axes[-1]
-        last_ax.set_visible(False)          # hide the map frame/ticks
 
-        sm = ScalarMappable(cmap=cmap, norm=Normalize(vmin=vmin, vmax=vmax))
+        sm      = ScalarMappable(cmap=cmap, norm=Normalize(vmin=vmin, vmax=vmax))
         sm.set_array([])                    # required boilerplate
 
         cbar = fig.colorbar(
             sm,
-            ax=last_ax,                     # anchor to the empty axis
-            fraction=0.5,                   # how much of the axis the cbar fills
-            shrink=0.8,
-            pad=0.05
-        )
-        cbar_title = f"{metric} [log]" if log else f"{metric}"
-        cbar.set_label(f'{metric}', fontsize=12)
+            ax      = last_ax,                     # anchor to the empty axis
+            fraction= 0.5,                   # how much of the axis the cbar fills
+            shrink  = 0.8,
+            pad     = 0.05 
+        )  
 
+        cbar_title = f"{metric} [log]" if log else f"{metric}"
+        
+        cbar.set_label(f'{cbar_title}', fontsize=12)
+
+        if highlight_node is not None:
+            handle = mpatches.Patch(facecolor='none', edgecolor='darkgreen', 
+                                    linewidth=1, label=f'Node {highlight_node}')
+            last_ax.legend(handles=[handle], loc='lower center', frameon=False, fontsize=9)
+        last_ax.set_visible(False)  # hides frame/ticks but legend still renders     
         fig.suptitle(f'{metric} distribution',fontweight = 'bold')
+
         plt.tight_layout()
-        plt.show()
+        return fig
 
     def _plot_metric_best_map(self,
                               ax: Axes, 
-                              df: pd.DataFrame, 
+                              metric_df: pd.DataFrame, 
                               metric: str, 
                               model_name_colors: dict,
+                              vmin: float, 
+                              vmax: float,
                               reverse_scale: bool = False,
                               highlight_node: Optional[int] = None,
                               legend: bool = True,
-                              margin_sd: Optional[float] = None,   # set None to disable      
+                              margin_fraction: Optional[float] = None,   # set None to disable      
                             ):
+        """plots map with best model per geographical unit onto supplied axis"""
+        df = metric_df.copy()
         model_cols   = list(df['model'].unique())
         metrics_df_l = df[[self.evaluator.id_col, 'model', metric]]
         metrics_df_w = (metrics_df_l
                         .pivot_table(index=self.evaluator.id_col, columns='model', values=metric)
                         .reset_index())
 
-        # Best model per node
+        # Best model per node: if reverse_scale, the lowest value is best. else max is best
         if reverse_scale:
             metrics_df_w['best'] = metrics_df_w[model_cols].idxmin(axis=1)
         else:
             metrics_df_w['best'] = metrics_df_w[model_cols].idxmax(axis=1)   
 
         # Margin masking: gap between top-2 scores
-        if margin_sd is not None:
-            sorted_vals = np.sort(metrics_df_w[model_cols].values, axis=1)
-            gap = sorted_vals[:, -1] - sorted_vals[:, -2]   # top1 - top2
-            threshold = gap.std() * margin_sd
-            metrics_df_w['best'] = np.where(gap < threshold, 'uncertain', metrics_df_w['best'])
+        if margin_fraction is not None:
+            sorted_vals         = np.sort(metrics_df_w[model_cols].values, axis=1)
+            # get gap: difference between best and second best
+            if reverse_scale:
+                gap = sorted_vals[:, 1] - sorted_vals[:, 0]
+            else:
+                gap                 = sorted_vals[:, -1] - sorted_vals[:, -2]       
+
+            metric_range        = vmax - vmin
+            threshold           = metric_range * margin_fraction            
+            metrics_df_w['best']= np.where(gap < threshold, 'uncertain', metrics_df_w['best'])
 
         # Map color column
-        color_map = {**model_name_colors, 'uncertain': "#ffffff"}
-        metrics_df_w['color'] = metrics_df_w['best'].map(color_map)
+        color_map               = {**model_name_colors, 'uncertain': "#ffffff"}
+        metrics_df_w['color']   = metrics_df_w['best'].map(color_map)
 
         # Merge with geodata
         model0   = list(self.evaluator.evaluated_models.values())[0]
@@ -426,19 +447,25 @@ class EvaluationPlotter:
 
         # Legend
         if legend:
+            # model patches
             handles = [mpatches.Patch(color=c, label=m, ec='black',lw = 0.5) for m, c in color_map.items()]
 
             if highlight_node is not None:
+                # single red patch for highlight-node
                 handles.append(mpatches.Patch(color='red', label=f'node {highlight_node}', ec = 'black', lw = 0.5))
                 highlight = map_data[map_data[self.evaluator.id_col] == highlight_node]
                 highlight.plot(ax           = ax,
-                            facecolor    = 'none',
-                            edgecolor    = 'red')
+                               facecolor    = 'none',
+                               linewidth    = 2,
+                               edgecolor    = 'red')
 
             ax.legend(handles=handles, title='Best model', loc='best', fontsize=8)
+
+        ax.set_xticks([])
+        ax.set_yticks([])        
         ax.set_title(f'Best model by {metric}', fontweight='bold')
 
-
     def _validate_metric(self, metric: str) -> None:
+        """validate that metric is a function of the metric- calculator - class"""
         if metric not in self.evaluator.metric_calculator.supported_metrics:
             raise MetricError(f'invalid metric {metric}. Supported metrics are {self.evaluator.metric_calculator.supported_metrics}')
