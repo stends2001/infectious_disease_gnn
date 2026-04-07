@@ -7,7 +7,7 @@ from .metrics import QuantileRegressionMetricsCalculator, PointRegressionMetrics
 
 from ..utils import check_dataset, warning_emoji
 from ..models.base.basemodel import BaseModel, DLM
-from ..dataloading import EpiConfig
+from ..dataloading.epiconfig import EpiConfig
 
 from .evaluationplotter import EvaluationPlotter
 

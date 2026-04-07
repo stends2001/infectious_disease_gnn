@@ -10,7 +10,7 @@ from .predictions_manager import PredictionManager
 
 from ..utils.modelcolors import model_colors
 
-from ...dataloading import BaseLineDataLoaderManager, DeepDataLoaderManager, GraphDataLoaderManager
+from ...dataloading.dataloaders import BaseLineDataLoaderManager, DeepDataLoaderManager, GraphDataLoaderManager
 from ...plotting import ManagedFigure
 from ...utils import testcolor, color_is_light, checkmark, align, section
 
@@ -153,8 +153,8 @@ class BaseModel(Generic[DLM]):
 
             else:
                 df_node     = df_pred[df_pred[self.epiconfig.id_column] == id]
-                nodename    = self.context_data.nuts_harm[self.context_data.nuts_harm[f'{self.epiconfig.id_column}'] == id][f'{self.epiconfig.nuts_level}_name'].iloc[0]
-                ax_title    = f'{nodename} [node: {id}]'
+                # nodename    = self.context_data.nuts_harm[self.context_data.nuts_harm[f'{self.epiconfig.id_column}'] == id][f'{self.epiconfig.nuts_level}_name'].iloc[0]
+                ax_title    = f'node-ID: {id}'
                         
             if quantiles:
                 # find the index of the quantile 0.5

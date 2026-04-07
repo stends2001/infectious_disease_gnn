@@ -145,7 +145,7 @@ class EpiDataFinalizer:
                         elif transformation_type == 'non_normalization':
                             for transf_method, transf_params in type_params.items():                            
                                 if transf_method  == 'log':
-                                    dfc = reverse_log(dfc, transf_params['shift'], column=col_entry.column_name)       
+                                    dfc = reverse_log(dfc, transf_params, column=col_entry.column_name)       
 
             return dfc
 

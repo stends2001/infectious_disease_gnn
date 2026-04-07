@@ -28,7 +28,7 @@ class EpiDataHarmonizer:
         berlin ones (11000) for the subsequent aggregation onto nuts3/nuts2/nuts1 levels.
         """
         epidemiology_df.loc[epidemiology_df['nuts3_key'].isin(berlin_district_ids), 'nuts3_key'] = berlin_id
-        
+
         if self.epiconfig.verbose > 1:
             print(f'{checkmark} berlin districts renamed into berlin city')  
 
@@ -36,6 +36,8 @@ class EpiDataHarmonizer:
 
     def _add_key_column(self, epi_df: pd.DataFrame, regio_harm: pd.DataFrame) -> pd.DataFrame:
         """adds key column"""
+
+        regio_harm_cp = regio_harm.copy()
 
         match self.epiconfig.country:
 
@@ -50,8 +52,15 @@ class EpiDataHarmonizer:
             case _:
                 assert_never(self.epiconfig.country)
 
-        merge = pd.merge(epi_df, regio_harm[[merge_key,f'{self.epiconfig.level}_key']], on = merge_key)
-        merge = merge.rename(columns = {f'{self.epiconfig.level}_key' : 'key'})
+        if merge_key != f'{self.epiconfig.level}_key':
+            regio_harm_cp = regio_harm_cp.copy()[[merge_key,f'{self.epiconfig.level}_key']].rename(columns = {f'{self.epiconfig.level}_key' : 'key'})
+        else:
+            regio_harm_cp       = regio_harm_cp.copy()[[merge_key]]
+            regio_harm_cp['key']= regio_harm_cp[merge_key]         
+
+        merge = pd.merge(epi_df, regio_harm_cp , on = merge_key)
+
+        print(f'merge cols: {merge.columns.tolist()}')
 
         if self.epiconfig.verbose > 1:
             print(f'{checkmark} nuts column added')  
@@ -175,7 +184,7 @@ class EpiDataHarmonizer:
         """
         time_start = time.time()
 
-        if self.epiconfig.country == 'Germany':
+        if self.epiconfig.country == 'germany':
             raw_epidata         = self._mutate_berlin_districts(rawdata.disease)
         else:
             raw_epidata         = rawdata.disease

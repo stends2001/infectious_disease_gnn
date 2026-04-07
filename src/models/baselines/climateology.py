@@ -4,7 +4,7 @@ import numpy as np
 
 from ..issues import ModelError
 from ...utils.textformatting import section
-from ...dataloading import BaseLineDataLoaderManager 
+from ...dataloading.dataloaders import BaseLineDataLoaderManager 
 from ...utils import check_dataset
 
 from .baselinemodel import BaseLineModel 

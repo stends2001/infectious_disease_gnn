@@ -1,7 +1,7 @@
 from typing import Literal, Self, Optional
 import pandas as pd
 
-from ...dataloading import BaseLineDataLoaderManager
+from ...dataloading.dataloaders import BaseLineDataLoaderManager
 from ...utils import check_dataset
 from .baselinemodel import BaseLineModel 
 from ...utils import align, section

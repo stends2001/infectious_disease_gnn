@@ -318,10 +318,10 @@ class EvaluationPlotter:
         
         # reference data
         ctx     = models[0].dataloadermanager.dataorchestrator.data_context
-        gdf     = ctx.nuts_shapedata
+        gdf     = ctx.local_shapedata
 
         # map data
-        map_df  = gpd.GeoDataFrame(pd.merge(df, gdf, on=['nuts_node']))
+        map_df  = gpd.GeoDataFrame(pd.merge(df, gdf, on=[self.evaluator.id_col]))
 
         # make metric log
         if log:
@@ -345,9 +345,9 @@ class EvaluationPlotter:
                 legend  = False  # legend will come in the final axis
             )
             # gdf.plot() context nuts values
-            ctx.shapedata[ctx.shapedata['nuts_level'] == 'nuts2'].plot(ax=axes[idx], facecolor='none', linewidth=0.5, edgecolor='grey')
-            ctx.shapedata[ctx.shapedata['nuts_level'] == 'nuts1'].plot(ax=axes[idx], facecolor='none', linewidth=1.0, edgecolor='black')
-            ctx.shapedata[ctx.shapedata['nuts_level'] == 'nuts0'].plot(ax=axes[idx], facecolor='none', linewidth=1.5, edgecolor='black')
+            ctx.global_shapedata[ctx.global_shapedata['level'] == 'nuts2'].plot(ax=axes[idx], facecolor='none', linewidth=0.5, edgecolor='grey')
+            ctx.global_shapedata[ctx.global_shapedata['level'] == 'nuts1'].plot(ax=axes[idx], facecolor='none', linewidth=1.0, edgecolor='black')
+            ctx.global_shapedata[ctx.global_shapedata['level'] == 'nuts0'].plot(ax=axes[idx], facecolor='none', linewidth=1.5, edgecolor='black')
             
             # gdf.plot() highlight node - edge
             if highlight_node is not None:
@@ -433,7 +433,7 @@ class EvaluationPlotter:
         # Merge with geodata
         model0   = list(self.evaluator.evaluated_models.values())[0]
         ctx      = model0.dataloadermanager.dataorchestrator.data_context
-        gdf      = ctx.nuts_shapedata
+        gdf      = ctx.local_shapedata
         map_data = gpd.GeoDataFrame(pd.merge(gdf, metrics_df_w, on=self.evaluator.id_col))
 
         map_data.plot(ax        = ax, 
@@ -441,9 +441,9 @@ class EvaluationPlotter:
                       linewidth = 0, 
                       edgecolor ='white')
             
-        ctx.shapedata[ctx.shapedata['nuts_level'] == 'nuts2'].plot(ax=ax, facecolor='none', linewidth=0.5, edgecolor='black')
-        ctx.shapedata[ctx.shapedata['nuts_level'] == 'nuts1'].plot(ax=ax, facecolor='none', linewidth=1.0, edgecolor='black')
-        ctx.shapedata[ctx.shapedata['nuts_level'] == 'nuts0'].plot(ax=ax, facecolor='none', linewidth=1.5, edgecolor='black')
+        ctx.global_shapedata[ctx.global_shapedata['level'] == 'nuts2'].plot(ax=ax, facecolor='none', linewidth=0.5, edgecolor='black')
+        ctx.global_shapedata[ctx.global_shapedata['level'] == 'nuts1'].plot(ax=ax, facecolor='none', linewidth=1.0, edgecolor='black')
+        ctx.global_shapedata[ctx.global_shapedata['level'] == 'nuts0'].plot(ax=ax, facecolor='none', linewidth=1.5, edgecolor='black')
 
         # Legend
         if legend:

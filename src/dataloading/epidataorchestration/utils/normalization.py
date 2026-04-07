@@ -160,7 +160,7 @@ def apply_log(val_df: pd.DataFrame, columns: List[str], params:Dict[str, Dict[st
 
     return scaled_df
 
-def reverse_log(logged_df: pd.DataFrame, shift: float, column: str) -> pd.DataFrame:
+def reverse_log(logged_df: pd.DataFrame, params: dict, column: str) -> pd.DataFrame:
 
     unlogged_df = logged_df.copy() 
 
@@ -168,6 +168,7 @@ def reverse_log(logged_df: pd.DataFrame, shift: float, column: str) -> pd.DataFr
         pass 
         
     else:
+        shift = params['shift']
         unlogged_df[column] = np.exp(unlogged_df[column]) - shift
 
     return unlogged_df

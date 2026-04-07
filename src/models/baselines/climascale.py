@@ -6,7 +6,7 @@ from .baselinemodel import BaseLineModel
 from ..issues import ModelError
 from ...utils import check_dataset
 from ...utils.textformatting import section
-from ...dataloading import BaseLineDataLoaderManager 
+from ...dataloading.dataloaders import BaseLineDataLoaderManager 
 
 class ClimaScaleModel(BaseLineModel):
     """ 

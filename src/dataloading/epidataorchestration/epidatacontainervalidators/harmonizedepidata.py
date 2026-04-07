@@ -50,13 +50,14 @@ class HarmonizedValidator(EpiDataContainerValidator):
 
     def _validate_tokenization(self, attribute_name: str, df: pd.DataFrame):
         """checks any missing values within the tokenization"""
-        col             = df[self.epiconfig.id_column]
+        col             = df[self.epiconfig.id_column].unique()
         unique_tokens   = sorted(set(int(x) for x in col))
 
         min_val         = unique_tokens[0]
         max_val         = unique_tokens[-1]
 
         expected_set    = set(range(min_val, max_val + 1))
+
         actual_set      = set(unique_tokens)
 
         missing_values = sorted(expected_set - actual_set)

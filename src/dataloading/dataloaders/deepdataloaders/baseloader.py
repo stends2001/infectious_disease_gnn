@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     DataList= DeepDataList | GraphDataList
     DataLoaderManager = DeepDataLoaderManager | GraphDataLoaderManager
 
-from ...epidataorchestration import EpiDataOrchestrator
+from ...epidataorchestration.orchestrator import EpiDataOrchestrator
 
 class DeepBaseDataLoaderManager(ABC):
     """

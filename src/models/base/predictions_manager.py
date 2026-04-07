@@ -5,10 +5,10 @@ from datetime import timedelta
 from dateutil.relativedelta import relativedelta
 
 from ..issues import InvalidPredictionsError, MissingPredictionsError
-from ...dataloading.epidataorchestration.normalization import reverse_log, reverse_minmax_scaling, reverse_zscore_scaling
-from ...dataloading.epidataorchestration.epidataorchestrator import EpiDataOrchestrator
-from ...dataloading.epidataorchestration.column_registry import ColumnRegistration
-from ...dataloading.epidataorchestration.temporal_summary import EpiDataTemporalSummary, TemporalError
+from ...dataloading.epidataorchestration.utils.normalization import reverse_log, reverse_minmax_scaling, reverse_zscore_scaling
+from ...dataloading.epidataorchestration.orchestrator import EpiDataOrchestrator
+from ...dataloading.columnregistration.column_registry import ColumnRegistration
+from ...dataloading.epidataorchestration.utils.temporal_summary import EpiDataTemporalSummary, TemporalError
 from ...utils import check_dataset
 
 from ..utils.loss.poissonloss import convert_poisson_predictions
@@ -231,12 +231,12 @@ class PredictionManager:
                 for col in self.column_registration.pred_columns + ['target']:
                     if col in df.columns:
                         df_denorm = self.reverse_transformations[normalization_method](
-                            df_denorm, transformation_dict['normalization'], column=col
+                            df_denorm, transformation_dict['normalization'][normalization_method], column=col
                         )
                     # de-log all columns that need to be
-                    if 'log' in transformation_dict:
+                    if 'non_normalization' in transformation_dict:
                         df_denorm = self.reverse_transformations['log'](
-                            df_denorm, transformation_dict['log'], column=col
+                            df_denorm, transformation_dict['non_normalization']['log'], column=col
                         )
 
                 if self.epiconfig.predict_difference and 'delta' in transformation_dict:

@@ -25,7 +25,7 @@ from ..utils.loss.losshandler import LossHandler
 from ..base import BaseModel
 from ..issues import DeviceWarning, InvalidLossError, InvalidOPtimizerError, InvalidSchedulerError, ModelStatusError
 
-from ...dataloading import GraphDataLoaderManager, DeepDataLoaderManager
+from ...dataloading.dataloaders import GraphDataLoaderManager, DeepDataLoaderManager
 from ...utils import checkmark, traincolor, valcolor, align, section, check_dataset
  
 from .issues import UnexpectedDataShape, InconsistentDataShape

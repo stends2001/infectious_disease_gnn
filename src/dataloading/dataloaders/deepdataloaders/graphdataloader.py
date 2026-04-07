@@ -3,7 +3,7 @@ from torch import Tensor as Tensor
 import os
 from typing import Optional, Literal, cast, List
 from ..issues import DataEntryError
-from ....dataloading.epidataorchestration import EpiDataOrchestrator
+from ....dataloading.epidataorchestration.orchestrator import EpiDataOrchestrator
 from .baseloader import DeepBaseDataLoaderManager
 from .datacontainers import GraphData, GraphDataList, GraphStructure
 
@@ -20,7 +20,7 @@ class GraphDataLoaderManager(DeepBaseDataLoaderManager):
     def retrieve_static_graph(self, graphname: str, graphdirectory: str = 'graphs') -> 'GraphDataLoaderManager':
         """retrieves a static (opposed to dynamic) graph structure"""
         graphpath = os.path.join(self.basedir, graphdirectory, 
-                                 self.dataorchestrator.config.nuts_level, graphname, graphname)
+                                 self.dataorchestrator.config.level, graphname, graphname)
         
         edge_index      = torch.load(graphpath + '_edge_index.pt', weights_only=False)
         edge_weight     = torch.load(graphpath + '_edge_weight.pt', weights_only=False)

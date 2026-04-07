@@ -4,8 +4,8 @@ import pandas as pd
 from abc import abstractmethod
 
 from ..base import BaseModel
-from ...dataloading import BaseLineDataLoaderManager 
-from ...dataloading.epidataorchestration.normalization import apply_minmax_scaling, apply_zscore_scaling
+from ...dataloading.dataloaders import BaseLineDataLoaderManager 
+from ...dataloading.epidataorchestration.utils.normalization import apply_minmax_scaling, apply_zscore_scaling, apply_log
 from ...utils.textformatting import warning_emoji
 
 class BaseLineModel(BaseModel[BaseLineDataLoaderManager]):
@@ -67,31 +67,9 @@ class BaseLineModel(BaseModel[BaseLineDataLoaderManager]):
         self.transformation_funcs = {
             'minmax': apply_minmax_scaling,
             'zscore': apply_zscore_scaling,
-            'log'   : self._apply_log
+            'log'   : apply_log
         }
 
-    def _apply_log(self, df: pd.DataFrame, cols: List[str], eps: float) -> pd.DataFrame:
-        """ 
-        apply log
-
-        Parameters
-        ----------
-        df: pd.DataFrame
-            the dataframe in which column {cols} will be logged
-        cols: List[str]
-            the list of column names to be logged
-        eps: float
-            small constant to make logging safe
-
-        Returns
-        -------
-        df: pd.DataFrame
-            df with logged columns
-        """
-        for col in cols:
-            df[col] = np.log(df[col] + eps)
-        return df
- 
     def _normalize(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         apply normalization, by calling methods in self.transformation_funcs
@@ -106,21 +84,28 @@ class BaseLineModel(BaseModel[BaseLineDataLoaderManager]):
         df_transformed: pd.DataFrame
             the transformed dataframe
         """
-        normalization_method    = self.dataloadermanager.dataorchestrator.config.normalization_method
         df_transformed          = df.copy()
            
+
+
         if self.dataloadermanager.dataorchestrator.config.target_column == 'incidence':
             col_entry_target        = self.column_registration.get_by_name('target')
             transformation_dict     = col_entry_target.transformation_params
 
-            if 'log' in transformation_dict:
-                df_transformed = self.transformation_funcs['log'](df   = df_transformed, 
-                                                                  cols = (['target'] + self.pred_cols), 
-                                                                  eps  = transformation_dict['log'])
+            if 'non_normalization' in transformation_dict:
+                df_transformed = self.transformation_funcs['log'](val_df   = df_transformed, 
+                                                                  columns = (['target'] + self.pred_cols), 
+                                                                  params = {col: transformation_dict['non_normalization']['log'] for col in (['target'] + self.pred_cols)})
 
-            if normalization_method:
-                df_transformed = self.transformation_funcs[normalization_method](val_df = df_transformed, 
-                                                                                 params = {col: transformation_dict['normalization'] for col in (['target'] + self.pred_cols)}, 
-                                                                                 columns= (['target'] + self.pred_cols))
+            if 'normalization' in transformation_dict:      
+                if 'zscore' in transformation_dict['normalization']:
+                    df_transformed = self.transformation_funcs['zscore'](val_df = df_transformed, 
+                                                                        params = {col: transformation_dict['normalization']['zscore'] for col in (['target'] + self.pred_cols)}, 
+                                                                        columns= (['target'] + self.pred_cols))
+                    
+                if 'minmax' in transformation_dict['normalization']:
+                    df_transformed = self.transformation_funcs['minmax'](val_df = df_transformed, 
+                                                                        params = {col: transformation_dict['normalization']['minmax'] for col in (['target'] + self.pred_cols)}, 
+                                                                        columns= (['target'] + self.pred_cols))                    
                         
         return df_transformed           
