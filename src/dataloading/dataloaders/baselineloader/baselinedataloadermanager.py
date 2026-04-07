@@ -2,7 +2,7 @@ import pandas as pd
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ...epidataorchestration.epidataorchestrator import EpiDataOrchestrator
+    from ...epidataorchestration.orchestrator import EpiDataOrchestrator
 
 class BaseLineDataLoaderManager:
     """
