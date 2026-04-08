@@ -387,7 +387,9 @@ class DeepModel(BaseModel[Union[GraphDataLoaderManager, DeepDataLoaderManager]])
         
         total_loss = 0
 
-        expected_shape_yhat = [self.dataloadermanager.dataorchestrator.data_context.num_nodes, self.epiconfig.horizon_size, max(1,self.epiconfig._num_quantiles)]
+        num_nodes = len(self.dataloadermanager.dataorchestrator.data_context.local_shapedata)
+
+        expected_shape_yhat = [num_nodes, self.epiconfig.horizon_size, max(1,self.epiconfig._num_quantiles)]
 
         with torch.no_grad():
             for idx, snapshot in enumerate(iterator):
@@ -419,8 +421,8 @@ class DeepModel(BaseModel[Union[GraphDataLoaderManager, DeepDataLoaderManager]])
         predictions_tensor  = torch.stack(raw_predictions)
         targets_tensor      = torch.stack(raw_targets)
 
-        expected_shape_predictions  = [len(dataloader), self.dataloadermanager.dataorchestrator.data_context.num_nodes, self.epiconfig.horizon_size, max(1,self.epiconfig._num_quantiles)]
-        expected_shape_targets      = [len(dataloader), self.dataloadermanager.dataorchestrator.data_context.num_nodes, self.epiconfig.horizon_size]        
+        expected_shape_predictions  = [len(dataloader), num_nodes, self.epiconfig.horizon_size, max(1,self.epiconfig._num_quantiles)]
+        expected_shape_targets      = [len(dataloader), num_nodes, self.epiconfig.horizon_size]        
 
         received_shape_predictions  = list(predictions_tensor.shape)
         received_shape_targets      = list(targets_tensor.shape)
