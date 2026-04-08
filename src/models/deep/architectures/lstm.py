@@ -150,7 +150,7 @@ class LSTMModel(DeepModel):
                           dropout: float = 0.2):
         
         _num_features   = len(self.column_registration.get_by_type('feature'))
-        _num_nodes      = self.dataloadermanager.dataorchestrator.data_context.num_nodes
+        _num_nodes      = len(self.dataloadermanager.dataorchestrator.data_context.local_shapedata)
         _horizon_size   = self.dataloadermanager.dataorchestrator.config.horizon_size
         _seq_length     = self.dataloadermanager.dataorchestrator.config.sequence_length
         _num_quantiles  = max(self.dataloadermanager.dataorchestrator.config._num_quantiles,1)        
