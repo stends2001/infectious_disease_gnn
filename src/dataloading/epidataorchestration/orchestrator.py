@@ -110,7 +110,7 @@ class EpiDataOrchestrator:
         self.finalizer      = EpiDataFinalizer(self.config, self.column_registration)
         final_data          = self.finalizer.orchestrate(self.data_normalized)
         self._data_final    = final_data
-        FinalizedValidator(self.config, self.column_registration, final_data)
+        FinalizedValidator(self.config, self.column_registration, self.data_raw, self.data_harmonized, final_data).validate()
         return self        
 
     def build(self) -> 'EpiDataOrchestrator':
