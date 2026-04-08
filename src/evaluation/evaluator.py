@@ -4,6 +4,7 @@ from tqdm import tqdm
 
 from .containers import EvaluationPredictionsCompilation
 from .metrics import QuantileRegressionMetricsCalculator, PointRegressionMetricsCalculator
+from .peakevaluator import PeakEvaluator
 
 from ..utils import check_dataset, warning_emoji
 from ..models.base.basemodel import BaseModel, DLM
@@ -46,6 +47,7 @@ class Evaluator:
         self.plotter                = EvaluationPlotter(self)
         self.data_compilation       = EvaluationPredictionsCompilation(self.model_names)
         self.metric_calculator      = self._return_metric_calculator()      
+        self.peak_evaluator         = PeakEvaluator(self)        
 
     @check_dataset()
     def add_evaluation(self, 
