@@ -60,8 +60,6 @@ class EpiDataHarmonizer:
 
         merge = pd.merge(epi_df, regio_harm_cp , on = merge_key)
 
-        print(f'merge cols: {merge.columns.tolist()}')
-
         if self.epiconfig.verbose > 1:
             print(f'{checkmark} nuts column added')  
 
