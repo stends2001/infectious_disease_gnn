@@ -61,15 +61,16 @@ class EpiDataTemporalSummary:
     def _resample(self) -> None:
         """Align dates to temporal frequency (Mondays for weekly, 1st for monthly)"""
         if self.temporal_frequency == 'w':
-            self.min_date = convert_to_next_monday(self.min_date)
+            self.min_date       = convert_to_next_monday(self.min_date)
             self.split_trainval = convert_to_next_monday(self.split_trainval)
-            self.split_valtest = convert_to_next_monday(self.split_valtest)
-            self.max_date = convert_to_next_monday(self.max_date)
+            self.split_valtest  = convert_to_next_monday(self.split_valtest)
+            self.max_date       = convert_to_next_monday(self.max_date)
+
         elif self.temporal_frequency == 'm':
-            self.min_date = convert_to_month_start(self.min_date)
+            self.min_date       = convert_to_month_start(self.min_date)
             self.split_trainval = convert_to_month_start(self.split_trainval)
-            self.split_valtest = convert_to_month_start(self.split_valtest)
-            self.max_date = convert_to_month_start(self.max_date)
+            self.split_valtest  = convert_to_month_start(self.split_valtest)
+            self.max_date       = convert_to_month_start(self.max_date)
 
     def _set_extended_timepoints(self) -> None:
         """extends timepoints based on all config input for the data loading / filtering"""
