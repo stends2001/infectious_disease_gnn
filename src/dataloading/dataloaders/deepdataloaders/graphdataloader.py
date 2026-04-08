@@ -19,11 +19,10 @@ class GraphDataLoaderManager(DeepBaseDataLoaderManager):
     
     def retrieve_static_graph(self, graphname: str, graphdirectory: str = 'graphs') -> 'GraphDataLoaderManager':
         """retrieves a static (opposed to dynamic) graph structure"""
-        graphpath = os.path.join(self.basedir, graphdirectory, 
-                                 self.dataorchestrator.config.level, graphname, graphname)
+        graphpath = os.path.join(self.basedir, graphdirectory, self.dataorchestrator.config.country, self.dataorchestrator.config.level, graphname)
         
-        edge_index      = torch.load(graphpath + '_edge_index.pt', weights_only=False)
-        edge_weight     = torch.load(graphpath + '_edge_weight.pt', weights_only=False)
+        edge_index      = torch.load(os.path.join(graphpath, 'edge_index.pt'), weights_only=False)
+        edge_weight     = torch.load(os.path.join(graphpath, 'edge_weight.pt'), weights_only=False)
         graph_structure = GraphStructure(edge_index, edge_weight)
 
         self.graph      = graph_structure
