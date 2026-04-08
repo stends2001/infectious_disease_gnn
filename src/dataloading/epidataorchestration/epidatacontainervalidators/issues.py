@@ -37,3 +37,9 @@ class InvalidNormalizationError(Error):
     def __init__(self, attribute_name: str, cls_name: str, column: str, specifications: str):
         message = f"Attribute {attribute_name} in {cls_name} has an invalid normaliztaion for {column}.\n{specifications}"
         super().__init__(message)        
+
+class IncorrectPeakTimeError(Error):
+
+    def __init__(self, cls_name: str, specifications: str):
+        message = f"Target peak time in {cls_name} is incorrect.\n{specifications}"
+        super().__init__(message)  
