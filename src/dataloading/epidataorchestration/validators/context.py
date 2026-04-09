@@ -7,7 +7,15 @@ from ...epiconfig import EpiConfig
 
 class ContextValidator(EpiDataContainerValidator):
     """ 
+    Validates ContextEpiData. 
 
+    Validates that attribute are of allowed type,
+    non-emtpy -> parent methods.
+
+    See Also
+    --------
+    For more information, please see the Parent class:
+    EpiDataContainerValidator
     """
 
     def __init__(self,
@@ -21,8 +29,6 @@ class ContextValidator(EpiDataContainerValidator):
         self.col              = self.epiconfig.id_column
 
     def validate(self):
-        """
-        """
         attrs           = self._get_expected_attributes()
 
         for attr_name in attrs:

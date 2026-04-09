@@ -9,23 +9,33 @@ from ...columnregistration import ColumnRegistry
 
 class FeatureValidator(EpiDataContainerValidator):
     """ 
+    Validates FeatureEpiData. 
 
+    Validates that attribute are of allowed type,
+    non-emtpy -> parent methods.
+
+    Further validates that there's no NaNs and that
+    required columns are present.
+
+    See Also
+    --------
+    For more information, please see the Parent class:
+    EpiDataContainerValidator    
     """
 
     def __init__(self,
-                 epiconfig:  EpiConfig,
-                 column_registry: ColumnRegistry,
-                 featureepidata: FeatureEpiData):
+                 epiconfig:         EpiConfig,
+                 column_registry:   ColumnRegistry,
+                 featureepidata:    FeatureEpiData):
 
         super().__init__(epiconfig, 
                          dataclass_validated='FeatureEpiData')
 
         self.featureepidata  = featureepidata
         self.column_registry = column_registry
+        self.required_cols   = self.column_registry.context_columns + self.column_registry.target_columns + self.column_registry.feature_columns
 
     def validate(self):
-        """
-        """
         attrs           = self._get_expected_attributes()
 
         for attr_name in attrs:
@@ -48,13 +58,16 @@ class FeatureValidator(EpiDataContainerValidator):
                 self._validate_nan(attr_name, stored_attribute)                
                
     def _validate_nan(self, attribute_name: str, stored_attribute: pd.DataFrame):
+        """validates that there's no NaNs, anywhere in any column."""
+
         nan_columns = stored_attribute.columns[stored_attribute.isna().any()].tolist()
+        
         if nan_columns:     
             raise NaNsFoundError(attribute_name, self.dataclass_validated, nan_columns)
 
     def _validate_presence_columns(self, attribute_name: str, stored_attribute: pd.DataFrame):
-
-        all_cols = self.column_registry.context_columns + self.column_registry.target_columns + self.column_registry.feature_columns
+        """validates that required columns are present."""
+        all_cols = self.required_cols
 
         for col in all_cols:
             if col not in stored_attribute:
