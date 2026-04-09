@@ -1,9 +1,9 @@
 from ..epiconfig import EpiConfig
-from ..columnregistration.column_registry import ColumnRegistration
+from ..columnregistration import ColumnRegistry
 
-from .orchestrator_delegators import EpiDataReader, EpiDataHarmonizer, EpiDataProcessor, EpiFeatureBuilder, EpiDataNormalizer, EpiDataFinalizer
-from .epidatacontainers import RawEpiData, HarmonizedEpiData, ContextEpiData, ProcessedEpiData, FeatureEpiData, NormalizedEpiData, FinalizedEpiData
-from .epidatacontainervalidators import RawValidator, HarmonizedValidator, ContextValidator, ProcessedValidator, FeatureValidator, NormalizedValidator, FinalizedValidator
+from .orchestrator_helpers import EpiDataReader, EpiDataHarmonizer, EpiDataProcessor, EpiFeatureBuilder, EpiDataTransformer, EpiDataFinalizer
+from .containers import RawEpiData, HarmonizedEpiData, ContextEpiData, ProcessedEpiData, FeatureEpiData, TransformedEpiData, FinalizedEpiData
+from .validators import RawValidator, HarmonizedValidator, ContextValidator, ProcessedValidator, FeatureValidator, TransformedValidator, FinalizedValidator
 
 from .utils.issues import MissingEpiDataContainer
 
@@ -15,7 +15,7 @@ class EpiDataOrchestrator:
         self.config         = config
 
         # Initialize column registration
-        self.column_registration = ColumnRegistration()
+        self.column_registration = ColumnRegistry()
         self.column_registration.add_column(
             config.temporal_column, 
             'context'
@@ -95,14 +95,14 @@ class EpiDataOrchestrator:
    
     def normalize(self) -> 'EpiDataOrchestrator':
         """normalize data"""
-        self.normalizer = EpiDataNormalizer(
+        self.normalizer = EpiDataTransformer(
             self.config, 
             self.column_registration,
             self.data_context.temporal_summary
         )
         normalized_data = self.normalizer.orchestrate(self.data_feature)
         self._data_normalized = normalized_data
-        NormalizedValidator(self.config, self.column_registration, normalized_data).validate()
+        TransformedValidator(self.config, self.column_registration, normalized_data).validate()
         return self      
 
     def finalize(self) -> 'EpiDataOrchestrator':
@@ -176,7 +176,7 @@ class EpiDataOrchestrator:
         return self._data_feature    
     
     @property
-    def data_normalized(self) -> NormalizedEpiData:
+    def data_normalized(self) -> TransformedEpiData:
         if not self._data_normalized:
             raise MissingEpiDataContainer(datastage = 'data_normalized', previous_method = 'build_features')        
 
