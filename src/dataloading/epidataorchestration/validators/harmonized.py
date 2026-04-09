@@ -8,7 +8,18 @@ from ...epiconfig import EpiConfig
 
 class HarmonizedValidator(EpiDataContainerValidator):
     """ 
+    Validates HarmonizedEpiData. 
 
+    Validates that attribute are of allowed type,
+    non-emtpy -> parent methods.
+
+    Further validates that equired columns are present
+    and validates the tokenization process.
+
+    See Also
+    --------
+    For more information, please see the Parent class:
+    EpiDataContainerValidator    
     """
 
     def __init__(self,
@@ -19,11 +30,9 @@ class HarmonizedValidator(EpiDataContainerValidator):
                          dataclass_validated='HarmonizedEpiData')
 
         self.harmonziedepidata= harmonziedepidata
-        self.col              = self.epiconfig.id_column
+        self.required_col     = self.epiconfig.id_column
 
     def validate(self):
-        """
-        """
         attrs           = self._get_expected_attributes()
 
         for attr_name in attrs:
@@ -45,8 +54,9 @@ class HarmonizedValidator(EpiDataContainerValidator):
                 self._validate_tokenization(attr_name, stored_attribute)
                
     def _validate_presence_columns(self, attribute_name: str, stored_attribute: pd.DataFrame):
-        if self.col not in stored_attribute:
-            raise MissingColumnError(attribute_name, self.col, self.dataclass_validated)        
+        """validates that the only required column is present everywhere"""
+        if self.required_col not in stored_attribute:
+            raise MissingColumnError(attribute_name, self.required_col, self.dataclass_validated)        
 
     def _validate_tokenization(self, attribute_name: str, df: pd.DataFrame):
         """checks any missing values within the tokenization"""
@@ -71,6 +81,7 @@ class HarmonizedValidator(EpiDataContainerValidator):
         # these are mandatory
         expected_attributes = ['epidata']
 
+        # the following are optional, depending on epiconfig
         if self.epiconfig.feature_popdens:
             expected_attributes.append('population_density')
         

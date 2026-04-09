@@ -9,9 +9,20 @@ from ...epiconfig import EpiConfig
 
 class TransformedValidator(EpiDataContainerValidator):
     """ 
+    Validates TransformedEpiData. 
 
+    Validates that attribute are of allowed type,
+    non-emtpy -> parent methods.
+
+    Further validates that required columns are presents,
+    there's no NaNs and the normalization process. It checks
+    the parameters for zscore or for minmax.
+
+    See Also
+    --------
+    For more information, please see the Parent class:
+    EpiDataContainerValidator
     """
-
     def __init__(self,
                  epiconfig:         EpiConfig,
                  column_registry:   ColumnRegistry,                 
@@ -50,7 +61,10 @@ class TransformedValidator(EpiDataContainerValidator):
             self._validate_normalization(attr_name, stored_attribute)
 
     def _validate_normalization(self, attribute_name: str, stored_attribute: pd.DataFrame):
-
+        """
+        Validates the normalization process. Thus, when minmax, that min = 0 and max = 1. 
+        When zscore, that mean is 0 and std = 1
+        """
         tolerance = 1e-6
 
         # normalization was done bsed on train df
@@ -69,7 +83,7 @@ class TransformedValidator(EpiDataContainerValidator):
                 case (True, 'self'):
                 
                     # example: {'zscore': {'mean': np.float64(0.12332682669392722), 'std': np.float64(0.31541569993631763)}}
-                    normalization_dict  = col_entry._transformation_params['normalization']
+                    normalization_dict  = col_entry.transformation_params['normalization']
                     
                     for normalization_funcname, params_dict in normalization_dict.items():
                         
@@ -111,15 +125,17 @@ class TransformedValidator(EpiDataContainerValidator):
                     pass
 
                 case _:
-                    assert_never(col_entry.transformation, col_entry._transformation_group)
-            
-               
+                    assert_never(col_entry.transformation, col_entry.transformation_group)
+                 
     def _validate_presence_columns(self, attribute_name: str, stored_attribute: pd.DataFrame):
+        """validates that required columns are present."""              
         for col in self.cols:
             if col not in stored_attribute.columns:
                 raise MissingColumnError(attribute_name, col, self.dataclass_validated)        
         
     def _validate_nan(self, attribute_name: str, stored_attribute: pd.DataFrame):
+        """validates that there's no NaNs, anywhere in any column."""        
+        
         nan_columns = stored_attribute.columns[stored_attribute.isna().any()].tolist()
         if nan_columns:     
             NaNsFoundError(attribute_name, self.dataclass_validated, nan_columns)

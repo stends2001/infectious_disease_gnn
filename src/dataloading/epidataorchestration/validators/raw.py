@@ -8,18 +8,17 @@ from ...epiconfig.epiconfig import EpiConfig
 
 class RawValidator(EpiDataContainerValidator):
     """ 
-    Validator of RawEpiData classes
-    Validates the existent attributes and that they
-    are not empty. Also validates the presence of 
-    columns "level" and "key".
+    Validates RawEpiData. 
 
-    Examples
-    --------
-    >>> RawValidator(orchestrator.config, orchestrator.data_raw).validate()
+    Validates that attribute are of allowed type,
+    non-emtpy -> parent methods.
+
+    Further validates that required columns are presents
 
     See Also
     --------
-    For more information, please see EpiDataContainerValidator
+    For more information, please see the Parent class:
+    EpiDataContainerValidator
     """
 
     def __init__(self,
@@ -33,13 +32,6 @@ class RawValidator(EpiDataContainerValidator):
         self.cols      = ['level','key']
 
     def validate(self):
-        """
-        We validate that all attributes have length (they're all a dataframe (pd or gpd) or a dictionary)
-        Attempting to access a missing attribute will raise an error internally to the containers, so we
-        dont need to deal with that here.
-
-        We loop through all attributes
-        """
         attrs           = self._get_expected_attributes()
         
         for attr_name in attrs:

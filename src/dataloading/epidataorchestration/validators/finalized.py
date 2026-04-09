@@ -13,7 +13,18 @@ from ...columnregistration import ColumnRegistry
 
 class FinalizedValidator(EpiDataContainerValidator):
     """ 
+    Validates FinalizedEpiData. 
 
+    Validates that attribute are of allowed type,
+    non-emtpy -> parent methods.
+
+    Further validates that there's no NaNs and that
+    required columns are present.
+
+    See Also
+    --------
+    For more information, please see the Parent class:
+    EpiDataContainerValidator    
     """
 
     def __init__(self,
@@ -30,10 +41,11 @@ class FinalizedValidator(EpiDataContainerValidator):
         self.harmonizedepidata  = harmonizedepidata
         self.finalizedepidata   = finalizedepidata
         self.column_registry    = column_registry
+        
+        # the entire col registry except "target" (which is the first one of target columns)
+        self.required_cols      = self.column_registry.context_columns + self.column_registry.feature_columns+ self.column_registry.target_columns[1:]
 
     def validate(self):
-        """
-        """
         attrs           = self._get_expected_attributes()
 
         for attr_name in attrs:
@@ -58,19 +70,24 @@ class FinalizedValidator(EpiDataContainerValidator):
         self._validate_peak_time(self.finalizedepidata.data_denorm)            
                
     def _validate_nan(self, attribute_name: str, stored_attribute: pd.DataFrame):
+        """validates that there's no NaNs, anywhere in any column."""
+
         nan_columns = stored_attribute.columns[stored_attribute.isna().any()].tolist()
         if nan_columns:     
             raise NaNsFoundError(attribute_name, self.dataclass_validated, nan_columns)
 
     def _validate_presence_columns(self, attribute_name: str, stored_attribute: pd.DataFrame):
+        """validates that required columns are present."""        
 
-        all_cols = self.column_registry.context_columns + self.column_registry.feature_columns+ self.column_registry.target_columns[1:]
-
-        for col in all_cols:
+        for col in self.required_cols:
             if col not in stored_attribute:
                 raise MissingColumnError(attribute_name, col, self.dataclass_validated)        
 
     def _validate_peak_time(self, data_denorm: pd.DataFrame):
+        """
+        validates that the peak incidence value is properly time-stamped.
+        In other words, this method validates the temporal shifting of target and lags.
+        """
 
         final_data              = data_denorm.copy()
         target_column           = f'target_lead{self.epiconfig.horizon_leadtime}'
@@ -98,11 +115,8 @@ class FinalizedValidator(EpiDataContainerValidator):
                     (self.harmonizedepidata.epidata[self.epiconfig.temporal_column] == computed_peak_time)
                 ]['cases'].iloc[0]
         
-        if true_casenumbers == computed_casenumbers:
-            print('correct peak time')
+        if true_casenumbers != computed_casenumbers:
 
-        else:
-            
             specs = (
                 f'Computed: node {final_peak_node} at timestamp {final_peak_time} has {computed_casenumbers} cases.\n'
                 f'In reality at this point we have {true_casenumbers} cases.'

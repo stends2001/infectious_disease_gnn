@@ -8,7 +8,18 @@ from ...epiconfig import EpiConfig
 
 class ProcessedValidator(EpiDataContainerValidator):
     """ 
+    Validates ProcessedEpiData. 
 
+    Validates that attribute are of allowed type,
+    non-emtpy -> parent methods.
+
+    Further validates that required columns are presents
+    and that there's no NaNs.
+
+    See Also
+    --------
+    For more information, please see the Parent class:
+    EpiDataContainerValidator
     """
 
     def __init__(self,
@@ -22,8 +33,6 @@ class ProcessedValidator(EpiDataContainerValidator):
         self.col             = self.epiconfig.id_column
 
     def validate(self):
-        """
-        """
         attrs           = self._get_expected_attributes()
 
         for attr_name in attrs:
@@ -46,10 +55,14 @@ class ProcessedValidator(EpiDataContainerValidator):
                 self._validate_nan(attr_name, stored_attribute)
                
     def _validate_presence_columns(self, attribute_name: str, stored_attribute: pd.DataFrame):
+        """validates that required columns are present."""        
+
         if self.col not in stored_attribute:
             raise MissingColumnError(attribute_name, self.col, self.dataclass_validated)        
         
     def _validate_nan(self, attribute_name: str, stored_attribute: pd.DataFrame):
+        """validates that there's no NaNs, anywhere in any column."""
+
         nan_columns = stored_attribute.columns[stored_attribute.isna().any()].tolist()
         if nan_columns:     
             NaNsFoundError(attribute_name, self.dataclass_validated, nan_columns)
