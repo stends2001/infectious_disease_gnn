@@ -3,8 +3,7 @@ from typing import assert_never, TYPE_CHECKING , Dict, Tuple, Literal, Optional,
 import pandas as pd
 import geopandas as gpd
 
-if TYPE_CHECKING:
-    from ...epiconfig import EpiConfig
+from ...epiconfig import EpiConfig
 
 from ....utils.textformatting import checkmark
 from ....utils.constants import berlin_district_ids, berlin_id

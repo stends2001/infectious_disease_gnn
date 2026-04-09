@@ -4,8 +4,7 @@ import pandas as pd
 import numpy as np
 from src.utils.textformatting import checkmark
 
-if TYPE_CHECKING:
-    from src.dataloading.epiconfig.epiconfig import EpiConfig
+from src.dataloading.epiconfig.epiconfig import EpiConfig
 
 from ..containers import FeatureEpiData, TransformedEpiData
 from ...columnregistration import ColumnRegistry

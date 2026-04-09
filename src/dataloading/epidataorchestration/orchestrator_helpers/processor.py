@@ -2,8 +2,7 @@ import time
 from typing import TYPE_CHECKING
 import pandas as pd
 
-if TYPE_CHECKING:
-    from ...epiconfig import EpiConfig
+from ...epiconfig import EpiConfig
 
 from ....utils.textformatting import checkmark
 from ..utils.temporal_summary import EpiDataTemporalSummary

@@ -5,8 +5,7 @@ import pandas as pd
 import geopandas as gpd
 from ....utils.textformatting import checkmark
 
-if TYPE_CHECKING:
-    from ...epiconfig import EpiConfig
+from ...epiconfig import EpiConfig
 
 from ..containers import RawEpiData
 

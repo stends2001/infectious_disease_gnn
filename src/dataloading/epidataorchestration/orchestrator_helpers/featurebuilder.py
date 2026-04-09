@@ -6,8 +6,7 @@ import geopandas as gpd
 import numpy as np
 from ....utils.textformatting import checkmark
 
-if TYPE_CHECKING:
-    from ...epiconfig import EpiConfig
+from ...epiconfig import EpiConfig
 
 from ..utils.issues import EpiDataOrchestrationError
 from ...columnregistration import ColumnRegistry

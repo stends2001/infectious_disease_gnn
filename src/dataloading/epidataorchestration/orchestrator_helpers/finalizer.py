@@ -4,8 +4,7 @@ from typing import TYPE_CHECKING
 import pandas as pd
 from ....utils.textformatting import checkmark
 
-if TYPE_CHECKING:
-    from ...epiconfig import EpiConfig
+from ...epiconfig import EpiConfig
 
 from ..containers import TransformedEpiData, FinalizedEpiData
 from ..utils.normalization import reverse_log, reverse_minmax_scaling, reverse_zscore_scaling
