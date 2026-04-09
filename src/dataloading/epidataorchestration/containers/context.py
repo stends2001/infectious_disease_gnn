@@ -22,6 +22,10 @@ class ContextEpiData:
     tokenization_map:       Dict[str, int]
     temporal_summary:       'EpiDataTemporalSummary'
 
+    @property
+    def num_nodes(self) -> int:
+        return len(self.local_shapedata)
+
     def __repr__(self):
         representation = (f"<{self.__class__.__name__}(country = {self.country}, "
                 f"level = {self.level}, "
