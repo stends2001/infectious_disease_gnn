@@ -4,7 +4,7 @@ from pathlib import Path
 import yaml
 import dataclasses
 
-from .pathmanager import EpiPathsManager, EpiPathsManagerGermany, EpiPathsManagerNetherlands
+from .pathmanager import EpiPathsManagerGermany, EpiPathsManagerNetherlands
 from .validator import EpiConfigValidator
 
 from .issues import EpiConfigValidationError
