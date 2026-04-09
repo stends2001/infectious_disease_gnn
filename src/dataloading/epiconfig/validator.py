@@ -52,6 +52,11 @@ class EpiConfigValidator:
             exceptions.append(EpiConfigLimitationError(f'invalid valid for temporal_frequency (currently). Value must be in ["m","w","d"]'))
 
         # predicting deltas
+        if self.epiconfig.predict_difference:
+            exceptions.append(EpiConfigLimitationError(
+                f"predict_difference is currently not supported."
+            ))               
+
         if self.epiconfig.predict_difference and self.epiconfig.horizon_leadtime > 1:
             exceptions.append(EpiConfigLimitationError(
                 f"predict_difference=True is only supported with horizon_leadtime=1 (currently) "
