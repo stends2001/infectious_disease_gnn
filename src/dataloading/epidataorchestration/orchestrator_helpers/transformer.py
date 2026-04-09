@@ -14,8 +14,8 @@ from ..utils.temporal_summary import EpiDataTemporalSummary
 from ..utils.normalization import pipeline_minmax_normalization, pipeline_zscore_normalization, apply_minmax_scaling, apply_zscore_scaling, apply_log
 from ..utils.issues import EpiDataOrchestrationError
 
-# ============= NORMALIZER CLASS ============= 
-class EpiDataNormalizer:
+# ============= Transformer CLASS ============= 
+class EpiDataTransformer:
     """  
     """      
     def __init__(self, 
