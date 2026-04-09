@@ -1,9 +1,11 @@
 from dataclasses import dataclass, field
 from typing import Optional, List, Dict, Literal
-from .issues import MissingColEntry, MissingTransformationReferral
-from ...utils.textformatting import align
 
 from .colentry import ColEntry
+from .transformation_params import TransformationParams
+
+from .issues import MissingColEntry, MissingTransformationReferral
+from ...utils.textformatting import align
 
 @dataclass
 class ColumnRegistry:
@@ -19,7 +21,7 @@ class ColumnRegistry:
                    column_type:             Literal['context','feature','target','pred','split'], 
                    needs_normalization:     bool = False,                   
                    transformation_group:    Optional[str] = None, 
-                   transformation_params:   Optional[dict] = None):
+                   transformation_params:   Optional[TransformationParams] = None):
         """Add a column to the registry. Please see ColEntry for more information"""
 
         # if transformation is guided by another column, check whether that column 
@@ -37,17 +39,18 @@ class ColumnRegistry:
         # Append to the registry
         self.columns.append(entry)
     
-    def update_transformation(self, column_name: str, transformation_params: dict):
-        """Update transformation info for a column"""
+    def update_transformation(self, column_name: str, params: TransformationParams) -> None:
         col = self.get_by_name(column_name)
-
-        # if transformation params are not yet initiated for this col, then insert the dict
         if col._transformation_params is None:
-            col._transformation_params = transformation_params
-            
-        # if transformation params are initiated for this col, then simply update the dict            
+            col._transformation_params = params
         else:
-            col._transformation_params.update(transformation_params)
+            # merge: only overwrite fields that are explicitly set in the new params
+            existing = col._transformation_params
+            col._transformation_params = TransformationParams(
+                log    = params.log    if params.log    is not None else existing.log,
+                zscore = params.zscore if params.zscore is not None else existing.zscore,
+                minmax = params.minmax if params.minmax is not None else existing.minmax,
+            )
         
     # ========= INTERACTING ======= #        
     def get_by_type(self, column_type: str) -> List[str]:

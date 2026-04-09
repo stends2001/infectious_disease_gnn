@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import Optional, Dict, Literal
 from .issues import InvalidColEntry
+from .transformation_params import TransformationParams
 
 @dataclass
 class ColEntry:
@@ -20,18 +21,14 @@ class ColEntry:
         - transformation_group == 'self'    => individual transformation (based on parameters from itself)
         - transformation_group == {column_name} of another ColEntry
         - transformation_group == None      => only possible when self.transformation == False
-    _transformation_params: Optional[Dict[str,Dict[str,dict]]]
-        transformation parameters. Only possible when self.transformation is True, and when self.transformation_group == 'self'
-        This dictionary is build up as follows:
-        - first key-level is transformation type: i.e. "transformation" or "normalization".
-        - the dictionary inside the value for that key, contains a string related to the function name as key, and parameters as value.
-        NOTE: to be accesed with attribute `self.transformation_params`. Allows for the checking of absence: error is thrown.
+    # TODO
+    _transformation_params: ... 
     """
     column_name:            str
     column_type:            Literal['context','feature','target','pred','split']
     transformation:         bool 
     _transformation_group:  Optional[str]            = None
-    _transformation_params: Optional[Dict[str,Dict[str,dict]]] = None    
+    _transformation_params: Optional[TransformationParams] = None    
     
     def __post_init__(self):
         
