@@ -11,15 +11,13 @@ from ....utils.constants import berlin_district_ids, berlin_id
 from ..utils.issues import EpiDataOrchestrationError
 from ..utils.temporal_summary import EpiDataTemporalSummary
 
-from ..epidatacontainers.rawepidata import RawEpiData
-from ..epidatacontainers.harmonizedepidata import HarmonizedEpiData
-from ..epidatacontainers.contextepidata import ContextEpiData
+from ..containers import RawEpiData, HarmonizedEpiData, ContextEpiData
 
 # ============= HARMONIZATION CLASS =============
 class EpiDataHarmonizer:
     """
     """
-    def __init__(self, epiconfig: 'EpiConfig'):
+    def __init__(self, epiconfig: EpiConfig):
         self.epiconfig = epiconfig   
 
     def _mutate_berlin_districts(self, epidemiology_df: pd.DataFrame) -> pd.DataFrame:

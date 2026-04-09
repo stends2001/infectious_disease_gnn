@@ -7,16 +7,17 @@ from ....utils.textformatting import checkmark
 if TYPE_CHECKING:
     from ...epiconfig import EpiConfig
 
-from ..epidatacontainers import NormalizedEpiData, FinalizedEpiData
+from ..containers import TransformedEpiData, FinalizedEpiData
 from ..utils.normalization import reverse_log, reverse_minmax_scaling, reverse_zscore_scaling
-from ...columnregistration.column_registry import ColumnRegistration
+from ...columnregistration import ColumnRegistry
 
 class EpiDataFinalizer:
     """
     """   
     def __init__(self, 
-                 epiconfig: 'EpiConfig', 
-                 column_registration: ColumnRegistration):
+                 epiconfig:             EpiConfig, 
+                 column_registration:   ColumnRegistry):
+        
         self.epiconfig = epiconfig 
         self.column_registration = column_registration
 
@@ -149,7 +150,7 @@ class EpiDataFinalizer:
 
             return dfc
 
-    def orchestrate(self, normalized_data: NormalizedEpiData) -> 'FinalizedEpiData':
+    def orchestrate(self, normalized_data: TransformedEpiData) -> 'FinalizedEpiData':
         time_start = time.time()
         dfc         = normalized_data.data
 

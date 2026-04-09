@@ -7,8 +7,7 @@ if TYPE_CHECKING:
 
 from ....utils.textformatting import checkmark
 from ..utils.temporal_summary import EpiDataTemporalSummary
-from ..epidatacontainers.processedepidata import ProcessedEpiData
-from ..epidatacontainers.harmonizedepidata import HarmonizedEpiData
+from ..containers import ProcessedEpiData, HarmonizedEpiData
 
 class EpiDataProcessor:     
     """
@@ -25,7 +24,7 @@ class EpiDataProcessor:
     instance of ProcessedEpiData    
     """
     def __init__(self, 
-                 config:            'EpiConfig', 
+                 config:            EpiConfig, 
                  temporal_summary:  EpiDataTemporalSummary):
         
         self.config             = config

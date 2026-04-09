@@ -8,14 +8,14 @@ from ....utils.textformatting import checkmark
 if TYPE_CHECKING:
     from ...epiconfig import EpiConfig
 
-from ..epidatacontainers.rawepidata import RawEpiData
+from ..containers import RawEpiData
 
 # ============= DATA IMPORTATION CLASS =============
 class EpiDataReader:
     """
     """
     
-    def __init__(self, epiconfig: 'EpiConfig'):
+    def __init__(self, epiconfig: EpiConfig):
         self.epiconfig = epiconfig
 
     def orchestrate(self) -> RawEpiData:

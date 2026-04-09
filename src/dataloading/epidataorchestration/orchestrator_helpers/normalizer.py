@@ -7,21 +7,21 @@ from src.utils.textformatting import checkmark
 if TYPE_CHECKING:
     from src.dataloading.epiconfig.epiconfig import EpiConfig
 
-from src.dataloading.epidataorchestration.epidatacontainers import FeatureEpiData, NormalizedEpiData
-from src.dataloading.columnregistration.column_registry import ColumnRegistration
+from ..containers import FeatureEpiData, TransformedEpiData
+from ...columnregistration import ColumnRegistry
 
-from src.dataloading.epidataorchestration.utils.temporal_summary import EpiDataTemporalSummary
-from src.dataloading.epidataorchestration.utils.normalization import pipeline_minmax_normalization, pipeline_zscore_normalization, apply_minmax_scaling, apply_zscore_scaling, apply_log
-from src.dataloading.epidataorchestration.utils.issues import EpiDataOrchestrationError
+from ..utils.temporal_summary import EpiDataTemporalSummary
+from ..utils.normalization import pipeline_minmax_normalization, pipeline_zscore_normalization, apply_minmax_scaling, apply_zscore_scaling, apply_log
+from ..utils.issues import EpiDataOrchestrationError
 
 # ============= NORMALIZER CLASS ============= 
 class EpiDataNormalizer:
     """  
     """      
     def __init__(self, 
-                 epiconfig: 'EpiConfig', 
-                 column_registration: ColumnRegistration, 
-                 temporal_summary: EpiDataTemporalSummary):
+                 epiconfig:             EpiConfig, 
+                 column_registration:   ColumnRegistry, 
+                 temporal_summary:      EpiDataTemporalSummary):
         
         self.epiconfig              = epiconfig 
         self.temporal_summary       = temporal_summary
@@ -249,7 +249,7 @@ class EpiDataNormalizer:
 
         return normalized_df
 
-    def orchestrate(self, feature_data: 'FeatureEpiData') -> 'NormalizedEpiData':
+    def orchestrate(self, feature_data: 'FeatureEpiData') -> 'TransformedEpiData':
         time_start      = time.time()
 
         split_data      = self._set_splits(feature_data.data.copy())
@@ -271,4 +271,4 @@ class EpiDataNormalizer:
             print(f'Execution of EpiNormalizer took {round(time_end - time_start,3)}s')        
         if self.epiconfig.verbose > 1:
             print("")
-        return NormalizedEpiData(data=normalized_data)
+        return TransformedEpiData(data=normalized_data)

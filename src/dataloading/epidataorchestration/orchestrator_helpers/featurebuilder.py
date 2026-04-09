@@ -10,9 +10,8 @@ if TYPE_CHECKING:
     from ...epiconfig import EpiConfig
 
 from ..utils.issues import EpiDataOrchestrationError
-from ...columnregistration.column_registry import ColumnRegistration
-from ..epidatacontainers.processedepidata import ProcessedEpiData
-from ..epidatacontainers.epifeaturedata import FeatureEpiData
+from ...columnregistration import ColumnRegistry
+from ..containers import ProcessedEpiData, FeatureEpiData
 from ..utils.temporal_summary import EpiDataTemporalSummary
 
 class EpiFeatureBuilder:
@@ -31,9 +30,9 @@ class EpiFeatureBuilder:
     instance of FeatureEpiData    
     """    
     def __init__(self, 
-                 epiconfig: 'EpiConfig', 
-                 column_registration: ColumnRegistration,
-                 temporal_summary: EpiDataTemporalSummary):
+                 epiconfig:             EpiConfig, 
+                 column_registration:   ColumnRegistry,
+                 temporal_summary:      EpiDataTemporalSummary):
         
         self.epiconfig          = epiconfig
         self.column_registration= column_registration
