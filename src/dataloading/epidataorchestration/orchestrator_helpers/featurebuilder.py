@@ -37,6 +37,70 @@ class EpiFeatureBuilder:
         self.column_registration= column_registration
         self.temporal_summary   = temporal_summary
 
+    def _register_static_features(self) -> None:
+        """
+        Register all feature columns into the column registry based on epiconfig flags.
+        No data manipulation — purely registry updates.
+        Call before any merging or feature construction.
+        """
+        if self.epiconfig.feature_popsize:
+            self.column_registration.add_column(
+                'population_size', 'feature',
+                needs_normalization=True, transformation_group='self'
+            )
+
+        if self.epiconfig.feature_popdens:
+            self.column_registration.add_column(
+                'population_density', 'feature',
+                needs_normalization=True, transformation_group='self'
+            )
+
+        if self.epiconfig.feature_gisd:
+            self.column_registration.add_column(
+                'gisd_score', 'feature',
+                needs_normalization=False
+            )
+
+        # popage, kreise_classes, borders: column names depend on the actual data
+        # so registration happens during merge — see _merge_features()
+
+    def _merge_features(self, df: pd.DataFrame, processed_data: 'ProcessedEpiData') -> pd.DataFrame:
+        """
+        Merge all optional feature dataframes into the main dataframe.
+        Also registers columns whose names are data-dependent (popage, kreise, borders).
+        """
+        node_year_key = [self.epiconfig.id_column, 'year']
+        node_key      = [self.epiconfig.id_column]
+
+        if self.epiconfig.feature_popsize:
+            df = df.merge(processed_data.population_size, on=node_year_key)
+
+        if self.epiconfig.feature_popdens:
+            df = df.merge(processed_data.population_density, on=node_year_key)
+
+        if self.epiconfig.feature_gisd:
+            df = df.merge(processed_data.gisd, on=node_year_key)
+
+        if self.epiconfig.feature_popage:
+            for col in processed_data.population_age.columns:
+                if col not in ['year', self.epiconfig.id_column]:
+                    self.column_registration.add_column(col, 'feature', needs_normalization=False)
+            df = df.merge(processed_data.population_age, on=node_year_key)
+
+        if self.epiconfig.feature_kreise_classes:
+            for col in processed_data.kreise_classes.columns:
+                if col != self.epiconfig.id_column:
+                    self.column_registration.add_column(col, 'feature', needs_normalization=False)
+            df = df.merge(processed_data.kreise_classes, on=node_key)
+
+        if self.epiconfig.feature_borders:
+            for col in processed_data.borders.columns:
+                if col != self.epiconfig.id_column:
+                    self.column_registration.add_column(col, 'feature', needs_normalization=False)
+            df = df.merge(processed_data.borders, on=node_key)
+
+        return df
+    
     def _add_time_index(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         adds all time indices depending on epiconfig: 
@@ -166,100 +230,27 @@ class EpiFeatureBuilder:
 
         return dfc[self.column_registration.registered_columns]
 
-    def _add_delta_column(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Compute first difference of target column, store t-1 anchor for reversal."""
-        col = self.epiconfig.target_column
-        df[f'{col}_anchor'] = df.groupby(self.epiconfig.id_column)[col].shift(1)
-        df[col] = df.groupby(self.epiconfig.id_column)[col].diff()
-
-        return df.dropna().reset_index(drop=True)
-
     def orchestrate(self, processed_data: 'ProcessedEpiData') -> 'FeatureEpiData':
         time_start   = time.time()
         feature_data = processed_data.epidata.copy()
 
-        if self.epiconfig.feature_popsize:
-            self.column_registration.add_column(
-                'population_size',
-                'feature',
-                needs_normalization=True,
-                transformation_group='self'
-            )            
-            feature_data = pd.merge(feature_data, processed_data.population_size, on = [self.epiconfig.id_column, 'year'])   
-                     
-        if self.epiconfig.feature_popdens:
-            self.column_registration.add_column(
-                'population_density',
-                'feature',
-                needs_normalization=True,
-                transformation_group='self'
-            )            
-            feature_data = pd.merge(feature_data, processed_data.population_density, on = [self.epiconfig.id_column, 'year'])
+        # 1. register fixed-name features upfront
+        self._register_static_features()
 
-        if self.epiconfig.feature_gisd:
-            self.column_registration.add_column(
-                f'gisd_score',
-                'feature',
-                needs_normalization=False
-            )               
-            feature_data = pd.merge(feature_data, processed_data.gisd, on = [self.epiconfig.id_column, 'year'])           
+        # 2. merge all optional feature dataframes
+        #    (data-dependent column names registered inside _merge_features)
+        feature_data = self._merge_features(feature_data, processed_data)
 
-        if self.epiconfig.feature_popage:
-            processed_feature_popage = processed_data.population_age
-
-            for cc in processed_feature_popage.columns:
-                if cc not in ['year',self.epiconfig.id_column]:
-                    self.column_registration.add_column(
-                        cc,
-                        'feature',
-                        needs_normalization=False
-                    )         
-                                          
-            feature_data = pd.merge(feature_data, processed_feature_popage, on = [self.epiconfig.id_column, 'year'])               
-
-        if self.epiconfig.feature_kreise_classes:
-            for cc in processed_data.kreise_classes.columns:
-                if cc != self.epiconfig.id_column:
-                    self.column_registration.add_column(
-                        cc,
-                        'feature',
-                        needs_normalization=False
-                    )     
-
-            feature_data = pd.merge(feature_data, processed_data.kreise_classes, on = self.epiconfig.id_column)  
-
-        if self.epiconfig.feature_borders:
-            for cc in processed_data.borders.columns:
-                if cc != self.epiconfig.id_column:
-                    self.column_registration.add_column(
-                        cc,
-                        'feature',
-                        needs_normalization=False
-                    )     
-            feature_data = pd.merge(feature_data, processed_data.borders, on = self.epiconfig.id_column)                              
-
-        # Delta transform: must happen before lags and target shift,
-        # so that lag features and the forecast target are all in delta-space
-        if self.epiconfig.predict_difference:
-            feature_data = self._add_delta_column(feature_data)
-            self.column_registration.update_transformation(
-                'target',
-                {'delta': {'anchor_col': f'{self.epiconfig.target_column}_anchor'}}
-            )
-            self.column_registration.add_column(
-                f'{self.epiconfig.target_column}_anchor',
-                'context',
-                needs_normalization=False
-            )
-            if self.epiconfig.verbose > 1:
-                print(f'{checkmark} delta transform applied')
-
-        
+        # 3. construct derived features — each method registers its own columns
         feature_data = self._add_time_index(feature_data)
         feature_data = self._lag_variable(feature_data)
+
+        # 4. construct target
         feature_data = self._shift_target(feature_data)
         feature_data = self._drop_final_timesteps(feature_data)
         feature_data = self._rename_target(feature_data)
+
+        # 6. finalise column order
         feature_data = self._reorder_df(feature_data)
 
         time_end = time.time()
