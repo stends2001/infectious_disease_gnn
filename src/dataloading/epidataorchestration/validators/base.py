@@ -7,7 +7,9 @@ from ...epiconfig.epiconfig import EpiConfig
 
 class EpiDataContainerValidator(ABC):
     """ 
-    Parent class to all validators
+    Parent class to all epidataorchestrator - containers
+    validators.
+
     Subclasses may have any helper methods, but must
     have one centralized `.validate()` method that 
     orchestrates and runs the validation.
@@ -19,7 +21,7 @@ class EpiDataContainerValidator(ABC):
     """
 
     def __init__(self,
-                epiconfig:              'EpiConfig',
+                epiconfig:              EpiConfig,
                 dataclass_validated:    str):
         
         self.epiconfig          =  epiconfig
@@ -32,7 +34,7 @@ class EpiDataContainerValidator(ABC):
         pass
 
     def _validate_type(self, attribute_name: str, stored_attribute: Any):
-        
+        """validates type of attribute. Must be one of `self.allowed_types`."""
         if not isinstance(stored_attribute, self.allowed_types):
 
             raise UnexpectedAttributeTypeError(attribute_name, 
@@ -41,7 +43,7 @@ class EpiDataContainerValidator(ABC):
                                                [str(obj) for obj in self.allowed_types])
         
     def _validate_length_nonzero(self, attribute_name: str, stored_attribute: Union[pd.DataFrame, Dict]):
-
+        """validates that attribute is not emtpy"""
         if not len(stored_attribute) > 0:
             raise EmptyAttributeTypeError(attribute_name, self.dataclass_validated)
                     
