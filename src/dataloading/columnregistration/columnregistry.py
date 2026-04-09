@@ -1,10 +1,10 @@
 from dataclasses import dataclass, field
-from typing import Optional, List, Dict, Literal
+from typing import Optional, List, Dict, Literal, Union
 
 from .colentry import ColEntry
-from .transformation_params import TransformationParams
+from .transformation_params import TransformationParams, LogParams, ZScoreParams, MinMaxParams
 
-from .issues import MissingColEntry, MissingTransformationReferral
+from .issues import MissingColEntry, MissingTransformationReferral, TransformationParamsAlreadySet
 from ...utils.textformatting import align
 
 @dataclass
@@ -39,18 +39,32 @@ class ColumnRegistry:
         # Append to the registry
         self.columns.append(entry)
     
-    def update_transformation(self, column_name: str, params: TransformationParams) -> None:
+    def update_transformation(self, column_name: str, params: Union[LogParams, ZScoreParams, MinMaxParams]) -> None:
         col = self.get_by_name(column_name)
+
         if col._transformation_params is None:
-            col._transformation_params = params
+            col._transformation_params = TransformationParams()
+
+        if isinstance(params, LogParams):
+            if col._transformation_params.log is not None:
+                raise TransformationParamsAlreadySet(column_name, params.__class__.__name__)
+            
+            col._transformation_params.log = params
+                
+        elif isinstance(params, ZScoreParams):
+            if col._transformation_params.zscore is not None:
+                raise TransformationParamsAlreadySet(column_name, params.__class__.__name__)
+            
+            col._transformation_params.zscore = params
+
+        elif isinstance(params, MinMaxParams):
+            if col._transformation_params.minmax is not None:
+                raise TransformationParamsAlreadySet(column_name, params.__class__.__name__)
+            
+            col._transformation_params.minmax = params                            
+
         else:
-            # merge: only overwrite fields that are explicitly set in the new params
-            existing = col._transformation_params
-            col._transformation_params = TransformationParams(
-                log    = params.log    if params.log    is not None else existing.log,
-                zscore = params.zscore if params.zscore is not None else existing.zscore,
-                minmax = params.minmax if params.minmax is not None else existing.minmax,
-            )
+            raise ValueError(f"Unsupported params type: {type(params)}")
         
     # ========= INTERACTING ======= #        
     def get_by_type(self, column_type: str) -> List[str]:

@@ -38,3 +38,11 @@ class MissingTransformationReferral(ColumnRegistryError):
     def __init__(self, entryname: str, referral: str):
         message = f"Entry '{entryname}' has transformation_group {referral} for which no transformation attribute was found."
         super().__init__(message)
+
+class TransformationParamsAlreadySet(ColumnRegistryError):
+    """
+    Raised when a transformation params is adjusted while already existent
+    """
+    def __init__(self, entryname: str, transformation_type: str):
+        message = f"Entry '{entryname}' already has a transformatoin_params of type {transformation_type}! Cannot be overwritten."
+        super().__init__(message)
