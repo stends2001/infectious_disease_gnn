@@ -5,9 +5,9 @@ from datetime import timedelta
 from dateutil.relativedelta import relativedelta
 
 from ..issues import InvalidPredictionsError, MissingPredictionsError
-from ...dataloading.epidataorchestration.utils.normalization import reverse_log, reverse_minmax_scaling, reverse_zscore_scaling
+from ...dataloading.epidataorchestration.utils.normalization import reverse_log, reverse_minmax, reverse_zscore
 from ...dataloading.epidataorchestration.orchestrator import EpiDataOrchestrator
-from ...dataloading.columnregistration.column_registry import ColumnRegistration
+from ...dataloading.columnregistration import ColumnRegistry
 from ...dataloading.epidataorchestration.utils.temporal_summary import EpiDataTemporalSummary, TemporalError
 from ...utils import check_dataset
 
@@ -67,7 +67,7 @@ class PredictionManager:
 
     def __init__(self, 
                  data_orchestrator:     EpiDataOrchestrator, 
-                 column_registration:   ColumnRegistration,
+                 column_registration:   ColumnRegistry,
                  temporal_summary:      EpiDataTemporalSummary):
 
         self.train = PredictionCollection()
@@ -80,7 +80,6 @@ class PredictionManager:
         self.temporal_summary       = temporal_summary
 
         # call helper functions
-        self._setup_reverse_transformations()
         self._setup_required_columns()
 
     def add_horizon_predictions(self, 
@@ -145,14 +144,6 @@ class PredictionManager:
         elif dataset == 'test':
             return self.test 
 
-    def _setup_reverse_transformations(self):
-        """sets the reverse transformation functions: from normalized data -> non-normalized data"""
-        self.reverse_transformations = {
-            'minmax': reverse_minmax_scaling,
-            'zscore': reverse_zscore_scaling,
-            'log'   : reverse_log
-        }
-
     def _setup_required_columns(self):
         """
         sets the required columns in the model-specific prediction dfs.
@@ -207,54 +198,38 @@ class PredictionManager:
     def _denorm_predictions(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Denormalizes the normalized predictions in df using the parameters
-        from the column registry
-
-        TODO: make this cases-friendly
+        from the column registry.
         """
-        normalization_method = self.epiconfig.normalization_method
-        
         df_denorm = df.copy()
 
-        # when predicting difference: get anchor
         if self.epiconfig.predict_difference:
-            df_denorm = self._get_anchor_for_merge(df_denorm)            
-        
-        if normalization_method:
+            df_denorm = self._get_anchor_for_merge(df_denorm)
 
-            col_entry_target    = self.column_registration.get_by_name('target')
+        if self.epiconfig.normalization_method:
+            col_entry = self.column_registration.get_by_name('target')
 
-            if col_entry_target.transformation:
-            
-                transformation_dict = col_entry_target.transformation_params            
+            if col_entry.transformation and col_entry._transformation_params is not None:
+                params = col_entry._transformation_params
 
-                # normalize all columns that need to be
                 for col in self.column_registration.pred_columns + ['target']:
-                    if col in df.columns:
-                        df_denorm = self.reverse_transformations[normalization_method](
-                            df_denorm, transformation_dict['normalization'][normalization_method], column=col
-                        )
-                    # de-log all columns that need to be
-                    if 'non_normalization' in transformation_dict:
-                        df_denorm = self.reverse_transformations['log'](
-                            df_denorm, transformation_dict['non_normalization']['log'], column=col
-                        )
+                    if col not in df_denorm.columns:
+                        continue
 
-                if self.epiconfig.predict_difference and 'delta' in transformation_dict:
-                    anchor_col = transformation_dict['delta']['anchor_col']
-                    for col in self.column_registration.pred_columns + ['target']:
-                        if col in df.columns:
-                            df_denorm[col] = df_denorm[col] + df_denorm[anchor_col]
-                    df_denorm = df_denorm.drop(columns=[anchor_col])
-        
-        # ---- POISON - CASES ----
+                    if params.zscore is not None:
+                        df_denorm = reverse_zscore(df_denorm, col, params.zscore)
+                    elif params.minmax is not None:
+                        df_denorm = reverse_minmax(df_denorm, col, params.minmax)
+
+                    if params.log is not None:
+                        df_denorm = reverse_log(df_denorm, col, params.log)
+
         if self.epiconfig.target_column == 'cases':
             for col in self.column_registration.pred_columns:
                 if col in df_denorm.columns:
                     df_denorm[col] = convert_poisson_predictions(df_denorm[col], mode='mean')
-        # ------------------------        
 
         return df_denorm
-        
+
     def _validate_columns(self, data: pd.DataFrame) -> pd.DataFrame:
         """
         Returns the df with all the required columns
@@ -307,10 +282,6 @@ class PredictionManager:
 
     @check_dataset()
     def _validate_predictions_temporally(self, df: pd.DataFrame, dataset: Literal['train','val','test']):
-        """
-        Validates the temporal axis that is expected
-        If this is not the case, InvalidPredictionsError is thrown
-        """
         dt_index = pd.DatetimeIndex(
             pd.to_datetime(df[self.epiconfig.temporal_column])
         ).drop_duplicates().sort_values()
@@ -320,6 +291,27 @@ class PredictionManager:
             reference='target'
         )
 
+        # ── single-day test sets: just check the date is correct ─────────────
+        if len(dt_index) < 3:
+            expected_start = pd.Timestamp(expected_timerange[0])
+            expected_end   = pd.Timestamp(expected_timerange[1])
+            actual_dates   = set(dt_index)
+            expected_dates = set(pd.date_range(start=expected_start, end=expected_end))
+
+            missing  = expected_dates - actual_dates
+            leftover = actual_dates - expected_dates
+
+            if missing:
+                raise InvalidPredictionsError(
+                    f"Prediction timestamps incomplete. Missing: {sorted(missing)}"
+                )
+            if leftover:
+                raise InvalidPredictionsError(
+                    f"Prediction timestamps too numerous. Leftover: {sorted(leftover)}"
+                )
+            return
+
+        # ── normal case: infer frequency and validate range ───────────────────
         freq = pd.infer_freq(dt_index)
         if freq is None:
             raise InvalidPredictionsError(
@@ -343,7 +335,6 @@ class PredictionManager:
             raise InvalidPredictionsError(
                 f"Prediction timestamps are too numerous. Leftover: {leftover.tolist()}"
             )
-
     def _aggregate_predictions_spatially(self, df: pd.DataFrame) -> pd.DataFrame:
         """Aggregates regional predictions to a national level.
         
