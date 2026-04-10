@@ -29,9 +29,11 @@ class EpiDataPreviewer:
     """
 
     def __init__(self, 
-                 epidataorchestrator: EpiDataOrchestrator):
+                 epidataorchestrator: EpiDataOrchestrator,
+                 preview_node: int = 0):
         
-        self.DO = epidataorchestrator
+        self.DO             = epidataorchestrator
+        self.preview_node   = preview_node
 
     # ======== METHODS ======== #   
     def finalized_data(self, transformed: bool, features: List[str]):
@@ -54,7 +56,7 @@ class EpiDataPreviewer:
         else:
             timeseries  = self.DO.data_final.data_denorm
 
-        timeseries = timeseries[timeseries['node'] == 0]
+        timeseries = timeseries[timeseries['node'] == self.preview_node]
         timeseries = timeseries[['timestamp']+features]
 
 
@@ -71,7 +73,7 @@ class EpiDataPreviewer:
         ax: Axes        = axes.flatten()[0]
         target_colum    = self.DO.column_registration.get_by_type('target')[1]
         timeseries      = self.DO.data_final.data_denorm
-        timeseries      = timeseries[timeseries['node'] == 0]
+        timeseries      = timeseries[timeseries['node'] == self.preview_node]
         timeseries      = timeseries[['timestamp',target_colum,'train','val','test']]
 
         sns.lineplot(timeseries[timeseries['train']],   x = 'timestamp', y = target_colum, color = traincolor, label = 'train', ax = ax)
@@ -97,7 +99,7 @@ class EpiDataPreviewer:
             timeseries  = self.DO.data_feature.data
             title       = f'Non-transformed {self.DO.config.target_column}'            
 
-        timeseries = timeseries[timeseries['node'] == 0]
+        timeseries = timeseries[timeseries['node'] == self.preview_node]
         timeseries = timeseries[['timestamp']+['target','incidence_lag0']]
 
         sns.lineplot(timeseries, x = 'timestamp',    y = 'target', color = testcolor, label = 'target', ax = ax)
