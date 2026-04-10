@@ -5,7 +5,7 @@ from abc import abstractmethod
 
 from ..base import BaseModel
 from ...dataloading.dataloaders import BaseLineDataLoaderManager 
-from ...dataloading.epidataorchestration.utils.normalization import apply_minmax_scaling, apply_zscore_scaling, apply_log
+from ...dataloading.epidataorchestration.utils.normalization import apply_log, apply_zscore, apply_minmax
 from ...utils.textformatting import warning_emoji
 
 class BaseLineModel(BaseModel[BaseLineDataLoaderManager]):
@@ -40,7 +40,6 @@ class BaseLineModel(BaseModel[BaseLineDataLoaderManager]):
         self._expected_dataloadermanager = 'BaseLineDataLoaderManager'
         
         super().__init__(dataloadermanager = dataloadermanager, name = name, verbose = verbose)
-        self._setup_transformations()   
 
     @abstractmethod
     def forecast(self, dataset: Literal['train','val','test'] = 'test') -> Self:
@@ -60,52 +59,31 @@ class BaseLineModel(BaseModel[BaseLineDataLoaderManager]):
         print(f'{warning_emoji} Baseline models cant be saved.')
     
     # ======= HIDDEN METHODS ======= 
-    def _setup_transformations(self):
-        """
-        setup factory method for transformation methods.
-        """
-        self.transformation_funcs = {
-            'minmax': apply_minmax_scaling,
-            'zscore': apply_zscore_scaling,
-            'log'   : apply_log
-        }
-
     def _normalize(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        apply normalization, by calling methods in self.transformation_funcs
-
-        Parameters
-        ----------
-        df: pd.DataFrame
-            the dataframe to be normalized
-
-        Returns
-        -------
-        df_transformed: pd.DataFrame
-            the transformed dataframe
+        Apply normalization to baseline model predictions, bringing them
+        into the transformed scale expected by PredictionManager.
         """
-        df_transformed          = df.copy()
-           
+        if self.dataloadermanager.dataorchestrator.config.target_column != 'incidence':
+            return df.copy()
 
+        col_entry = self.column_registration.get_by_name('target')
+        params    = col_entry._transformation_params
 
-        if self.dataloadermanager.dataorchestrator.config.target_column == 'incidence':
-            col_entry_target        = self.column_registration.get_by_name('target')
-            transformation_dict     = col_entry_target.transformation_params
+        if params is None:
+            return df.copy()
 
-            if 'non_normalization' in transformation_dict:
-                df_transformed = self.transformation_funcs['log'](val_df   = df_transformed, 
-                                                                  columns = (['target'] + self.pred_cols), 
-                                                                  params = {col: transformation_dict['non_normalization']['log'] for col in (['target'] + self.pred_cols)})
+        columns       = ['target'] + self.pred_cols
+        df_transformed = df.copy()
 
-            if 'normalization' in transformation_dict:      
-                if 'zscore' in transformation_dict['normalization']:
-                    df_transformed = self.transformation_funcs['zscore'](val_df = df_transformed, 
-                                                                        params = {col: transformation_dict['normalization']['zscore'] for col in (['target'] + self.pred_cols)}, 
-                                                                        columns= (['target'] + self.pred_cols))
-                    
-                if 'minmax' in transformation_dict['normalization']:
-                    df_transformed = self.transformation_funcs['minmax'](val_df = df_transformed, 
-                                                                        params = {col: transformation_dict['normalization']['minmax'] for col in (['target'] + self.pred_cols)}, 
-                                                                        columns= (['target'] + self.pred_cols))                    
-                        
-        return df_transformed           
+        for col in columns:
+            if col not in df_transformed.columns:
+                continue
+            if params.log is not None:
+                df_transformed = apply_log(df_transformed, col, params.log)
+            if params.zscore is not None:
+                df_transformed = apply_zscore(df_transformed, col, params.zscore)
+            elif params.minmax is not None:
+                df_transformed = apply_minmax(df_transformed, col, params.minmax)
+
+        return df_transformed

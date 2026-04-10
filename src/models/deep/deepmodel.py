@@ -29,6 +29,7 @@ from ...dataloading.dataloaders import GraphDataLoaderManager, DeepDataLoaderMan
 from ...utils import checkmark, traincolor, valcolor, align, section, check_dataset
  
 from .issues import UnexpectedDataShape, InconsistentDataShape
+from pathlib import Path
 
 class DeepModel(BaseModel[Union[GraphDataLoaderManager, DeepDataLoaderManager]]):
 
@@ -250,7 +251,7 @@ class DeepModel(BaseModel[Union[GraphDataLoaderManager, DeepDataLoaderManager]])
                 patience_counter += 1
                 list_patience.append(True)
 
-            if patience_counter >= self.patience:
+            if patience_counter >= self.patience and self.verbose>=0:
                 print(f"Early stopping: Validation loss hasn't improved for {self.patience} epochs")
 
                 if best_model_state is not None:
@@ -350,13 +351,16 @@ class DeepModel(BaseModel[Union[GraphDataLoaderManager, DeepDataLoaderManager]])
         # if y_hat.shape != y.shape:
         #     raise DeepModelDebuggingError(f"incompatible prediction shape: y_hat [{y_hat.shape}], y [{y.shape}]")
         
-    def save(self, filename: Optional[str] = None) -> None:
+    def save_model(self, dir: Optional[Union[str, Path]] = None):
         """
         Save the trained model.
         """
         self._check_state(['trained'])
 
-        self.model_manager.save(self, filename)
+        if isinstance(dir, str):
+            dir = Path(dir)
+
+        self.model_manager.save(self, dir)
     
     @check_dataset()
     def forecast(self, dataset: Literal['train','val','test'] = 'test'):
@@ -473,17 +477,21 @@ class DeepModel(BaseModel[Union[GraphDataLoaderManager, DeepDataLoaderManager]])
             print(f"{dataset.capitalize()} loss: {avg_loss:.4f}")
 
         self._update_status('forecasted')
-        return self
 
     @classmethod
-    def load(cls, model_name: str) -> Type['DeepModel']:
+    def load(cls, model_name: str, sub_dir: Optional[Union[str, Path]] = None) -> Type['DeepModel']:
         """
         Load a trained model.
 
         NOTE: classmethod 
         """
-        manager = ModelManager()
-        return manager.load(model_name, cls)
+        
+        if isinstance(sub_dir, str):
+            sub_dir = Path(sub_dir)
+        
+        manager         = ModelManager()
+        model_instance  = manager.load(model_name, sub_dir)
+        return model_instance
 
     # ======= TO BE IMPLEMENTED BY SUBCLASSES =========== #   
     def set_model_hparams(self):

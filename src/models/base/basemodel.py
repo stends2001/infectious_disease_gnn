@@ -1,25 +1,25 @@
-from typing import Union, Optional, Literal, List, Tuple, Self, Generic, TypeVar
+from typing import Union, Optional, Literal, List, Tuple, Generic, TypeVar
 import pandas as pd
 from matplotlib.axes import Axes
 import matplotlib.pyplot as plt 
 import seaborn as sns
-import numpy as np
 
-from ..issues import FutureUpdateError, ModelStatusError, ModelInitError
 from .predictions_manager import PredictionManager
 
+from ..issues import FutureUpdateError, ModelStatusError, ModelInitError
 from ..utils.modelcolors import model_colors
 
-from ...dataloading.dataloaders import BaseLineDataLoaderManager, DeepDataLoaderManager, GraphDataLoaderManager
-from ...plotting import ManagedFigure
-from ...utils import testcolor, color_is_light, checkmark, align, section
+from ...dataloading.dataloaders import DLM
 
-DLM = TypeVar('DLM', bound=Union[BaseLineDataLoaderManager, DeepDataLoaderManager, GraphDataLoaderManager])
+from ...types import DataSetSplit
+from ...plotting import ManagedFigure
+from ...utils import testcolor, color_is_light, checkmark, section
+
+ModelStatus = Literal['model_initialized', 'model_hparams_set', 'global_hparams_set','trained','forecasted']
 
 class BaseModel(Generic[DLM]):
-
     """ 
-    Parent class of ALL models, baseline, shallow and deep.
+    Parent class of ALL models.
     Upon init, all models must supply the following
 
     Parameters
@@ -37,12 +37,11 @@ class BaseModel(Generic[DLM]):
 
     Downstream
     ----------
-    BaseModel has 3 types of subclasses:
+    BaseModel has subclasses:
     - BaseLineModel
-    - ShallowModel
     - DeepModel
 
-    Each of which has further subclasses. SimpleGCNModel and LSTMModel are example of a DeepModel.
+    Each of which has further subclasses.
     """
     _expected_dataloadermanager: str 
 
@@ -53,6 +52,7 @@ class BaseModel(Generic[DLM]):
         
         if not name:
             name = 'unnamed model'
+
         self.name = self._clean_name(name)
 
         # static attributes
@@ -63,24 +63,24 @@ class BaseModel(Generic[DLM]):
         self.temporal_summary           = self.context_data.temporal_summary
         self.verbose                    = verbose
         self.prediction_mode            = self.dataloadermanager.dataorchestrator.config.prediction_mode
-        self.model_class                = self.__class__.__name__
-        self.model_color                = self._get_modelcolor()
         self.pred_cols                  = self._return_pred_cols()
 
-        # validate
+        # model specific attributes
+        self.model_class                = self.__class__.__name__
+        self.model_color                = self._get_modelcolor()
+        
+        # validate dataloadermanager-type vs model-type
         self._validate_dataloadermanager()
         
         # dynamic (changing) attributes
-        self.config_info                = {}
         self.predictions                = PredictionManager(self.dataloadermanager.dataorchestrator, self.column_registration, self.temporal_summary)
+        self.weights_manager            = None                # weight managers -> for deepmodel
         
-        # Config
-        self.config_info['name']        = self.name
-        self.config_info['model_class'] = self.model_class
+        # Configuration - info
+        self.config_info                = {}        
+        self.config_info = {'name': self.name, 'model_class': self.model_class}
 
-        # weight managers -> for deepmodel
-        self.weights_manager            = None
-        
+        # State - info
         self._state = {
             'model_initialized' : False,
             'model_hparams_set' : False,
@@ -94,12 +94,11 @@ class BaseModel(Generic[DLM]):
     # ======= METHODS ====== #
     def show_forecasts(self,
                        node_idx:    Union[int, List[Union[int,Literal['national']]], Literal['national']]  = 0,
-                       dataset:     Literal['train','val','test']  = 'test',
-                       plot_type:   Literal['line']                = 'line',
-                       horizon:     int                            = 0,
-                       is_original: bool                           = True,
+                       dataset:     DataSetSplit                    = 'test',
+                       plot_type:   Literal['line']                 = 'line',
+                       horizon:     int                             = 0,
+                       is_original: bool                            = True,
                        ) -> ManagedFigure:
-        
         """
         Plot forecasts
 
@@ -107,7 +106,7 @@ class BaseModel(Generic[DLM]):
         ----------
         node_idx: Union[int, List[Union[int,Literal['national']]], Literal['national']]  = 0
             the nodes to plot the predicted timeseries for
-        dataset: Literal['train','val','test']  = 'test'
+        dataset: DataSetSplit  = 'test'
         plot_type: Literal['line']
             #TODO at some point Id like to implement a map
         horizon: int
@@ -122,13 +121,13 @@ class BaseModel(Generic[DLM]):
         # ====  validate input ==== #
         if plot_type != 'line':
             raise FutureUpdateError(f"Currently only plot_type == 'line' supported, got {plot_type}")
+        
         if self.prediction_mode == 'classification':        
             raise FutureUpdateError('currently no forecast for classifications supported')            
         
         # ==== get constants ===== #
-        x_range             = self.temporal_summary.get_daterange_dataset(dataset, reference = 'target')
-        # extend axes to one step before and one after the first and last pred        
-        xlimits             = [self.temporal_summary._shift(x_range[0], -1), self.temporal_summary._shift(x_range[1], 1)]
+        x_range             = self.temporal_summary.get_daterange_dataset(dataset, reference = 'target')       
+        xlimits             = [self.temporal_summary._shift(x_range[0], -1), self.temporal_summary._shift(x_range[1], 1)] # extend axes to one step before and one after the first and last pred 
         timesteps_ahead     = int(self.dataloadermanager.dataorchestrator.config.horizon_leadtime + horizon)
         quantiles           = self.epiconfig.quantiles        
 
@@ -136,7 +135,6 @@ class BaseModel(Generic[DLM]):
         nodes_list, df_pred, df_pred_aggr = self._get_forecast_dfs(node_idx, dataset, horizon, is_original)
 
         # ===== plot ===== #
-        # create plots
         n_plots         = len(nodes_list)
         fig, axes_array = plt.subplots(n_plots, 1, figsize=(16, 2 + 5 * n_plots), squeeze=False)
         axes: list[Axes]= list(axes_array.flatten())
@@ -153,8 +151,8 @@ class BaseModel(Generic[DLM]):
 
             else:
                 df_node     = df_pred[df_pred[self.epiconfig.id_column] == id]
-                # nodename    = self.context_data.nuts_harm[self.context_data.nuts_harm[f'{self.epiconfig.id_column}'] == id][f'{self.epiconfig.nuts_level}_name'].iloc[0]
-                ax_title    = f'node-ID: {id}'
+                nodename    = self.context_data.nodenames[self.context_data.nodenames[f'{self.epiconfig.id_column}'] == id][f'{self.epiconfig.level}_name'].iloc[0]
+                ax_title    = f'{nodename} [{self.epiconfig.id_column} {id}]'
                         
             if quantiles:
                 # find the index of the quantile 0.5
@@ -162,32 +160,34 @@ class BaseModel(Generic[DLM]):
                 center_col  = f'pred_q{middle_idx}'
                 bottom_col  = 'pred_q0'
                 top_col     = f'pred_q{len(quantiles) - 1}'
+            
             else:
                 center_col  = 'pred'
                 bottom_col  = None
                 top_col     = None
             
             # ====== drawing lines ========== #
+            
             # target
             sns.lineplot(data       = df_node, 
-                            x          = self.epiconfig.temporal_column, 
-                            y          = 'target',    
-                            color      = testcolor,          
-                            marker     = 'o',   
-                            label      = 'ground truth', 
-                            ax         = ax, 
-                            linewidth  = 2)
+                         x          = self.epiconfig.temporal_column, 
+                         y          = 'target',    
+                         color      = testcolor,          
+                         marker     = 'o',   
+                         label      = 'ground truth', 
+                         ax         = ax, 
+                         linewidth  = 2)
 
             # center pred (either point pred or quantile 0.5)
             sns.lineplot(data           = df_node, 
-                        x               = self.epiconfig.temporal_column, 
-                        y               = center_col,
-                        color           = self.model_color, 
-                        marker          = 'o', 
-                        label           = 'median predictions' if quantiles else 'point predictions',
-                        ax              = ax, 
-                        linewidth       = 2, 
-                        markeredgewidth = 0.3,
+                         x               = self.epiconfig.temporal_column, 
+                         y               = center_col,
+                         color           = self.model_color, 
+                         marker          = 'o', 
+                         label           = 'median predictions' if quantiles else 'point predictions',
+                         ax              = ax, 
+                         linewidth       = 2, 
+                         markeredgewidth = 0.3,
 
                         # adjust some color-aspects if color is light
                         markeredgecolor = 'black' if color_is_light(self.model_color) else 'white',
@@ -205,8 +205,7 @@ class BaseModel(Generic[DLM]):
                 )
 
             ax.set_xlabel("")   
-            # xlimits is a list of two datetime objects
-            ax.set_xlim(xlimits)    # type: ignore
+            ax.set_xlim(xlimits)    # xlimits is a list of two datetime objects # type: ignore
             ax.set_title(ax_title)    
             ax.legend()
             ax.grid()   
@@ -236,42 +235,31 @@ class BaseModel(Generic[DLM]):
         raise NotImplementedError("Subclasses of BaseModel must implement forecast-method")
 
     def set_global_hparams(self):
+        """should set global hparams when necessary"""
         raise NotImplementedError("Subclasses of BaseModel must implement set_global_hparams-method")
     
     def set_model_hparams(self):
+        """should set model hparams when necessary"""
         raise NotImplementedError("Subclasses of BaseModel must implement set_model_hparams-method")   
 
     def save_model(self):
+        """should save model"""
         raise NotImplementedError("Subclasses of BaseModel must implement save_model-method")
           
     # ======== HIDDEN METHODS ========= #
-    
-    # helpers
     def _get_forecast_dfs(self, 
                           node_idx:     Union[int, List[Union[int,Literal['national']]], Literal['national']], 
-                          dataset:      Literal['train','val','test'], 
+                          dataset:      DataSetSplit, 
                           horizon:      int, 
                           is_original:  bool
                           ) -> Tuple[List[int | Literal['national']] | list[int] | list[str], pd.DataFrame, Optional[pd.DataFrame]]:
         """
-        Returns the dfs of the forecasts by interacting with the prediction-manager
-
-        Parameters
-        ----------
-        node_idx
-        dataset
-        horizon
-        is_original
-
-        Returns
-        -------
-        nodes_list
-        df_pred
-        df_pred_aggr
+        ...
         """
         predictioncollection = self.predictions.get_preds(dataset)
 
         df_pred_aggr = None
+
         if isinstance(node_idx, list):
             if 'national' in node_idx:
                 df_pred_aggr = predictioncollection.get(horizon      = horizon,
@@ -286,6 +274,7 @@ class BaseModel(Generic[DLM]):
         elif isinstance(node_idx, str):
             if node_idx != 'national':
                 raise ValueError(f'the only string value for node_idx allowed is "national". Got {node_idx}')
+            
             df_pred_aggr = predictioncollection.get(horizon      = horizon,
                                                     is_original  = True,
                                                     spatially_aggregated = True
@@ -310,7 +299,6 @@ class BaseModel(Generic[DLM]):
             pred_cols= [c for c in self.column_registration.pred_columns if c != 'pred']
         return pred_cols    
 
-    # validation - related 
     def _validate_dataloadermanager(self):
         """validate class of dataloadermanager"""
         if not hasattr(self, '_expected_dataloadermanager'):
@@ -322,8 +310,7 @@ class BaseModel(Generic[DLM]):
         if exp != got:
             raise ModelInitError(f'{self.name} expected a dataloadermanager of class {exp} but got {got}')
 
-    # status - related
-    def _print_status_update(self, status: str) -> None:
+    def _print_status_update(self, status: ModelStatus) -> None:
         """
         prints a status update, depending on verbose
         returns None, but prints directly
@@ -349,11 +336,7 @@ class BaseModel(Generic[DLM]):
         print(statement)
         
     def _update_status(self, 
-                       status: Literal['model_initialized',
-                                       'model_hparams_set',
-                                       'global_hparams_set',
-                                       'trained',
-                                       'forecasted']):
+                       status: ModelStatus):
         """
         updates a key-value in self._state
         """
@@ -370,7 +353,7 @@ class BaseModel(Generic[DLM]):
         if print_decisions.get(status, False):
             self._print_status_update(status)
 
-    def _check_state(self, required_states: Union[List[str],str]) -> None:
+    def _check_state(self, required_states: Union[List[ModelStatus], ModelStatus]) -> None:
         """
         Validate that required setup steps have been completed
         """
@@ -399,6 +382,22 @@ class BaseModel(Generic[DLM]):
 
     def _clean_name(self, name: str) -> str:
         return name.lower().replace(' ', '_')
+    
+    @property
+    def modelcolor(self) -> str:
+        lookup_name = self.__class__.__name__.lower()
+        
+        if hasattr(self, 'model_color'):
+            return self.model_color
+        
+        elif lookup_name not in model_colors:
+            raise ValueError(f'no color set for model of class {lookup_name}')
+        else:
+            return model_colors[lookup_name]
+        
+    @property
+    def clean_name(self) -> str:
+        return self.name.lower().replace(' ', '_')
     
     # ======== REPRESENTATION METHODS ===== #
     def __repr__(self) -> str:

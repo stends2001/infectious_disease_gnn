@@ -245,7 +245,7 @@ class GCN2Model(DeepModel):
                           num_layers:   int   = 3,
                           dropout:      float = 0.2,
                           self_loops:   bool  = False,
-                          norm_edges:   bool  = True) -> 'GCN2Model':
+                          norm_edges:   bool  = True):
         """
         Set model hyperparameters and instantiate the architecture.
 
@@ -306,4 +306,3 @@ class GCN2Model(DeepModel):
         }
 
         self._update_status('model_hparams_set')
-        return self

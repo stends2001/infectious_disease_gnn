@@ -202,4 +202,3 @@ class GCNTCNModel(DeepModel):
         }
 
         self._update_status('model_hparams_set')
-        return self    

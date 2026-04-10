@@ -355,7 +355,7 @@ class DecoupledGCNModel(DeepModel):
                           num_layers:   int   = 3,
                           dropout:      float = 0.2,
                           emb_dim:      int   = 8,
-                          norm_edges:   bool  = True) -> 'DecoupledGCNModel':
+                          norm_edges:   bool  = True):
         """
         Parameters
         ----------
@@ -410,4 +410,3 @@ class DecoupledGCNModel(DeepModel):
         }
 
         self._update_status('model_hparams_set')
-        return self

@@ -145,9 +145,9 @@ class LSTMModel(DeepModel):
         )
 
     def set_model_hparams(self, 
-                          hidden_size: int = 128, 
-                          num_layers: int = 2,
-                          dropout: float = 0.2):
+                          hidden_size: int = 64, 
+                          num_layers: int = 1,
+                          dropout: float = 0.3):
         
         _num_features   = len(self.column_registration.get_by_type('feature'))
         _num_nodes      = len(self.dataloadermanager.dataorchestrator.data_context.local_shapedata)
@@ -174,4 +174,3 @@ class LSTMModel(DeepModel):
         
         self.config_info['model_hparams'] = model_hparams_config
         self._update_status('model_hparams_set')
-        return self

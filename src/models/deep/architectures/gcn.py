@@ -167,4 +167,3 @@ class SimpleGCNModel(DeepModel):
 
         self.config_info['model_hparams'] = model_hparams_config
         self._update_status('model_hparams_set')
-        return self

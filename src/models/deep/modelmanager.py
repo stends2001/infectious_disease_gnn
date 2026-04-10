@@ -1,129 +1,127 @@
-import torch
-import pickle
-from pathlib import Path
-from typing import Optional, TYPE_CHECKING, Type
-from datetime import datetime
-
 import os
+from pathlib import Path
+from typing import TYPE_CHECKING, Optional, Type
+from typing import TypeVar
+
+T = TypeVar('T', bound='DeepModel')
+import torch
+
+from ...utils.helpers import get_project_utilities_env
 
 if TYPE_CHECKING:
     from .deepmodel import DeepModel
 
-from ...utils.helpers import get_project_utilities_env
 
 class ModelManager:
-    """Simple manager for saving and loading trained models."""
-    
+    """Simple manager for saving and loading trained DeepModel instances."""
+
     def __init__(self, dir: str = 'models'):
         self.base_dir = Path(os.path.join(get_project_utilities_env(), dir))
         self.base_dir.mkdir(parents=True, exist_ok=True)
-    
-    def save(self, model: 'DeepModel', filename: Optional[str] = None) -> None:
-        """
-        Save a trained model.
-        
-        Parameters
-        ----------
-        model : DeepModel
-            The trained model to save
-        filename : Optional[str]
-            Custom filename (without extension). If None, auto-generates one.
-            
-        Returns
-        -------
-        str : Path where model was saved
-        """
+
+    # ── save ──────────────────────────────────────────────────────────────
+
+    def save(self, model: 'DeepModel', dir: Optional[Path] = None) -> None:
+        """Save a trained model to disk."""
         if model.model is None:
-            raise ValueError('No model to save')
-        
-        # Generate filename if not provided
-        filename = model.name
-        
-        # Remove extension if provided
-        filename = filename.replace('.pt', '')
-        filepath = self.base_dir / f"{filename}.pt"
-        
-        # Package everything needed
+            raise ValueError('No model to save — call set_model_hparams() first.')
+
+
+        base_dir    = self.base_dir 
+        sub_dir     = dir
+
+        if not base_dir.exists():
+            raise FileNotFoundError(f".base_dir {base_dir} does not exist")
+
+        if sub_dir is not None:
+            full_sub_dir = base_dir / sub_dir
+            full_sub_dir.mkdir(exist_ok=True)  # creates if not exists, errors if base_dir missing
+            filepath = full_sub_dir / f"{model.name}.pt"
+        else:
+            filepath = base_dir / f"{model.name}.pt"
+
         save_dict = {
-            'model_class':      model.__class__.__name__,
-            'model_state':      model.model.state_dict(),
-            'model_hparams':        model.config_info.get('model_hparams', {}),
-            'global_hparams':       model.config_info.get('global_hparams', {}),
-            'strategy'      :       model.strategy,
-            'deepfamily'    :       model.deepfamily,
-            'dataloadermanager':    model.dataloadermanager,
-            'name':                 model.name,
-            'monitoring_metrics':   model.monitoring_metrics
+            'model_class':        model.__class__.__name__,
+            'model_state':        model.model.state_dict(),
+            'model_hparams':      model.config_info.get('model_hparams', {}),
+            'global_hparams':     model.config_info.get('global_hparams', {}),
+            'strategy':           model.strategy,
+            'dataloadermanager':  model.dataloadermanager,
+            'name':               model.name,
+            'monitoring_metrics': model.monitoring_metrics,
         }
-        
+
         torch.save(save_dict, filepath)
-        
-        # filepath is this thing including the local/job_number/ ... 
-        # which we can remove for printing clarity
-        local_path_wissdaten = str(filepath).split("/wissdaten/")[1]
-        path_return          = 'Wissdaten/' + local_path_wissdaten
-        print(f"✓ Model saved: {path_return}")
-        
-    
-    def load(self, model_name: str, model_class: type) -> Type['DeepModel']:
+
+        # print relative path for readability
+        try:
+            local_path = str(filepath).split("/wissdaten/")[1]
+            print(f"✓ Model saved: Wissdaten/{local_path}")
+        except IndexError:
+            print(f"✓ Model saved: {filepath}")
+
+    # ── load ──────────────────────────────────────────────────────────────
+
+    def load(self, model_name: str, sub_dir: Optional[Path] = None) -> 'DeepModel':
         """
-        Load a trained model.
-        
+        Load a trained model from disk.
+
         Parameters
         ----------
-        filepath : str
-            Path to the saved model file
-        model_class : type
-            The model class to instantiate (e.g., MyGNN)
-            
+        model_name : str
+            Filename without extension.
+        model_class : optional
+            Unused — kept for backward compatibility. Class is resolved
+            from the saved dict via DeepModel._childclasses.
+
         Returns
         -------
-        DeepModel : The loaded model
+        DeepModel
+            Fully initialised instance with trained weights and correct status.
         """
-        print('loading model initiated')
-
-        filepath = os.path.join(self.base_dir, f"{model_name}.pt")
-
-        if not Path(filepath).exists():
-            raise FileNotFoundError(f"Model not found: {filepath}")
-        print('model path found')
-        
-        # Load saved data
-        save_dict = torch.load(filepath, map_location='cpu')
-        print('save dict loaded')
-        
-        from .deepmodel import DeepModel  # runtime import, avoids circular dependency
-
-        if save_dict['model_class'].lower() in DeepModel._childclasses:
-   
-            model_instance = DeepModel._childclasses[save_dict['model_class'].lower()](name = save_dict['name']+"_loaded", dataloadermanager =  save_dict['dataloadermanager'])
-            model_instance.set_model_hparams(**save_dict['model_hparams'])
-            model_instance.set_global_hparams(**save_dict['global_hparams'])   
-            model_instance.model.load_state_dict(save_dict['model_state'])
-            model_instance.model.to(model_instance.device)                
-            model_instance.monitoring_metrics = save_dict.get('monitoring_metrics') 
-            model_instance._update_status('trained')
+        if sub_dir is None:
+            filepath = self.base_dir / f"{model_name}.pt"
         else:
-            raise ValueError('invalid model class trying to be loaded')
+            filepath = self.base_dir / sub_dir / f"{model_name}.pt"            
 
+        if not filepath.exists():
+            raise FileNotFoundError(f"Model not found: {filepath}")
 
-        return model_instance
+        # weights_only=False needed because we serialise the dataloadermanager
+        # and strategy objects — these are trusted internal objects
+        save_dict = torch.load(filepath, map_location='cpu', weights_only=False)
 
-        # # Restore architecture
-        # model.set_model_hparams(**save_dict['model_hparams'])
-        
-        # # Restore training config (but don't train)
-        # model.set_global_hparams(**save_dict['global_hparams'])
-        
-        # # Load weights
-        # model.model.load_state_dict(save_dict['model_state'])
-        # model.model.to(model.device)
-        
-        # # Restore training history
-        # model.monitoring_metrics = save_dict.get('monitoring_metrics')
-        
-        # # Mark as trained
-        # model._update_status('trained')
-        
-        # print(f"✓ Model loaded: {filepath}")
-        # return model
+        from .deepmodel import DeepModel  # avoid circular import
+
+        model_key = save_dict['model_class'].lower()
+        if model_key not in DeepModel._childclasses:
+            raise ValueError(
+                f"Unknown model class '{save_dict['model_class']}'. "
+                f"Available: {list(DeepModel._childclasses.keys())}"
+            )
+
+        cls = DeepModel._childclasses[model_key]
+
+        instance = cls(
+            name              = save_dict['name'],
+            dataloadermanager = save_dict['dataloadermanager'],
+        )
+
+        # restores model_hparams_set and global_hparams_set status flags
+        instance.set_model_hparams(**save_dict['model_hparams'])
+        instance.set_global_hparams(**save_dict['global_hparams'])
+
+        # restore weights
+        instance.model.load_state_dict(save_dict['model_state'])
+        instance.model.to(instance.device)
+
+        # restore metadata
+        instance.monitoring_metrics           = save_dict.get('monitoring_metrics')
+        instance.config_info['model_hparams'] = save_dict['model_hparams']
+        instance.config_info['global_hparams']= save_dict['global_hparams']
+
+        # trained=True, forecasted stays False until caller runs forecast()
+        instance._update_status('trained')
+
+        print(f"✓ Model loaded: {filepath.name}")
+        return instance
