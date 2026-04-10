@@ -7,7 +7,7 @@ from ....utils.textformatting import checkmark
 from ...epiconfig import EpiConfig
 
 from ..containers import TransformedEpiData, FinalizedEpiData
-from ..utils.normalization import reverse_log, reverse_minmax_scaling, reverse_zscore_scaling
+from ..utils.normalization import reverse_log, reverse_minmax, reverse_zscore
 from ...columnregistration import ColumnRegistry
 
 class EpiDataFinalizer:
@@ -104,50 +104,37 @@ class EpiDataFinalizer:
         return df   
 
     def _denormalize(self, normalized_df: pd.DataFrame) -> pd.DataFrame:
-            """after shifting around and renaming columns, perform a denormalization for baseline models"""
-            dfc = normalized_df.copy()
-            
-            # Get normalization method
-            norm_method = self.epiconfig.normalization_method
-            
-            if not norm_method:
-                return dfc
-            
-            # Reverse transformations for each column
-            for col_entry in self.column_registration.columns:
+        """Reverse all transformations in reverse order of application: norm first, then log."""
+        dfc = normalized_df.copy()
 
-                if col_entry.transformation:
-                
-                    # skip registrered 'pred' columns
-                    if col_entry.column_name not in dfc.columns:
-                        continue
-            
-                    # if self-normalization
-                    if col_entry.transformation_group == 'self':
-                        transformation_dict = col_entry.transformation_params
-                
-                    # if referral-based normalization
-                    else:
-                        reference_entry = self.column_registration.get_by_name(col_entry.transformation_group)
-                        transformation_dict = reference_entry.transformation_params
-                
-                    # Reverse normalization
-
-                    for transformation_type, type_params in reversed(transformation_dict.items()):
-
-                        if transformation_type == 'normalization':
-                            for norm_method, norm_params in type_params.items():
-                                if norm_method == 'minmax':
-                                    dfc = reverse_minmax_scaling(dfc, norm_params, column=col_entry.column_name)
-                                elif norm_method == 'zscore':
-                                    dfc = reverse_zscore_scaling(dfc, norm_params, column=col_entry.column_name)
-
-                        elif transformation_type == 'non_normalization':
-                            for transf_method, transf_params in type_params.items():                            
-                                if transf_method  == 'log':
-                                    dfc = reverse_log(dfc, transf_params, column=col_entry.column_name)       
-
+        if not self.epiconfig.normalization_method:
             return dfc
+
+        for col_entry in self.column_registration.columns:
+            if not col_entry.transformation:
+                continue
+
+            if col_entry.column_name not in dfc.columns:
+                continue
+
+            if col_entry._transformation_group == 'self':
+                params = col_entry._transformation_params
+            else:
+                ref    = self.column_registration.get_by_name(col_entry._transformation_group)
+                params = ref._transformation_params
+
+            if params is None:
+                continue
+
+            if params.zscore is not None:
+                dfc = reverse_zscore(dfc, col_entry.column_name, params.zscore)
+            elif params.minmax is not None:
+                dfc = reverse_minmax(dfc, col_entry.column_name, params.minmax)
+
+            if params.log is not None:
+                dfc = reverse_log(dfc, col_entry.column_name, params.log)
+
+        return dfc
 
     def orchestrate(self, normalized_data: TransformedEpiData) -> 'FinalizedEpiData':
         time_start = time.time()

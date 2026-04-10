@@ -6,268 +6,207 @@ from src.utils.textformatting import checkmark
 
 from src.dataloading.epiconfig.epiconfig import EpiConfig
 
-from ..containers import FeatureEpiData, TransformedEpiData
-from ...columnregistration import ColumnRegistry
+from ..utils.normalization import (
+    compute_zscore_params, compute_minmax_params,
+    apply_log, apply_zscore, apply_minmax
+)
+from ...columnregistration import (
+    LogParams, ZScoreParams, MinMaxParams, TransformationParams, ColumnRegistry
+)
 
+from ..containers import FeatureEpiData, TransformedEpiData
 from ..utils.temporal_summary import EpiDataTemporalSummary
-from ..utils.normalization import pipeline_minmax_normalization, pipeline_zscore_normalization, apply_minmax_scaling, apply_zscore_scaling, apply_log
 from ..utils.issues import EpiDataOrchestrationError
 
-# ============= Transformer CLASS ============= 
 class EpiDataTransformer:
-    """  
-    """      
-    def __init__(self, 
-                 epiconfig:             EpiConfig, 
-                 column_registration:   ColumnRegistry, 
-                 temporal_summary:      EpiDataTemporalSummary):
-        
-        self.epiconfig              = epiconfig 
-        self.temporal_summary       = temporal_summary
-        self.column_registration    = column_registration
-        self.transformation_functions= {
-            # two main types of transformations. Those that do not require parameters to be calculated (non-norm) and those that do.
 
-            # non normalization
-            'non_normalization' :   
-                {'apply'    : {'log'   : apply_log}},
+    def __init__(self,
+                 epiconfig:           EpiConfig,
+                 column_registration: ColumnRegistry,
+                 temporal_summary:    EpiDataTemporalSummary):
 
-            # normalization
-            'normalization' : 
-                # round 1 => returning params
-               {'pipeline': {'minmax': pipeline_minmax_normalization,   'zscore': pipeline_zscore_normalization},
-                # round 2 => applying
-                'apply':    {'minmax': apply_minmax_scaling,            'zscore': apply_zscore_scaling}}
-        }
+        self.epiconfig           = epiconfig
+        self.temporal_summary    = temporal_summary
+        self.column_registration = column_registration
+
+    # ── splits ────────────────────────────────────────────────────────────
 
     def _set_splits(self, df: pd.DataFrame) -> pd.DataFrame:
-        """set split columns based on temporal_summary"""
         splits = self.temporal_summary.get_target_splits()
-        
         df['train'] = df[self.epiconfig.temporal_column] < splits['trainval']
-        df['val']   = (df[self.epiconfig.temporal_column] >= splits['trainval']) & (df[self.epiconfig.temporal_column] < splits['valtest'])
+        df['val']   = (df[self.epiconfig.temporal_column] >= splits['trainval']) & \
+                      (df[self.epiconfig.temporal_column] < splits['valtest'])
         df['test']  = df[self.epiconfig.temporal_column] >= splits['valtest']
-        
         for split_col in ['train', 'val', 'test']:
             self.column_registration.add_column(split_col, 'split')
-        
         if self.epiconfig.verbose > 1:
             print(f'{checkmark} split columns added (input timeline)')
-        
         return df
 
-    def _update_columnregistry_nonnormalization_transformations_params(self):
-        """updates column registry to include nonnormalization trasnformations. Currently limited to log"""
-        if self.epiconfig.log_transform:
-            cols_to_log     = []
+    # ── pass 1: register + apply log ─────────────────────────────────────
 
-            transformation_dict = {'non_normalization' : {'log': {'shift': self.epiconfig.log_shift}}}
+    def _update_columnregistry_log_params(self) -> None:
+        """Register LogParams for all columns that need log transform."""
+        if not self.epiconfig.log_transform:
+            return
 
-            for col in self.epiconfig.log_transform:
+        log_params = LogParams(shift=self.epiconfig.log_shift)
 
-                # if col == future target then register log for target
-                if col == self.epiconfig.target_column:
-                    cols_to_log += ['target']
-                    self.column_registration.update_transformation(
-                        'target', 
-                        transformation_dict
-                    )         
+        for col in self.epiconfig.log_transform:
+            if col == self.epiconfig.target_column:
+                self.column_registration.update_transformation('target', log_params)
 
-                # if col == lag column then do the log for all lagged columns, but only register in transformation for lag0
-                # not in combination with previous condition. If target == lag, the lag column follows the normalization of target
-                elif col == self.epiconfig.lag_column:
-                    cols_to_log += [f'{self.epiconfig.lag_column}_lag{lag}' for lag in range(0, self.epiconfig.lag_num)]
-                    self.column_registration.update_transformation(
-                        f'{self.epiconfig.lag_column}_lag0', 
-                        transformation_dict
-                    )                             
-
-
-                # else register log column-specifically
-                else:
-                    cols_to_log += [col]
-                    self.column_registration.update_transformation(
-                        col, 
-                        transformation_dict
-                    )  
-
-    def _apply_nonnormalization_transformations(self, df: pd.DataFrame) -> pd.DataFrame:
-        """at this point, only non - normalization transformations exist."""
-        transformed_df = df.copy()
-
-        for col_entry in self.column_registration.columns:
-
-            match (col_entry.transformation, col_entry._transformation_group):
-            
-                # Skip columns that don't have normalization attribute
-                case (False, _):
-                    continue # continue with next col_entry
-                  
-                # Determine which normalization parameters to use
-                # independent transformation first
-                case (True, 'self'):
-                
-                    transformation_dict = col_entry._transformation_params
-
-                    if self.epiconfig.verbose > 2:
-                        print(f"{col_entry.column_name} normalized independently")
-            
-                # dependent transformation: expect a referral
-                case (True, str()):
-
-                    # Use reference column's normalization
-                    ref_col_entry = self.column_registration.get_by_name(col_entry._transformation_group)
-                    
-                    transformation_dict = ref_col_entry._transformation_params
-
-                    if self.epiconfig.verbose > 2:
-                        print(f"{col_entry.column_name} normalized based on {ref_col_entry.column_name}")
-
-                case _:
-                    assert_never(col_entry.transformation, col_entry._transformation_group)
-            
-            # at this point we have a transformation dictionary => transformation parameters for this specific column.
-            # may include normalization as well as other forms of transformation (log!)
-            if transformation_dict is not None:
-                
-                transformation_params = transformation_dict['non_normalization']
-
-                for transformation_func, params in transformation_params.items():
-                    # transformation_func = 'log' ← correct
-                    self.transformation_functions['non_normalization']['apply'][transformation_func]
-
-                    # Apply normalization
-                    transformed_df = self.transformation_functions['non_normalization']['apply'][transformation_func](
-                        transformed_df, 
-                        [col_entry.column_name], 
-                        {col_entry.column_name : params}
-                    )
-
-        if self.epiconfig.verbose > 1:
-            print(f'{checkmark} normalization applied')     
-
-        return transformed_df
-    
-    def _update_columnregistry_norm_params(self, df: pd.DataFrame):
-        """
-        normalizes data and stores information in column_registration
-        NOTE: not only the target is normalized based on the training data: that goes for all features!
-        I haven't figured out if this is an issue, but I imagine it is not.
-        For what it's worth, it's an easy fix.     
-        """
-        dfc             = df.copy()
-        train_df        = dfc[dfc['train']]
-        normalized_df   = dfc.copy()
-
-        # if normalization_method is excplicity set to None then return df not-normalized
-        if not self.epiconfig.normalization_method:
-            return normalized_df
-
-        elif self.epiconfig.normalization_method not in self.transformation_functions['normalization']['apply']:
-            raise EpiDataOrchestrationError(f'No normalization function {self.epiconfig.normalization_method} found.')
-
-        ### First pass ###
-        # get all transformation parameters per group (.transformation_group = 'self')
-        for col_entry in self.column_registration.columns:
-            
-            # Skip columns that don't have normalization attribute
-            if not col_entry.transformation:
-                continue # continue with next col_entry
-            
-            # Only calculate params for columns with independent normalization (normalization_group == 'self')
-            if col_entry.transformation_group == 'self':
-                _, norm_parameters = self.transformation_functions['normalization']['pipeline'][self.epiconfig.normalization_method](
-                    train_df, 
-                    [col_entry.column_name]
-                )
-                
-                # Update transformation with normalization parameters
+            elif col == self.epiconfig.lag_column:
+                # only register on lag0; dependents follow via transformation_group
                 self.column_registration.update_transformation(
-                    col_entry.column_name,
-                    {'normalization' : {f'{self.epiconfig.normalization_method}': norm_parameters[col_entry.column_name]}}
+                    f'{self.epiconfig.lag_column}_lag0', log_params
+                )
+
+            else:
+                self.column_registration.update_transformation(col, log_params)
+
+    def _apply_log(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Apply log to every column whose TransformationParams has log set."""
+        out = df.copy()
+
+        for col_entry in self.column_registration.columns:
+            if not col_entry.transformation:
+                continue
+
+            params = self._resolve_params(col_entry)
+            if params is None or params.log is None:
+                continue
+
+            out = apply_log(out, col_entry.column_name, params.log)
+
+        if self.epiconfig.verbose > 1:
+            print(f'{checkmark} log transform applied')
+        return out
+
+    # ── pass 2: compute + register norm params ────────────────────────────
+
+    def _update_columnregistry_norm_params(self, df: pd.DataFrame) -> None:
+        """Compute normalisation params from training split and store in registry."""
+        if not self.epiconfig.normalization_method:
+            return
+
+        method   = self.epiconfig.normalization_method
+        train_df = df[df['train']].copy()
+
+        if method not in ('zscore', 'minmax'):
+            raise EpiDataOrchestrationError(
+                f'Unknown normalization method: {method}. Expected zscore or minmax.'
+            )
+
+        # first pass: columns that normalise independently ('self')
+        for col_entry in self.column_registration.columns:
+            if not col_entry.transformation:
+                continue
+            if col_entry._transformation_group != 'self':
+                continue
+
+            if method == 'zscore':
+                norm_params = compute_zscore_params(train_df, col_entry.column_name)
+            else:
+                norm_params = compute_minmax_params(train_df, col_entry.column_name)
+
+            self.column_registration.update_transformation(
+                col_entry.column_name, norm_params
+            )
+
+        # second pass: columns that follow a reference column
+        for col_entry in self.column_registration.columns:
+            if not col_entry.transformation:
+                continue
+            if col_entry._transformation_group in (None, 'self'):
+                continue
+
+            ref = self.column_registration.get_by_name(col_entry._transformation_group)
+            p   = ref._transformation_params
+
+            if p is None:
+                continue
+            if p.zscore is not None:
+                self.column_registration.update_transformation(
+                    col_entry.column_name, p.zscore
+                )
+            elif p.minmax is not None:
+                self.column_registration.update_transformation(
+                    col_entry.column_name, p.minmax
                 )
 
         if self.epiconfig.verbose > 1:
-            print(f'{checkmark} normalization parameters retrieved and stored')     
+            print(f'{checkmark} normalisation parameters computed and stored')
 
-    def _apply_normalization_transformations(self, df: pd.DataFrame) -> pd.DataFrame:
-        """at this point, both non-normalization and normalization trasnformations exist. I filter out the former since they have been done."""
-        normalized_df = df.copy()
+    # ── pass 3: apply norm ────────────────────────────────────────────────
+
+    def _apply_normalization(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Apply stored zscore/minmax params to all columns that need it."""
+        out = df.copy()
 
         for col_entry in self.column_registration.columns:
+            if not col_entry.transformation:
+                continue
 
-            match (col_entry.transformation, col_entry._transformation_group):
-            
-                # Skip columns that don't have normalization attribute
-                case (False, _):
-                    continue # continue with next col_entry
-                  
-                # Determine which normalization parameters to use
-                # independent transformation first
-                case (True, 'self'):
-                
-                    transformation_dict = col_entry._transformation_params
+            params = self._resolve_params(col_entry)
+            if params is None:
+                continue
 
-                    if self.epiconfig.verbose > 2:
-                        print(f"{col_entry.column_name} normalized independently")
-            
-                # dependent transformation: expect a referral
-                case (True, str()):
-
-                    # Use reference column's normalization
-                    ref_col_entry = self.column_registration.get_by_name(col_entry._transformation_group)
-                    
-                    transformation_dict = ref_col_entry._transformation_params
-
-                    if self.epiconfig.verbose > 2:
-                        print(f"{col_entry.column_name} normalized based on {ref_col_entry.column_name}")
-
-                case _:
-                    assert_never(col_entry.transformation, col_entry._transformation_group)
-            
-            # at this point we have a transformation dictionary => transformation parameters for this specific column.
-            # may include normalization as well as other forms of transformation (log!)
-
-            if transformation_dict is not None:
-                
-                transformation_params = transformation_dict['normalization']
-
-                for transformation_func, params in transformation_params.items():
-                    # transformation_func = 'log' ← correct
-                    self.transformation_functions['normalization']['apply'][transformation_func]
-
-                    # Apply normalization
-                    normalized_df = self.transformation_functions['normalization']['apply'][transformation_func](
-                        normalized_df, 
-                        [col_entry.column_name], 
-                        {col_entry.column_name : params}
-                    )
+            if params.zscore is not None:
+                out = apply_zscore(out, col_entry.column_name, params.zscore)
+            elif params.minmax is not None:
+                out = apply_minmax(out, col_entry.column_name, params.minmax)
 
         if self.epiconfig.verbose > 1:
-            print(f'{checkmark} normalization applied')     
+            print(f'{checkmark} normalisation applied')
+        return out
 
-        return normalized_df
+    # ── helper ────────────────────────────────────────────────────────────
+
+    def _resolve_params(self, col_entry) -> TransformationParams | None:
+        """
+        Return the TransformationParams that govern this column.
+        For 'self' columns: the column's own params.
+        For referral columns: the reference column's params.
+        """
+        match (col_entry.transformation, col_entry._transformation_group):
+
+            case (False, _):
+                return None
+
+            case (True, 'self'):
+                return col_entry._transformation_params
+
+            case (True, str()):
+                ref = self.column_registration.get_by_name(
+                    col_entry._transformation_group
+                )
+                return ref._transformation_params
+
+            case _:
+                assert_never(col_entry.transformation)
+
+    # ── orchestrate ───────────────────────────────────────────────────────
 
     def orchestrate(self, feature_data: 'FeatureEpiData') -> 'TransformedEpiData':
-        time_start      = time.time()
+        time_start = time.time()
 
-        split_data      = self._set_splits(feature_data.data.copy())
+        df = self._set_splits(feature_data.data.copy())
 
-        # add log - params to column registry
-        self._update_columnregistry_nonnormalization_transformations_params()    
+        # 1. register log params and apply
+        self._update_columnregistry_log_params()
+        df = self._apply_log(df)
 
-        # apply log
-        normalized_data = self._apply_nonnormalization_transformations(split_data)
+        # 2. compute norm params from training split and register
+        self._update_columnregistry_norm_params(df)
 
-        # add norm - params to column registry
-        self._update_columnregistry_norm_params(normalized_data)  
+        # 3. apply normalisation
+        df = self._apply_normalization(df)
 
-        # apply normalization       
-        normalized_data = self._apply_normalization_transformations(normalized_data)
-
-        time_end = time.time()
         if self.epiconfig.verbose > 2:
-            print(f'Execution of EpiNormalizer took {round(time_end - time_start,3)}s')        
+            print(f'Execution of EpiDataTransformer took '
+                  f'{round(time.time() - time_start, 3)}s')
         if self.epiconfig.verbose > 1:
             print("")
-        return TransformedEpiData(data=normalized_data)
+
+        return TransformedEpiData(data=df)

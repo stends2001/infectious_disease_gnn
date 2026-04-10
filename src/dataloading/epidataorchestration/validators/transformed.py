@@ -63,70 +63,61 @@ class TransformedValidator(EpiDataContainerValidator):
     def _validate_normalization(self, attribute_name: str, stored_attribute: pd.DataFrame):
         """
         Validates the normalization process. Thus, when minmax, that min = 0 and max = 1. 
-        When zscore, that mean is 0 and std = 1
+        When zscore, that mean is 0 and std = 1.
         """
         tolerance = 1e-6
-
-        # normalization was done bsed on train df
-        train_df = stored_attribute[stored_attribute['train']]
+        train_df  = stored_attribute[stored_attribute['train']]
 
         for col_entry in self.column_registry.columns:
 
             match (col_entry.transformation, col_entry._transformation_group):
-            
-                # Skip columns that don't have normalization attribute
+
                 case (False, _):
-                    continue # continue with next col_entry
-                  
-                # Determine which normalization parameters to use
-                # independent transformation first
+                    continue
+
                 case (True, 'self'):
-                
-                    # example: {'zscore': {'mean': np.float64(0.12332682669392722), 'std': np.float64(0.31541569993631763)}}
-                    normalization_dict  = col_entry.transformation_params['normalization']
-                    
-                    for normalization_funcname, params_dict in normalization_dict.items():
-                        
-                        if normalization_funcname == 'zscore' :
-                            expected_mean = 0
-                            expected_std  = 1.0
+                    params = col_entry._transformation_params
 
-                            computed_mean = train_df[col_entry.column_name].mean()
-                            computed_std  = train_df[col_entry.column_name].std()
-
-                            if abs(computed_mean - expected_mean) > tolerance:
-                                specs = f"Expected mean about 0 (tolerance {tolerance}). Got {computed_mean}"
-                                raise InvalidNormalizationError(attribute_name, self.dataclass_validated, col_entry.column_name, specs)
-                            
-                            if abs(computed_std - expected_std) > tolerance:
-                                specs = f"Expected std about 1.0 (tolerance {tolerance}). Got {computed_std}"
-                                raise InvalidNormalizationError(attribute_name, self.dataclass_validated, col_entry.column_name, specs)                            
-
-                        elif normalization_funcname == 'minmax':
-                            expected_max = 1.0
-                            expected_min = 0 
-
-                            computed_max = train_df[col_entry.column_name].max()
-                            computed_min  = train_df[col_entry.column_name].min()
-
-                            if abs(computed_max - expected_max) > tolerance:
-                                specs = f"Expected max about 1.0 (tolerance {tolerance}). Got {computed_max}"
-                                raise InvalidNormalizationError(attribute_name, self.dataclass_validated, col_entry.column_name, specs)
-                            
-                            if abs(computed_min - expected_min) > tolerance:
-                                specs = f"Expected min about 0 (tolerance {tolerance}). Got {computed_min}"
-                                raise InvalidNormalizationError(attribute_name, self.dataclass_validated, col_entry.column_name, specs)                                         
-
-                        else:
-                            raise ValueError(f'no expected normalization - validation checks existent forn normalization method {normalization_funcname}')
-            
-                # dependent transformation: expect a referral
                 case (True, str()):
-                    pass
+                    # referral columns — params are validated via their reference column
+                    continue
 
                 case _:
-                    assert_never(col_entry.transformation, col_entry.transformation_group)
-                 
+                    assert_never(col_entry.transformation)
+
+            if params is None:
+                continue
+
+            if params.zscore is not None:
+                computed_mean = train_df[col_entry.column_name].mean()
+                computed_std  = train_df[col_entry.column_name].std()
+
+                if abs(computed_mean) > tolerance:
+                    raise InvalidNormalizationError(
+                        attribute_name, self.dataclass_validated, col_entry.column_name,
+                        f"Expected mean ≈ 0 (tolerance {tolerance}). Got {computed_mean}"
+                    )
+                if abs(computed_std - 1.0) > tolerance:
+                    raise InvalidNormalizationError(
+                        attribute_name, self.dataclass_validated, col_entry.column_name,
+                        f"Expected std ≈ 1.0 (tolerance {tolerance}). Got {computed_std}"
+                    )
+
+            elif params.minmax is not None:
+                computed_min = train_df[col_entry.column_name].min()
+                computed_max = train_df[col_entry.column_name].max()
+
+                if abs(computed_min) > tolerance:
+                    raise InvalidNormalizationError(
+                        attribute_name, self.dataclass_validated, col_entry.column_name,
+                        f"Expected min ≈ 0 (tolerance {tolerance}). Got {computed_min}"
+                    )
+                if abs(computed_max - 1.0) > tolerance:
+                    raise InvalidNormalizationError(
+                        attribute_name, self.dataclass_validated, col_entry.column_name,
+                        f"Expected max ≈ 1.0 (tolerance {tolerance}). Got {computed_max}"
+                    )
+                       
     def _validate_presence_columns(self, attribute_name: str, stored_attribute: pd.DataFrame):
         """validates that required columns are present."""              
         for col in self.cols:
