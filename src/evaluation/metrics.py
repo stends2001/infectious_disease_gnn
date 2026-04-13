@@ -392,6 +392,26 @@ class PointRegressionMetricsCalculator(MetricsCalculatorBase):
         
         return float(numerator / denominator)
     
+    def mda(self, y: np.ndarray, yhat: np.ndarray) -> Optional[float]:
+        """
+        Mean Directional Accuracy.
+        Fraction of timesteps where predicted direction of change 
+        matches observed direction of change.
+        Returns None if fewer than 2 observations.
+        """
+        if len(y) < 2:
+            return None
+
+        actual_dir    = np.sign(np.diff(y))
+        predicted_dir = np.sign(np.diff(yhat))
+
+        # exclude timesteps where actual direction is flat (no change)
+        mask = actual_dir != 0
+        if mask.sum() == 0:
+            return None
+
+        return float(np.mean(actual_dir[mask] == predicted_dir[mask]))
+
     @property
     def pred_col(self) -> str:
         if len(self.pred_cols) > 1:
