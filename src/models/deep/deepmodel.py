@@ -479,7 +479,7 @@ class DeepModel(BaseModel[Union[GraphDataLoaderManager, DeepDataLoaderManager]])
         self._update_status('forecasted')
 
     @classmethod
-    def load(cls, model_name: str, sub_dir: Optional[Union[str, Path]] = None) -> Type['DeepModel']:
+    def load(cls, model_name: str, sub_dir: Optional[Union[str, Path]] = None, verbose: bool = False) -> Type['DeepModel']:
         """
         Load a trained model.
 
@@ -491,6 +491,10 @@ class DeepModel(BaseModel[Union[GraphDataLoaderManager, DeepDataLoaderManager]])
         
         manager         = ModelManager()
         model_instance  = manager.load(model_name, sub_dir)
+
+        if verbose:
+            print(f"✓ Model loaded: {model_name}")
+
         return model_instance
 
     # ======= TO BE IMPLEMENTED BY SUBCLASSES =========== #   

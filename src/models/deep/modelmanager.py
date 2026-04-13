@@ -122,6 +122,4 @@ class ModelManager:
 
         # trained=True, forecasted stays False until caller runs forecast()
         instance._update_status('trained')
-
-        print(f"✓ Model loaded: {filepath.name}")
         return instance
