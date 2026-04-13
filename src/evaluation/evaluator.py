@@ -110,7 +110,7 @@ class Evaluator:
         frames: List[pd.DataFrame] = []
 
         for name, model in self.evaluated_models.items():
-            model_predictions           = model.predictions.get_preds(dataset).get(horizon, is_original = False, spatially_aggregated= False)
+            model_predictions           = model.predictions.get_preds(dataset).get(horizon, is_original = True, spatially_aggregated= False)
             model_predictions['model']  = name
             frames.append(model_predictions)
         
