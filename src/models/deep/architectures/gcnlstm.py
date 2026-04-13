@@ -255,6 +255,8 @@ class GCNLSTMModel(DeepModel):
             'lstm_hidden_size': lstm_hidden_size,
             'lstm_layers':      lstm_layers,
             'dropout':          dropout,
+            'self_loops':       self_loops,
+            'norm_edges':       norm_edges
         }
 
         self._update_status('model_hparams_set')
