@@ -4,7 +4,8 @@ import pandas as pd
 from tqdm import tqdm
 
 from .crossvalidationepiconfig import CrossValidationEpiConfig
-from ..epidataorchestration import EpiConfig, EpiDataOrchestrator
+from ..epidataorchestration import EpiDataOrchestrator
+from ..epiconfig import EpiConfig
 
 
 @dataclass
@@ -30,7 +31,7 @@ class FoldCollection:
         
         # ── Step 1: run the expensive part once ──────────────────────────
         global_orch = EpiDataOrchestrator(base_config)
-        global_orch.load_raw()
+        global_orch.load()
         shared_raw = global_orch.data_raw  # RawEpiData — just dataframes, fully shareable
 
 
@@ -49,8 +50,8 @@ class FoldCollection:
 
             fold_orch = (
                 EpiDataOrchestrator.from_raw(fold_config, shared_raw)
-                .harmonize_raw()
-                .process_data()
+                .harmonize()
+                .process()
                 .build_features()
                 .normalize()
                 .finalize()
