@@ -351,7 +351,7 @@ class DeepModel(BaseModel[Union[GraphDataLoaderManager, DeepDataLoaderManager]])
         # if y_hat.shape != y.shape:
         #     raise DeepModelDebuggingError(f"incompatible prediction shape: y_hat [{y_hat.shape}], y [{y.shape}]")
         
-    def save_model(self, dir: Optional[Union[str, Path]] = None):
+    def save_model(self, dir: Optional[Union[str, Path]] = None, minimal: bool = True):
         """
         Save the trained model.
         """
@@ -360,7 +360,7 @@ class DeepModel(BaseModel[Union[GraphDataLoaderManager, DeepDataLoaderManager]])
         if isinstance(dir, str):
             dir = Path(dir)
 
-        self.model_manager.save(self, dir)
+        self.model_manager.save(self, dir, minimal)
     
     @check_dataset()
     def forecast(self, dataset: Literal['train','val','test'] = 'test'):
@@ -479,23 +479,11 @@ class DeepModel(BaseModel[Union[GraphDataLoaderManager, DeepDataLoaderManager]])
         self._update_status('forecasted')
 
     @classmethod
-    def load(cls, model_name: str, sub_dir: Optional[Union[str, Path]] = None, verbose: bool = False) -> Type['DeepModel']:
-        """
-        Load a trained model.
-
-        NOTE: classmethod 
-        """
-        
-        if isinstance(sub_dir, str):
-            sub_dir = Path(sub_dir)
-        
-        manager         = ModelManager()
-        model_instance  = manager.load(model_name, sub_dir)
-
-        if verbose:
-            print(f"✓ Model loaded: {model_name}")
-
-        return model_instance
+    def load(cls, model_name: str, 
+            subdir:            str  = 'models',
+            dataloadermanager        = None) -> 'DeepModel':
+        manager = ModelManager()
+        return manager.load(model_name, dataloadermanager=dataloadermanager, subdir=subdir)
 
     # ======= TO BE IMPLEMENTED BY SUBCLASSES =========== #   
     def set_model_hparams(self):
