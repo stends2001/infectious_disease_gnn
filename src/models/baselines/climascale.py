@@ -1,11 +1,10 @@
-from typing import Optional, Literal, Self
+from typing import Literal, Self
 import pandas as pd 
 import numpy as np
 
 from .baselinemodel import BaseLineModel 
 from ..issues import ModelError
 from ...utils import check_dataset
-from ...utils.textformatting import section
 from ...dataloading.dataloaders import BaseLineDataLoaderManager 
 
 class ClimaScaleModel(BaseLineModel):
@@ -14,13 +13,12 @@ class ClimaScaleModel(BaseLineModel):
     """
     def __init__(self, 
                  dataloadermanager: BaseLineDataLoaderManager,                 
-                 name:              Optional[str] = None,
+                 name:              str = 'climascale_model',
                  verbose:           Literal[-1, 0, 1, 2] = -1):
         
-        if not name:
-            name = f'ClimaScale Model'
-
         super().__init__(dataloadermanager=dataloadermanager, name=name, verbose=verbose)
+        self.status_dict.pop('model_hparams_set')
+        self.status_dict.pop('global_hparams_set')        
 
     def train(self):
         """
@@ -130,29 +128,3 @@ class ClimaScaleModel(BaseLineModel):
         scaling_factor   = shifted_target / shifted_seasonal.replace(0, float('nan'))
         group['pred']    = (scaling_factor * group['seasonal_mean']).fillna(0)
         return group
-    
-    def __str__(self) -> str:
-
-        all_keys = (
-            ['model name', 'model class'] + list(self._state.keys())
-        )
-
-        width = max(len(k) for k in all_keys) if all_keys else 20
-        
-        # Build output
-        lines = [f'<{self.__class__.__name__}(']
-        lines.append('')        
-        general_items = {'name': self.name, 'model_class': self.model_class}
-        lines.extend(section('generics', general_items, width))
-        lines.append('')
-        
-        # Status section
-        status_items = {k: "✓" if v else "✗" for k, v in self._state.items()}
-        status_items['model_hparams_set'] = 'NA'        
-        status_items['global_hparams_set'] = 'NA'
-        lines.extend(section('status', status_items, width))
-        lines.append('')
-                  
-        lines.append(')>')
-        
-        return '\n'.join(lines)        

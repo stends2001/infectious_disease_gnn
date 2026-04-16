@@ -34,7 +34,7 @@ class BaseLineModel(BaseModel[BaseLineDataLoaderManager]):
     """
     def __init__(self, 
                  dataloadermanager: BaseLineDataLoaderManager,                     
-                 name:              Optional[str] = None,
+                 name:              str,
                  verbose:           Literal[-1, 0, 1, 2] = -1):
         
         self._expected_dataloadermanager = 'BaseLineDataLoaderManager'
