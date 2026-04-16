@@ -15,7 +15,7 @@ class ModelStatusMixin:
     """
     status_dict: Dict[ModelStatus, bool]
 
-    def _init_state(self):
+    def _init_status(self):
         """sets attribute status_dict"""
         self.status_dict = {
             'model_initialized' : False,

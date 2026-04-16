@@ -62,7 +62,7 @@ class BaseModel(Generic[DLM], ModelStatusMixin, ModelVerboseMixin, ModelAppearan
         self.config_info                = {}        
         self.config_info                = {'name': self.name, 'model_class': self.model_class}
 
-        self._init_state()
+        self._init_status()
         self._update_status('model_initialized')
         self._print_status_update('model_initialized')
 
@@ -93,22 +93,18 @@ class BaseModel(Generic[DLM], ModelStatusMixin, ModelVerboseMixin, ModelAppearan
         # I'm using NotImplementedErrors over ABC-abstractmethods since 
         # some model-types need more arguments than other model-types.
     
-    def train(self):
-        raise NotImplementedError("Subclasses of BaseModel must implement train-method")
+    def train(self, *args, **kwargs) -> None:
+        raise NotImplementedError("Subclasses must implement train")
 
-    def forecast(self):
-        """should create .evaluation_df"""
-        raise NotImplementedError("Subclasses of BaseModel must implement forecast-method")
+    def forecast(self, *args, **kwargs) -> None:
+        raise NotImplementedError("Subclasses must implement forecast")
 
-    def set_global_hparams(self):
-        """should set global hparams when necessary"""
-        raise NotImplementedError("Subclasses of BaseModel must implement set_global_hparams-method")
-    
-    def set_model_hparams(self):
-        """should set model hparams when necessary"""
-        raise NotImplementedError("Subclasses of BaseModel must implement set_model_hparams-method")   
+    def set_global_hparams(self, *args, **kwargs) -> None:
+        raise NotImplementedError("Subclasses must implement set_global_hparams")
 
-    def save_model(self):
-        """should save model"""
-        raise NotImplementedError("Subclasses of BaseModel must implement save_model-method")
-     
+    def set_model_hparams(self, *args, **kwargs) -> None:
+        raise NotImplementedError("Subclasses must implement set_model_hparams")
+
+    def save_model(self, *args, **kwargs) -> None:
+        raise NotImplementedError("Subclasses must implement save_model")
+        
