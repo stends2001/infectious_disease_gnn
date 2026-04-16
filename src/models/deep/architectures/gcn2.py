@@ -225,11 +225,8 @@ class GCN2Model(DeepModel):
 
     def __init__(self,
                  dataloadermanager: GraphDataLoaderManager,
-                 name:              Optional[str]           = None,
+                 name:              str           = 'gcnv2_model',
                  verbose:           Literal[-1, 0, 1, 2]   = -1):
-
-        if not name:
-            name = 'SpatialDominantGCN'
 
         self._expected_dataloadermanager = 'GraphDataLoaderManager'
 

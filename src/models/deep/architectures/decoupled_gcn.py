@@ -335,11 +335,8 @@ class DecoupledGCNModel(DeepModel):
 
     def __init__(self,
                  dataloadermanager: GraphDataLoaderManager,
-                 name:              Optional[str]           = None,
+                 name:              str           = 'DecoupledGCN',
                  verbose:           Literal[-1, 0, 1, 2]   = -1):
-
-        if not name:
-            name = 'DecoupledGCN'
 
         self._expected_dataloadermanager = 'GraphDataLoaderManager'
 

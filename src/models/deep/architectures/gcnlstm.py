@@ -186,11 +186,8 @@ class GCNLSTMModel(DeepModel):
 
     def __init__(self,
                  dataloadermanager: GraphDataLoaderManager,
-                 name:              Optional[str] = None,
+                 name:              str = 'gcnlstm_model',
                  verbose:           Literal[-1, 0, 1, 2] = -1):
-
-        if not name:
-            name = 'GCNLSTMModel'
 
         self._expected_dataloadermanager = 'GraphDataLoaderManager'
 

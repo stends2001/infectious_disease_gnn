@@ -119,11 +119,9 @@ class SimpleGCNModel(DeepModel):
     """
     def __init__(self, 
                  dataloadermanager: GraphDataLoaderManager, 
-                 name:              Optional[str] = None,
+                 name:              str = 'simplegcn_model',
                  verbose:           Literal[-1, 0, 1, 2] = -1):
-        
-        if not name:
-            name = 'SpatialGNN'        
+    
 
         self._expected_dataloadermanager = 'GraphDataLoaderManager'
 
