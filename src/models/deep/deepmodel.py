@@ -1,7 +1,4 @@
-from typing import Union, Dict, Type, Literal, Optional, Any, Tuple, List, TypeVar, Generic
-
-from wcwidth import wcswidth
-
+from typing import Union, Dict, Type, Literal, Optional, Any, Tuple, List
 import torch 
 from torch import Tensor as Tensor
 import torch.optim as optim
@@ -23,12 +20,12 @@ from .strategies.basestrategy import Strategy
 
 from ..utils.loss.losshandler import LossHandler
 from ..base import BaseModel
-from ..issues import DeviceWarning, InvalidLossError, InvalidOPtimizerError, InvalidSchedulerError, ModelStatusError
+from ..issues import DeviceWarning, InvalidOPtimizerError, InvalidSchedulerError, ModelStatusError
 
 from ...dataloading.dataloaders import GraphDataLoaderManager, DeepDataLoaderManager
-from ...utils import checkmark, traincolor, valcolor, align, section, check_dataset
+from ...utils import traincolor, valcolor, align, section, check_dataset
  
-from .issues import UnexpectedDataShape, InconsistentDataShape
+from .issues import UnexpectedDataShape
 from pathlib import Path
 
 class DeepModel(BaseModel[Union[GraphDataLoaderManager, DeepDataLoaderManager]]):
@@ -80,7 +77,7 @@ class DeepModel(BaseModel[Union[GraphDataLoaderManager, DeepDataLoaderManager]])
         ---------
 
         """
-        self._check_state(['model_hparams_set'])
+        self._check_status(['model_hparams_set'])
 
         global_params_config = {
             'lr'                : lr,
@@ -142,7 +139,7 @@ class DeepModel(BaseModel[Union[GraphDataLoaderManager, DeepDataLoaderManager]])
     def train(self):
         """ 
         """
-        self._check_state(['model_hparams_set', 'global_hparams_set'])
+        self._check_status(['model_hparams_set', 'global_hparams_set'])
 
         if self.model is None:
             raise ModelStatusError(f'attribute model is None. Model was not correctly initiated')   
@@ -340,7 +337,7 @@ class DeepModel(BaseModel[Union[GraphDataLoaderManager, DeepDataLoaderManager]])
         if self.model is None:
             raise ValueError('Please initiate a model')
 
-        self._check_state(['model_hparams_set'])
+        self._check_status(['model_hparams_set'])
 
         train_sample = self.dataloadermanager.dataloader_train[0].to(self.device)
         y_hat , report = self.strategy.debug(self.model, train_sample)
@@ -355,7 +352,7 @@ class DeepModel(BaseModel[Union[GraphDataLoaderManager, DeepDataLoaderManager]])
         """
         Save the trained model.
         """
-        self._check_state(['trained'])
+        self._check_status(['trained'])
 
         if isinstance(dir, str):
             dir = Path(dir)
@@ -365,7 +362,7 @@ class DeepModel(BaseModel[Union[GraphDataLoaderManager, DeepDataLoaderManager]])
     @check_dataset()
     def forecast(self, dataset: Literal['train','val','test'] = 'test'):
         
-        self._check_state(['model_hparams_set', 'global_hparams_set', 'trained'])
+        self._check_status(['model_hparams_set', 'global_hparams_set', 'trained'])
 
         if self.model is None:
             raise ModelStatusError(f'attribute model is None. Model was not correctly initiated')   
@@ -479,9 +476,10 @@ class DeepModel(BaseModel[Union[GraphDataLoaderManager, DeepDataLoaderManager]])
         self._update_status('forecasted')
 
     @classmethod
-    def load(cls, model_name: str, 
-            subdir:            str  = 'models',
-            dataloadermanager        = None) -> 'DeepModel':
+    def load(cls, 
+             model_name: str, 
+             subdir: Optional[str]  = None,
+             dataloadermanager      = None) -> 'DeepModel':
         manager = ModelManager()
         return manager.load(model_name, dataloadermanager=dataloadermanager, subdir=subdir)
 
@@ -508,7 +506,7 @@ class DeepModel(BaseModel[Union[GraphDataLoaderManager, DeepDataLoaderManager]])
                        lr:              float, 
                        optimizer_kwargs:Dict[str, Any]) -> Optimizer:
         """Factory method to create and return optimizer"""
-        self._check_state(['model_hparams_set'])
+        self._check_status(['model_hparams_set'])
 
         if self.model is None:
             raise ModelStatusError(f'attribute model is None. Model was not correctly initiated')        
@@ -532,7 +530,7 @@ class DeepModel(BaseModel[Union[GraphDataLoaderManager, DeepDataLoaderManager]])
     def _get_scheduler(self, scheduler_name: str, optimizer: Optimizer, scheduler_kwargs: Dict[str, Any]) -> _LRScheduler:
         """Factory method to create and return scheduler"""
         
-        self._check_state(['model_hparams_set'])
+        self._check_status(['model_hparams_set'])
         
         scheduler_map = {
             'step':        torch.optim.lr_scheduler.StepLR,
@@ -682,7 +680,7 @@ class DeepModel(BaseModel[Union[GraphDataLoaderManager, DeepDataLoaderManager]])
         # Calculate width
         all_keys = (
             ['model name', 'model class'] +
-            list(self._state.keys()) +
+            list(self.status_dict.keys()) +
             list(self.config_info.get('model_hparams', {}).keys()) +
             list(self.config_info.get('global_hparams', {}).keys())
         )
@@ -695,7 +693,7 @@ class DeepModel(BaseModel[Union[GraphDataLoaderManager, DeepDataLoaderManager]])
         lines.append('')
         
         # Status section
-        status_items = {k: "✓" if v else "✗" for k, v in self._state.items()}
+        status_items = {k: "✓" if v else "✗" for k, v in self.status_dict.items()}
         lines.extend(section('status', status_items, width))
         lines.append('')
         
