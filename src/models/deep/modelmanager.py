@@ -1,9 +1,6 @@
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional, Type, Any
-from typing import TypeVar
-
-T = TypeVar('T', bound='DeepModel')
+from typing import TYPE_CHECKING, Optional, Any
 import torch
 
 from ...utils.helpers import get_project_utilities_env
@@ -11,9 +8,19 @@ from ...utils.helpers import get_project_utilities_env
 if TYPE_CHECKING:
     from .deepmodel import DeepModel
 
-
 class ModelManager:
-    """Simple manager for saving and loading trained DeepModel instances."""
+    """
+    Simple manager for saving and loading trained DeepModel instances.
+    This is a utility class for DeepModel.
+
+    Methods
+    -------
+    - `save()`
+
+    See Also
+    --------
+    For more information, see DeepModel.
+    """
 
     def __init__(self, dir: str = 'models'):
         self.base_dir = Path(os.path.join(get_project_utilities_env(), dir))
@@ -22,7 +29,28 @@ class ModelManager:
     # ── save ──────────────────────────────────────────────────────────────
 
     def save(self, model: 'DeepModel', dir: Optional[Path], minimal: bool) -> None:
-        """Save a trained model to disk."""
+        """
+        Save a trained model to specified directory. The following specs will be saved
+        as dictionary into a .pt-file:
+        - name
+        - model_class
+        - model_state
+        - model_hparams
+        - global_hparams
+        - monitoring_metrics
+        - strategy (depending on minimal-parameter)
+        - dataloadermanager (depending on minimal-parameter)
+
+        Parameters
+        ----------
+        model: 'DeepModel'
+            model to be saved. Must be a subclass of DeepModel.
+        dir: Optional[Path]
+            the directory to be saved in. This must be the directory within the
+            `get_project_utilities_env()` output, saved under `self.base_dir`
+        minimal: bool
+            whether to not save the expensive dataloadermanager and strategy.
+        """
         if model.model is None:
             raise ValueError('No model to save — call set_model_hparams() first.')
 
@@ -40,11 +68,11 @@ class ModelManager:
             filepath = base_dir / f"{model.name}.pt"
 
         save_dict = {
+            'name':               model.name,            
             'model_class':        model.__class__.__name__,
             'model_state':        model.model.state_dict(),
             'model_hparams':      model.config_info.get('model_hparams', {}),
             'global_hparams':     model.config_info.get('global_hparams', {}),
-            'name':               model.name,
             'monitoring_metrics': model.monitoring_metrics,
         }
 
@@ -53,13 +81,12 @@ class ModelManager:
             save_dict['dataloadermanager'] = model.dataloadermanager      
 
         torch.save(save_dict, filepath)
-
-        # print relative path for readability
-        try:
-            local_path = str(filepath).split("/wissdaten/")[1]
-            print(f"✓ Model saved: Wissdaten/{local_path}")
-        except IndexError:
-            print(f"✓ Model saved: {filepath}")
+        
+        # try:
+        #     local_path = str(filepath).split("/wissdaten/")[1]
+            # print(f"✓ Model saved: Wissdaten/{local_path}")
+        # except IndexError:
+            # print(f"✓ Model saved: {filepath}")
 
     # ── load ──────────────────────────────────────────────────────────────
 
@@ -69,7 +96,11 @@ class ModelManager:
             subdir:            Optional[str] = None) -> 'DeepModel':
 
         base     = self.base_dir / subdir if subdir else self.base_dir
-        filepath = base / f"{model_name}.pt"
+
+        if model_name.endswith(".pt"):
+            filepath = base / f"{model_name}"
+        else:
+            filepath = base / f"{model_name}.pt"            
 
         if not filepath.exists():
             raise FileNotFoundError(f"Model not found: {filepath}")
@@ -116,5 +147,5 @@ class ModelManager:
         instance.config_info['global_hparams']= save_dict['global_hparams']
         instance._update_status('trained')
 
-        print(f"✓ Model loaded: {filepath.name}")
+        # print(f"✓ Model loaded: {filepath.name}")
         return instance
