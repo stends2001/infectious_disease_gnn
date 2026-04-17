@@ -66,7 +66,9 @@ class BaseModel(Generic[DLM], ModelStatusMixin, PresentationMixin, ModelAppearan
     #### Helperclasses
     This BaseModel uses the following mixin-classes: short libraries of methods that this class inherits.
     - ModelStatusMixin
+        contains hidden methods that deal with `status_dict`.
     - PresentationMixin
+        contains dunder and hidden methods that deal with (re)presentation.
     - ModelAppearanceMixin
         contains hidden methods used to set attributes in `self.__init__()`
     - ForecastDisplayMixin
