@@ -17,23 +17,61 @@ class BaseModel(Generic[DLM], ModelStatusMixin, ModelVerboseMixin, ModelAppearan
     Parameters
     ----------
     dataloadermanager: Union[BaseLineDataLoaderManager, DeepDataLoaderManager, GraphDataLoaderManager]
-
-    name: Optional[str] = None 
-    
+        dataloadermanager that stores the data in a way required by the model type.
+    name: str
+        model name
     verbose: int = -1
-        the following levels are created for verbose:
-        - -1:
-        - 0:
-        - 1:
-        - 2:
+        the extend of which output will be returned. The following levels for verbose (v) are distinguished:
+        - v < 0:        no output           =>  no output
+        - 0 <= v < 1    minimal output      =>  minimal status updates, # TODO
+        - 1 <= v < 2    intermediate output =>  full status updates, # TODO
+        - v >= 2        maximal output      =>  full status updates, # TODO
 
-    Downstream
+    Methods
+    -------
+    - show_forecasts
+        main method to show a model's forecasts.
+    
+    Attributes
     ----------
-    BaseModel has subclasses:
+    Important attributes include:
+    - config_info: Dict[str, Any]
+        stores configuration data essential for model-saving and model-loading.
+    - status_dict: Dict[ModelStatus, bool]
+        stores model status data (whether certain checkpoints are done). Handled by ModelStatusMixin.
+    
+    Examples
+    --------
+    As this model class may not be initiated by itself, instead, a subclass (of degree 2) must be initiated,
+    there is no relevant example for this class.
+    
+    See Also
+    --------
+    
+    #### Subclasses
+    BaseModel has subclasses of degree 1 (model - families) and degree 2 (model - classes/architectures).
+    The first degree of subclasses store general code, that is specifically tailored to its architectures,
+    but different to the architectures of the other the other classes in degree 1. While the BaseLineModel
+    is relatively short and easy to follow, DeepModel is much more extensive.
+    
     - BaseLineModel
+        - PersistenceModel
+        - ClimateologyModel
+        - ClimaScaleModel
+        - ConstantModel
     - DeepModel
+        - LSTMModel
+        - ...
 
-    Each of which has further subclasses.
+    #### Helperclasses
+    This BaseModel uses the following mixin-classes: short libraries of methods that this class inherits.
+    - ModelStatusMixin
+    - ModelVerboseMixin
+    - ModelAppearanceMixin
+    - ForecastDisplayMixin
+
+    Additionally, the PredictionManager is of importance. This is where predictions are stored and interacted with.
+    The logic for interaction can be found in ForeCastDisplayMixin
     """
     _expected_dataloadermanager:    str 
     config_info:                    Dict[str, Any]
@@ -41,7 +79,7 @@ class BaseModel(Generic[DLM], ModelStatusMixin, ModelVerboseMixin, ModelAppearan
     def __init__(self, 
                  dataloadermanager: DLM, 
                  name:              str,
-                 verbose:           int             = -1):
+                 verbose:           int  = -1):
 
         self.name = name
         self._set_dataloader_attributes(dataloadermanager)
@@ -51,7 +89,9 @@ class BaseModel(Generic[DLM], ModelStatusMixin, ModelVerboseMixin, ModelAppearan
         self.model_class                = self.__class__.__name__
         self.model_color                = self._get_model_color()
         self.clean_name                 = self._get_clean_name()
+        
         # validate dataloadermanager-type vs model-type
+        # if unexpected -> Error is raised
         self._validate_dataloadermanager()
         
         # dynamic (changing) attributes
