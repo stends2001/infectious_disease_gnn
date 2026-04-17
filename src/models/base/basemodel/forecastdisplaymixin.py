@@ -165,6 +165,12 @@ class ForecastDisplayMixin(Generic[DLM]):
             case _:
                 assert_never(node_idx)
             
+        ints = [x for x in nodes_list if isinstance(x, int)]
+
+        for node_idx in ints:
+            if node_idx > self.context_data.num_nodes:
+                raise ValueError(f'node {node_idx} invalid. There are {self.context_data.num_nodes} nodes [0-{self.context_data.num_nodes-1}]') 
+
         return nodes_list, df_pred, df_pred_aggr
 
     def _validate_current_limitations(self, plot_type: str, prediction_mode: Literal['classification','regression']):
