@@ -1,4 +1,4 @@
-from typing import Dict,  Union, Optional, Type
+from typing import Dict,  Union, Optional, Type, Any
 import torch 
 import torch.optim as optim
 from torch.optim.optimizer import Optimizer
@@ -7,7 +7,7 @@ from pathlib import Path
 import os
 
 from .internals import DeepModelInternalsMixin
-from .logging import DeepModelLoggerMixin
+from .presentation import DeepModelPresentationMixin
 from .training import DeepModelTrainMixin
 from .forecasting import DeepModelForecastMixin
 from .globalhparams import DeepModelGlobalhParamsMixin
@@ -20,23 +20,91 @@ from ...base.basemodel import BaseModel
     
 class DeepModel(
     DeepModelInternalsMixin,
-    DeepModelLoggerMixin,
+    DeepModelPresentationMixin,
     DeepModelTrainMixin,
     DeepModelForecastMixin,
     DeepModelGlobalhParamsMixin,
     DeepModelCheckpointMixin,
-    BaseModel[Union[GraphDataLoaderManager, DeepDataLoaderManager]],
-):
+    BaseModel[Union[GraphDataLoaderManager, DeepDataLoaderManager]] # BaseModel comes last for hierarchy of methods-imported
+    ):
     """ 
-    # TODO
+    Parent class of Deep models (LSTM, GNNs, etc.).
+    First degree sub-class of BaseModel
+
+    Besides the parameters required by BaseModel, DeepModel instances require
+    strategy: Strategy
+        model strategies handle training and forecasting
+    
+    Methods
+    -------
+    - `load_model()`
+        this classmethod allows the loading of a saved model by only feeding in the correct
+        dataloadermanager. This is the only classmethod.
+    - `save_model()`
+        saves the model in a compatible way with `load_model()`.
+    
+    Attributes
+    ----------
+    _childclasses: Dict[str, Type["DeepModel"]]
+        this is a class-level attribute. All models that inherit from DeepModel, i.e. all 
+        deep - architectures, store their class in this dictionary through the 
+        `__init_subclass__()`. This dictionary thus gives an overview of all deep - 
+        architectures in this codebase.
+    
+    Examples
+    --------
+    >>> BASE_CONFIG: Dict[str, Any] = dict(
+        disease              = 'influenza',
+        country              = 'germany',
+        level                = 'nuts3',
+        min_date             = '2012-06-01',
+        max_date             = '2020-06-01',
+        feature_popsize      = False,
+        feature_popdens      = True,
+        feature_gisd         = False,
+        feature_popage       = False,
+        feature_kreise_classes = False,
+        feature_borders      = False,
+        sequence_length      = 4,
+        normalization_method = 'zscore',
+        log_transform        = ['incidence'],
+    )
+
+    >>> cfg = EpiConfig(**BASE_CONFIG, horizon_leadtime=1)
+    >>> edo = EpiDataOrchestrator(cfg).build()
+    >>> dlm = DeepDataLoaderManager(edo).build()
+
+    >>> lstm = LSTMModel.load_model('lstm_hl1_s123',dlm,'experiment_1')
+    
+    See Also
+    --------
+    #### Parentclass
+    For more information on basic model-behaviour shared among all models, see BaseModel.
+
+    #### Subclasses
+    DeepModel's subclasses are BaseModel's second degree subclasses, including LSTMModel and
+    GNN-based architectures.
+
+    #### Helperclasses
+    This DeepModel uses the following mixin-classes: short libraries of methods that this class inherits.
+    - DeepModelCheckpointMixin
+        deals with model saving.
+    - DeepModelForecastMixin
+        deals with deepmodel - forecasting.
+    - DeepModelGlobalhParamsMixin
+        deals with global hyper - parameters
+    - DeepModelInternalsMixin
+        sets basic attributes called when instantiation.
+    - DeepModelPresentationMixin
+        deals with the (re)presentation of deep models.
+    - DeepModelTrainMixin
+        deals with model training
     """
     
-    # This is run at runtime. dictionary of all models that inherit from here
-    _childclasses: Dict[str, Type["DeepModel"]] = {}
-    
-    model:      torch.nn.Module 
-    optimizer:  Optimizer
-    scheduler:  _LRScheduler
+    _childclasses:  Dict[str, Type["DeepModel"]] = {}    
+    model:          torch.nn.Module 
+    optimizer:      Optimizer
+    scheduler:      _LRScheduler
 
     def __init__(self, 
                  dataloadermanager:     Union[GraphDataLoaderManager, DeepDataLoaderManager], 
@@ -45,10 +113,10 @@ class DeepModel(
                  verbose:               int = -1):
 
         super().__init__(dataloadermanager = dataloadermanager, name = name, verbose = verbose)        
-        
-        self.monitoring_metrics                             = None
+    
         self.evaluation_datasets                            = {}
 
+        # using hidden methods in DeepModelInternalsMixin, set attributes
         self._set_device()
         self._set_strategy(strategy)
         self._set_models_directory()
@@ -63,42 +131,68 @@ class DeepModel(
     @classmethod
     def load_model(cls,
                    model_name:        str,
-                   dataloadermanager,
+                   dataloadermanager: Union[GraphDataLoaderManager, DeepDataLoaderManager],
                    subdir:            Optional[str] = None,
                    ) -> 'DeepModel':
+        """
+        Loads a saved model, and sets model hyper-parameters, global-hyperparameters
+        and thus, most importantly, self.model. This function does not, however, 
+        run `forecast()`! So this needs to be done after loading.
+
+        Parameters
+        ----------
+        model_name: str
+            name under which the model is saved (should be the filename wihtout .pt)
+        dataloadermanager: Union[GraphDataLoaderManager, DeepDataLoaderManager]
+            dataloadermanager with which the model was trained.
+        subdir: Optional[str] = None
+            directory in which to find the model. Directory may be named after an experiment.
+
+        Returns
+        -------
+        This is the only method that returns the instance of the model.
+        """
 
         # build path — use class-level helper, not instance attribute
         base_dir = Path(os.path.join(get_project_utilities_env(), 'models'))
         base     = base_dir / subdir if subdir else base_dir
-
+        
+        # construct model path
         if model_name.endswith('.pt'):
             filepath = base / model_name
         else:
             filepath = base / f"{model_name}.pt"
 
+        # validate model path's existence
         if not filepath.exists():
             raise FileNotFoundError(f"Model not found: {filepath}")
 
-        save_dict = torch.load(filepath, map_location='cpu', weights_only=False)
+        # load dictionary
+        save_dict: Dict[str, Any] = torch.load(filepath, map_location='cpu', weights_only=False)
 
-        model_key = save_dict['model_class'].lower()
+        # get name of model architecture - class
+        model_key: str = save_dict['model_class'].lower()
+
+        # if class doesn't exist in deepmodel's child classes, then raise error
         if model_key not in cls._childclasses:
             raise ValueError(
                 f"Unknown model class '{save_dict['model_class']}'. "
                 f"Available: {list(cls._childclasses.keys())}"
             )
 
+        # create an instance of model
         child_cls = cls._childclasses[model_key]
         instance  = child_cls(
             name              = save_dict['name'],
             dataloadermanager = dataloadermanager,
         ) # type: ignore
 
+        # load config into the model
         instance.set_model_hparams(**save_dict['model_hparams'])
         instance.set_global_hparams(**save_dict['global_hparams'])
         instance.model.load_state_dict(save_dict['model_state'])
         instance.model.to(instance.device)
-        instance.monitoring_metrics           = save_dict.get('monitoring_metrics')
+        instance.monitoring_metrics           = save_dict['monitoring_metrics']
         instance.config_info['model_hparams'] = save_dict['model_hparams']
         instance.config_info['global_hparams']= save_dict['global_hparams']
         instance._update_status('trained')
@@ -106,20 +200,5 @@ class DeepModel(
         return instance
 
     def set_model_hparams(self):
-        raise NotImplementedError("Subclass of DeepModel must implement set_model_hparams")
-
-    def debug(self):
-        if self.model is None:
-            raise ValueError('Please initiate a model')
-
-        self._check_status(['model_hparams_set'])
-
-        train_sample = self.dataloadermanager.dataloader_train[0].to(self.device)
-        y_hat , report = self.strategy.debug(self.model, train_sample)
-
-        y_hat = y_hat.detach().cpu()
-        y     = train_sample.y.detach().cpu()
-        report.validate()
-        # if y_hat.shape != y.shape:
-        #     raise DeepModelDebuggingError(f"incompatible prediction shape: y_hat [{y_hat.shape}], y [{y.shape}]")
-        
+        """must be set by subclasses"""
+        raise NotImplementedError("Subclass of DeepModel must implement set_model_hparams")      

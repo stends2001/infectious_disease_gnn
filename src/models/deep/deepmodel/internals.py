@@ -8,14 +8,15 @@ from ....utils.helpers import get_project_utilities_env
 
 class DeepModelInternalsMixin:
     """ 
-    # TODO
+    Mixin class that deals with the setting of attributes.
+    These methods are called by DeepModel's init function to set attributes.
     """
     def _set_strategy(self, strategy: Strategy):
-        """Allow subclasses to specify their strategy"""
+        """sets strategy"""
         self.strategy = strategy
 
     def _set_device(self):
-        """sets attribute device"""
+        """sets device"""
         self.device            = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         
         if self.device == 'cpu':
@@ -23,6 +24,7 @@ class DeepModelInternalsMixin:
             print(w)    
 
     def _set_models_directory(self):
+        """sets model directory"""
         base_dir = Path(os.path.join(get_project_utilities_env(), 'models')) 
         base_dir.mkdir(parents=True, exist_ok=True)
         

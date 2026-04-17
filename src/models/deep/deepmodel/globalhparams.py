@@ -13,17 +13,18 @@ if TYPE_CHECKING:
 
 class DeepModelGlobalhParamsMixin:
     """ 
-    # TODO
+    Mixin class that deals with the global hyperparameters of DeepModels.
+    NOTE we have two stubs here, defined in ModelStatusMixin.
+    These stubs follow the actual functions' signatures but
+    are not called. Simply here for typing.
+
+    Main method is `set_global_hparams()` with its helper methods.
     """    
     status_dict:        Dict[ModelStatus, bool]
     epiconfig:          'EpiConfig'
     config_info:        Dict[str, Any]    
     model:              torch.nn.Module
     n_params:           int
-
-    # ======== STUBS ======= #
-    def _check_status(self, required_states: Union[List[ModelStatus], ModelStatus]) -> None: ...
-    def _update_status(self, status: ModelStatus) -> None: ...
 
     def set_global_hparams(self, 
                            lr:              float           = 0.001,
@@ -32,22 +33,43 @@ class DeepModelGlobalhParamsMixin:
                            min_delta:       float           = 1e-4,                            
                            optimizer:       str             = 'adam',
                            loss:            str             = 'mse',                           
-                           scheduler:       Optional[str]   = 'step',
+                           scheduler:       str             = 'step',
                            # kwargs
                            optimizer_kwargs:Optional[Dict[str, Any]] = None,                           
                            scheduler_kwargs:Optional[Dict[str, Any]] = None,
                            loss_kwargs:     Optional[Dict[str, Any]] = None                            
-                           ):
+                           ) -> None:
         """
-        Prepares model for training using global hyperparameters
+        Prepares model for training by setting global hyperparameters.
         
         Parameters
         ---------
+        lr: float = 0.001
+            learning rate.
+        n_epochs: int = 5
+            number of epochs to train the model.
+        patience: int = 15
+            number of epochs without improvement before interrupting training.
+        min_delta: float = 1e-4                     
+            minimal change in loss to consider 'improvement'.
+        optimizer: str = 'adam'
+            optimizer to use when training. Options can be found in `_get_optimizer()`.
+        loss: str = 'mse'                          
+            loss to use when training. Options can be found in `LossHandler`.
+        scheduler: str = 'step'
+            scheduler to use when training. Options can be found in `_get_scheduler()`.
 
+        #### kwargs
+        optimizer_kwargs:Optional[Dict[str, Any]] = None  
+            any kwargs relevant to optimizer                         
+        scheduler_kwargs:Optional[Dict[str, Any]] = None
+            any kwargs relevant to scheduler
+        loss_kwargs:     Optional[Dict[str, Any]] = None    
+            any kwargs relevant to loss
         """
         self._check_status(['model_hparams_set'])
 
-        global_params_config = {
+        global_hparams_config = {
             'lr'                : lr,
             'n_epochs'          : n_epochs,
             'patience'          : patience,
@@ -92,17 +114,14 @@ class DeepModelGlobalhParamsMixin:
             }
             scheduler_kwargs = default_scheduler_kwargs.get(scheduler, {}) if scheduler else {}
 
-        if scheduler:
-            self.scheduler = self._get_scheduler(scheduler, self.optimizer, scheduler_kwargs)
-
-        else:
-            self.scheduler = None
+        self.scheduler = self._get_scheduler(scheduler, self.optimizer, scheduler_kwargs)
 
         self._validate_global_hparams()
-        self.config_info['global_hparams']  = global_params_config
+        self.config_info['global_hparams']  = global_hparams_config
         self._update_status('global_hparams_set')
 
     def _validate_global_hparams(self):        
+        """validate global hyperparameters"""
         if self.epiconfig.quantiles:
             if self.loss.loss_name not in ['pinball','pinchpinball']:
                 raise ValueError('quantiles given to DeepModel, yet loss is not pinball.')
@@ -153,3 +172,7 @@ class DeepModelGlobalhParamsMixin:
         
         scheduler_class = scheduler_map[scheduler_name.lower()]
         return scheduler_class(optimizer, **scheduler_kwargs)
+    
+    # ======== STUBS ======= #
+    def _check_status(self, required_states: Union[List[ModelStatus], ModelStatus]) -> None: ...
+    def _update_status(self, status: ModelStatus) -> None: ...

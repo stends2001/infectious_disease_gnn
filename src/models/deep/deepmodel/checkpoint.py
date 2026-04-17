@@ -2,11 +2,11 @@ from typing import Dict, Optional, Any
 import torch 
 from torch import Tensor as Tensor
 from pathlib import Path
-import pandas as pd 
 
 class DeepModelCheckpointMixin:
     """ 
-    # TODO
+    Mixin class that deals with the saving of DeepModels.
+    NOTE `load_model()` is a classmethod defined in DeepModel itself.
     """    
     model:              torch.nn.Module 
     clean_name:         str
@@ -16,7 +16,8 @@ class DeepModelCheckpointMixin:
 
     def save_model(self, dir: Optional[Path] = None):
         """
-        # TODO
+        save current model in subdirectory (optionally).
+        could be named after an experiment.
         """
         if not hasattr(self, 'model'):
             raise ValueError('No model found!')
@@ -24,18 +25,20 @@ class DeepModelCheckpointMixin:
         base_dir    = self.models_dir 
         sub_dir     = dir
 
+        # if base dir doesn't exist, error
         if not base_dir.exists():
             raise FileNotFoundError(f".base_dir {base_dir} does not exist")
 
         if sub_dir is not None:
             full_sub_dir = base_dir / sub_dir
-            full_sub_dir.mkdir(exist_ok=True)  # creates if not exists, errors if base_dir missing
+            # if subdir doesn't exist, make it
+            full_sub_dir.mkdir(exist_ok=True)
             filepath = full_sub_dir / f"{self.clean_name}.pt"
 
         else:
             filepath = base_dir / f"{self.clean_name}.pt"
 
-        save_dict = {
+        save_dict: Dict[str, Any] = {
             'name':               self.clean_name,            
             'model_class':        self.__class__.__name__,
             'model_state':        self.model.state_dict(),

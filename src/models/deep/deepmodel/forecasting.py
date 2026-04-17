@@ -1,4 +1,4 @@
-from typing import Union, List, TYPE_CHECKING, Literal
+from typing import Union, List, TYPE_CHECKING, Literal, assert_never
 import pandas as pd
 import torch 
 from tqdm import tqdm
@@ -7,19 +7,24 @@ import numpy as np
 
 from ....types import DataSetSplit
 from ..issues import UnexpectedDataShape
-from ...issues import ModelStatusError
 from ...base.basemodel.statusmixin import ModelStatus
 from ....dataloading.dataloaders import DeepDataLoaderManager, GraphDataLoaderManager
 
 if TYPE_CHECKING:
-    from ...base.predictions_manager import PredictionManager
+    from ...base.predictions import PredictionManager
     from ....dataloading.epiconfig import EpiConfig
     from ..strategies.basestrategy import Strategy 
     from ...utils.loss.losshandler import LossHandler  
+    from ....dataloading.epidataorchestration.containers import ContextEpiData
 
 class DeepModelForecastMixin:
     """ 
-    # TODO
+    Mixin class that deals with the forecasting of DeepModels.
+    NOTE we have two stubs here, defined in ModelStatusMixin.
+    These stubs follow the actual functions' signatures but
+    are not called. Simply here for typing.
+
+    Main method is `forecast()` with its helper method `_format_forecast_results()`.
     """  
     model:              torch.nn.Module
     dataloadermanager:  Union[DeepDataLoaderManager, GraphDataLoaderManager]
@@ -29,53 +34,57 @@ class DeepModelForecastMixin:
     device:             torch.device
     loss:               'LossHandler'
     predictions:        'PredictionManager'
-    # ========== STUBS ========== #
-    def _check_status(self, required_states: Union[List[ModelStatus], ModelStatus]) -> None: ...
-    def _update_status(self, status: ModelStatus) -> None: ...
+    context_data:       'ContextEpiData'
 
     def forecast(self, dataset: DataSetSplit = 'test'):
-        
-        self._check_status(['model_hparams_set', 'global_hparams_set', 'trained'])
-
-        if self.model is None:
-            raise ModelStatusError(f'attribute model is None. Model was not correctly initiated')   
-
-        self.model.eval()
-
-        # stupdly keep pylance happy
-        if dataset == 'train':
-            dataloader = self.dataloadermanager.dataloader_train
-        elif dataset == 'val':
-            dataloader = self.dataloadermanager.dataloader_val 
-        elif dataset == 'test':
-            dataloader = self.dataloadermanager.dataloader_test
-        else:
-            # will never be raised given the check_dataset decorator
-            raise ValueError(f'cant find dataset {dataset}')
-
-        self.strategy.reset_state_dataset()
-        iterator = tqdm(dataloader, desc=f"Forecasting {dataset}") if self.verbose >= 0 else dataloader
-
+        """forecast the given dataset"""
         raw_predictions: List[Tensor]   = []
         raw_targets: List[Tensor]       = []
+
+        # check the required states
+        self._check_status(['model_hparams_set', 'global_hparams_set', 'trained'])
+
+        # set model in evaluation mode
+        self.model.eval()
+
+        match dataset:
+            case 'train':
+                dataloader = self.dataloadermanager.dataloader_train
+            case 'val':
+                dataloader = self.dataloadermanager.dataloader_val 
+            case 'test':
+                dataloader = self.dataloadermanager.dataloader_test
+            case _:
+                assert_never(dataset)
         
-        total_loss = 0
+        self.strategy.reset_state_dataset()
 
-        num_nodes = len(self.dataloadermanager.dataorchestrator.data_context.local_shapedata)
+        # define iterator: whether or not to use tqdm
+        iterator            = tqdm(dataloader, desc=f"Forecasting {dataset}") if self.verbose >= 0 else dataloader
+        total_loss          = 0
+        
+        # setup expected predictions-shape [num_nodes, horizon_size, num_quantiles]
+        num_nodes           = self.context_data.num_nodes
+        expected_shape_yhat = [num_nodes, 
+                               self.epiconfig.horizon_size, 
+                               max(1,self.epiconfig._num_quantiles)
+                               ]
 
-        expected_shape_yhat = [num_nodes, self.epiconfig.horizon_size, max(1,self.epiconfig._num_quantiles)]
-
+        # turn off gradient tracking
         with torch.no_grad():
+
+            # for each snapshot, forecast
             for idx, snapshot in enumerate(iterator):
                 snapshot = snapshot.to(self.device)
                 y_hat, loss_val = self.strategy.forecast_step(
-                    model=self.model, 
-                    snapshot=snapshot, 
-                    loss_fn=self.loss
+                    model   = self.model, 
+                    snapshot= snapshot, 
+                    loss_fn = self.loss
                 )
                 total_loss += loss_val
 
-                if not idx:
+                # validate predictions-shape only the first snapshot
+                if idx == 0:
                     if list(y_hat.shape) != expected_shape_yhat:
                         raise UnexpectedDataShape(f'{list(y_hat.shape)}', f'{expected_shape_yhat}', "stacked yhat forecasting snapshot 0")
 
@@ -157,9 +166,9 @@ class DeepModelForecastMixin:
         num_nodes: int,
         horizon_size: int,
         pred_col_names: list[str],
-    ) -> pd.DataFrame:
+        ) -> pd.DataFrame:
         """
-        Format predictions into a flat DataFrame aligned with correct timestamps.
+        Formats predictions into a flat DataFrame aligned with correct timestamps.
         Handles both point forecasts (num_quantiles=1) and quantile forecasts.
 
         predictions shape: [num_timesteps, num_nodes, horizon_size, num_quantiles]
@@ -190,7 +199,6 @@ class DeepModelForecastMixin:
             global_indices[sequence_idx + offset], self.epiconfig.temporal_column
         ].values
         
-
         results = pd.DataFrame({
             self.epiconfig.temporal_column: timestamps,
             self.epiconfig.id_column: node_idx,
@@ -210,4 +218,7 @@ class DeepModelForecastMixin:
             results[f'target_{hh}'] = target_reshaped[:, hh]
 
         return results
-        
+
+    # ========== STUBS ========== #
+    def _check_status(self, required_states: Union[List[ModelStatus], ModelStatus]) -> None: ...
+    def _update_status(self, status: ModelStatus) -> None: ...
