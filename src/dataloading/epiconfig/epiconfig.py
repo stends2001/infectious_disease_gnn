@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Literal, Optional, List, assert_never
+from typing import Literal, Optional, List, assert_never, Dict
 from pathlib import Path
 import yaml
 import dataclasses
@@ -90,28 +90,15 @@ class EpiConfig:
         self._classify_attributes()
 
     # ============ Methods =========== #
-
-    def equals(self, other: 'EpiConfig', level: Literal[1,2]) -> bool:
-        """
-        returns whether or not two EpiConfig instances are equal
-
-        Parameters
-        ----------
-        other: 'EpiConfig'
-            the other epiconfig to be compares
-        level: Literal[1,2]
-            - 1: compares all attributes
-            - 2: compares task attributes only (MAIN + Temporal + geographical + task)
-        """
-        if level == 1:
-            return self == other
-        else:
-            attributes_groups   = ["main", "temporal", 'geography','task']
-            attributes_to_check = [item for key in attributes_groups for item in self.attributes_classified_dict.get(key, [])]
-            for attr in attributes_to_check:
-                if getattr(self, attr) != getattr(other, attr):
-                    return False 
-            return True
+    def assert_equals(self, other: 'EpiConfig', level: Literal[0,1,2,3,4] = 1) -> None:
+        """for DeepModel - loading use level = 1. For Evaluator use level = 2!"""        
+        self_summary  = self.get_summary(level)
+        other_summary = other.get_summary(level)
+        diff = {k: (self_summary[k], other_summary.get(k))
+                for k in self_summary if self_summary[k] != other_summary.get(k)}
+        if diff:
+            raise ValueError(f"EpiConfig mismatch at level {level}:\n" + 
+                            "\n".join(f"  {k}: {v[0]} vs {v[1]}" for k, v in diff.items()))
 
     # ============ CONFIG LOADING/SAVING ==============
     def save_config(self, config_name: str):
@@ -155,7 +142,7 @@ class EpiConfig:
             'task'          :   ['horizon_size','horizon_leadtime','quantiles','prediction_mode','predict_difference'],
             'features'      :   ['time_index_d','time_index_w','time_index_m','lag_column','lag_num','sequence_length','incidence_scalar', 'feature_popsize','feature_popdens','feature_gisd','feature_popage','feature_climateology','feature_kreise_classes','feature_borders'],
             'normalization' :   ['normalization_method','log_transform','log_shift'],    
-            'column names'  :   ['temporal_column','target_column','id_column','pred_column'],
+            'column_names'  :   ['temporal_column','target_column','id_column','pred_column'],
             'others'        :   ['verbose'],
             'none'          :   ['attributes_dict', 'attributes_classified_dict'],
             'helper_classes':   ['path_manager','validator']
@@ -176,11 +163,47 @@ class EpiConfig:
         """Names of split indicator columns."""
         return ['train', 'val', 'test']
     
-    # ============= SUMMARIES =============
-    
-    def minimal_summary(self) -> str: 
-        """small - scale summary: selection of attributes displayed"""
-        summary =(
+    # ============= DICT - SUMMARIES =========== #
+    def get_summary(self, level: Literal[0, 1, 2, 3, 4]) -> Dict[str, str]:
+        """
+        Level 0: core identity only
+        Level 1: + temporal, excl. max_date  (use for model loading — test period may differ)
+        Level 2: + temporal incl. max_date   (use for evaluation — test period must match)
+        Level 3: + features, normalization
+        Level 4: all attributes        
+        """
+        CLASSES_BY_LEVEL = {
+            0: {'main', 'geography', 'task', 'column_names'},
+            1: {'main', 'geography', 'task', 'column_names', 'temporal'},
+            2: {'main', 'geography', 'task', 'column_names', 'temporal'},            
+            3: {'main', 'geography', 'task', 'column_names', 'temporal', 'features', 'normalization'},
+            4: None,  # None = all classes
+        }
+        EXCLUDE_BY_CLASS = {
+            'temporal': {'max_date'},  # testing period may differ
+        }
+
+        allowed_classes = CLASSES_BY_LEVEL[level]
+        summary: Dict[str, str] = {}
+
+        for attr_class, attr_list in self.attributes_classified_dict.items():
+            if allowed_classes is not None and attr_class not in allowed_classes:
+                continue
+
+            # only exclude at level 1; at level 2+ max_date is included
+            exclude = EXCLUDE_BY_CLASS.get(attr_class, set())
+            
+            if level > 1:
+                exclude = set()
+
+            for attr_name, attr_value in self.attributes_dict.items():
+                if attr_name in attr_list and attr_name not in exclude:
+                    summary[attr_name] = str(attr_value)
+
+        return summary
+
+    def __repr__(self) -> str:
+        repr =(
             f"<{self.__class__.__name__}(disease={self.disease}, "
                 f"country={self.country}, "                
                 f"level={self.level}, "
@@ -188,10 +211,10 @@ class EpiConfig:
                 f"max_date={self.max_date}, "                
                 f"horizon_size={self.horizon_size}, "
                 f"sequence_length={self.sequence_length})"  
-        )      
-        return summary
-
-    def summary(self) -> str: 
+        )          
+        return repr
+    
+    def __str__(self) -> str:
         """extensive - summary: all attributes are displayed"""
         all_keys        = list(self.attributes_dict.keys())
         width           = max(len(k) for k in all_keys)
@@ -208,11 +231,5 @@ class EpiConfig:
                 lines.append("")
 
         lines.append(")>")
-        summary = '\n'.join(lines)
-        return summary
-    
-    def __repr__(self) -> str:
-        return self.minimal_summary()
-    
-    def __str__(self) -> str:
-        return self.summary()            
+        repr = '\n'.join(lines)        
+        return repr            
