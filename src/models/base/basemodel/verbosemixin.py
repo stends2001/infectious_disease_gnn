@@ -1,7 +1,7 @@
-from typing import Literal, Dict
+from typing import Dict
 
 from .statusmixin import ModelStatus
-from ...utils import checkmark, section
+from ....utils import checkmark, section
 
 class ModelVerboseMixin:
     """ 

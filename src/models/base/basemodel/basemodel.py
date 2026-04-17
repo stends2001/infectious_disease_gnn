@@ -1,13 +1,13 @@
 from typing import Generic, Dict, Any
 
-from .predictions_manager import PredictionManager
+from ..predictions import PredictionManager
 from .forecastdisplaymixin import ForecastDisplayMixin
 from .appearancemixin import ModelAppearanceMixin
 from .verbosemixin import ModelVerboseMixin
 from .statusmixin import ModelStatusMixin
 
-from ..issues import ModelInitError
-from ...dataloading.dataloaders import DLM
+from ...issues import ModelInitError
+from ....dataloading.dataloaders import DLM
 
 class BaseModel(Generic[DLM], ModelStatusMixin, ModelVerboseMixin, ModelAppearanceMixin, ForecastDisplayMixin[DLM]):
     """ 

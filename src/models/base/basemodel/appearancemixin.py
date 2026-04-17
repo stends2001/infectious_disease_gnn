@@ -1,10 +1,10 @@
 from typing import List, TYPE_CHECKING
 
-from ..utils.modelcolors import model_colors
+from ...utils.modelcolors import model_colors
 
 if TYPE_CHECKING:
-    from ...dataloading.columnregistration import ColumnRegistry
-    from ...dataloading.epiconfig import EpiConfig
+    from ....dataloading.columnregistration import ColumnRegistry
+    from ....dataloading.epiconfig import EpiConfig
 
 class ModelAppearanceMixin:
 

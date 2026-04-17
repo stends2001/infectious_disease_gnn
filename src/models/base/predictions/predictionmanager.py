@@ -1,19 +1,19 @@
 import pandas as pd 
-from dataclasses import dataclass, field
 from typing import Literal
 from datetime import timedelta
 from dateutil.relativedelta import relativedelta
 
-from ..issues import InvalidPredictionsError, MissingPredictionsError
-from ...dataloading.epidataorchestration.utils.normalization import reverse_log, reverse_minmax, reverse_zscore
-from ...dataloading.epidataorchestration.orchestrator import EpiDataOrchestrator
-from ...dataloading.columnregistration import ColumnRegistry
-from ...dataloading.epidataorchestration.utils.temporal_summary import EpiDataTemporalSummary, TemporalError
-from ...utils import check_dataset
+from .predictioncollection import PredictionCollection
 
-from ..utils.loss.poissonloss import convert_poisson_predictions
+from ...issues import InvalidPredictionsError
+from ....dataloading.epidataorchestration.utils.normalization import reverse_log, reverse_minmax, reverse_zscore
+from ....dataloading.epidataorchestration.orchestrator import EpiDataOrchestrator
+from ....dataloading.columnregistration import ColumnRegistry
+from ....dataloading.epidataorchestration.utils.temporal_summary import EpiDataTemporalSummary, TemporalError
+from ....utils import check_dataset
 
-# ============= Predictions Manager =============
+from ...utils.loss.poissonloss import convert_poisson_predictions
+
 class PredictionManager:
     """
     Manages predictions in a centralized class.
@@ -402,56 +402,3 @@ class PredictionManager:
             status_return = f"PredictionCollection at {status_return[:-2]}"                     
 
         return f"<PredictionManager({status_return})>"
-
-# ============= DATA CONTAINERS =============
-@dataclass
-class PredictionCollection:
-    """
-    Stores predictions across horizons for one datast (train/val/test)
-    Predictions are stored under three variables:
-    - horizon:              int
-    - is_original:          bool
-    - spatially_aggregated: bool
-    
-    Accessible by:
-    self.get_original(0)
-
-    """
-    _data: dict[tuple[int, bool, bool], pd.DataFrame] = field(default_factory=dict)       # a new dictionary is created for each class' instance
-    
-    def add(self, data: pd.DataFrame, horizon: int, is_original: bool = False, spatially_aggregated: bool = False):
-        """
-        Add predictions
-
-        Parameters
-        ----------
-        data: pd.DataFrame
-
-        horizon: int
-
-        is_original: bool
-            if False, then transformed scale, if True then nontransformed        
-        """
-        self._data[(horizon, is_original, spatially_aggregated)] = data
-    
-    def get(self, horizon: int, is_original: bool, spatially_aggregated: bool) -> pd.DataFrame:
-
-        key = (horizon, is_original, spatially_aggregated)
-        if key not in self._data:
-            raise MissingPredictionsError(f"No predictions found for horizon={horizon}, is_original={is_original}, spatially_aggregated={spatially_aggregated}. Available: {list(self._data.keys())}")
-        return self._data[key]
-
-    @property
-    def horizons(self) -> list[int]:
-        """return a list of horizon integers for which predictions are found"""
-        return sorted(set(h for h, _, _ in self._data.keys()))
-    
-    def _contains_data(self) -> bool:
-        """return bool for whether or not predictions exist"""
-        return bool(self.horizons)
-    
-    def __repr__(self) -> str:
-        if self._contains_data():
-            return f"<PredictionCollection(predictions for horizons {self.horizons})>"
-        else:
-            return f"<PredictionCollection(no predictions)>"

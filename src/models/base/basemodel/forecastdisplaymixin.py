@@ -5,22 +5,22 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from datetime import datetime
 
-from ..issues import FutureUpdateError
+from ...issues import FutureUpdateError
 
-from ...dataloading.dataloaders import DLM
+from ....dataloading.dataloaders import DLM
 
-from ...types import DataSetSplit
-from ...plotting import ManagedFigure
-from ...utils import testcolor, color_is_light
+from ....types import DataSetSplit
+from ....plotting import ManagedFigure
+from ....utils import testcolor, color_is_light
 
 SingleNodeType  = Union[int,Literal['national']]
 
 if TYPE_CHECKING:
-    from .predictions_manager import PredictionManager
-    from ...dataloading.columnregistration import ColumnRegistry
-    from ...dataloading.epiconfig import EpiConfig
-    from ...dataloading.epidataorchestration.containers import ContextEpiData
-    from ...dataloading.epidataorchestration.utils.temporal_summary import EpiDataTemporalSummary
+    from ..predictions import PredictionManager
+    from ....dataloading.columnregistration import ColumnRegistry
+    from ....dataloading.epiconfig import EpiConfig
+    from ....dataloading.epidataorchestration.containers import ContextEpiData
+    from ....dataloading.epidataorchestration.utils.temporal_summary import EpiDataTemporalSummary
 
 
 class ForecastDisplayMixin(Generic[DLM]):

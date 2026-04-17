@@ -1,0 +1,1 @@
+from .predictionmanager import PredictionManager, PredictionCollection
