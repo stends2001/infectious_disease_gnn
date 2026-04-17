@@ -4,7 +4,7 @@ from pathlib import Path
 import yaml
 import dataclasses
 
-from .pathmanager import EpiPathsManagerGermany, EpiPathsManagerNetherlands
+from .pathmanager import EpiPathsManagerGermany, EpiPathsManagerNetherlands, EpiPathsManagerHungary
 from .validator import EpiConfigValidator
 
 from .issues import EpiConfigValidationError
@@ -24,7 +24,7 @@ class EpiConfig:
     split_valtest:          str = '2019-06-01'
     
     # ============= GEOGRAPHY =============
-    country:                Literal['germany','netherlands']            = 'germany'
+    country:                Literal['germany','netherlands','hungary']  = 'germany'
     level:                  Literal['nuts1','nuts2','nuts3','ggd','lau']= 'nuts3'
     
     # ============= TASK =============
@@ -76,6 +76,9 @@ class EpiConfig:
         
             case 'netherlands':
                 self.path_manager = EpiPathsManagerNetherlands(self.disease, self.level)
+
+            case 'hungary':
+                self.path_manager = EpiPathsManagerHungary(self.disease, self.level)                
             
             case _:
                 assert_never(self.country)

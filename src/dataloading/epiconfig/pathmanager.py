@@ -6,7 +6,7 @@ from abc import ABC
 from ...utils.helpers import get_data_env
 
 
-Country = Literal['germany', 'netherlands']
+Country = Literal['germany', 'netherlands','hungary']
 Level   = Literal['nuts1', 'nuts2', 'ggd', 'nuts3', 'lau']
 
 def registered_property(func: Callable) -> Callable:
@@ -75,13 +75,7 @@ class EpiPathsManager(ABC):
     @registered_property    
     def population_size(self) -> Path:
         """Path to population size CSV file."""
-        return self.data_env / f'processed/{self.country}/sociodemography/population_size.csv'
-    
-    @property
-    @registered_property     
-    def population_density(self) -> Path:
-        """Path to population density CSV file."""
-        return self.data_env / f'processed/{self.country}/sociodemography/population_density.csv'        
+        return self.data_env / f'processed/{self.country}/sociodemography/population_size.csv'  
 
     @property
     @registered_property   
@@ -149,6 +143,12 @@ class EpiPathsManagerGermany(EpiPathsManager):
         """Path to borders CSV file."""
         return self.data_env / f'processed/germany/sociodemography/border_regions.csv' 
     
+    @property
+    @registered_property     
+    def population_density(self) -> Path:
+        """Path to population density CSV file."""
+        return self.data_env / f'processed/{self.country}/sociodemography/population_density.csv'         
+
 class EpiPathsManagerNetherlands(EpiPathsManager):
     """ 
     EpiPathsManger for Netherlands specifically
@@ -168,4 +168,30 @@ class EpiPathsManagerNetherlands(EpiPathsManager):
     def cases(self) -> Path:
         """Path to disease CSV file."""
         return self.data_env / f'processed/netherlands/epidemiology/{self.disease}.csv'
+    
+    @property
+    @registered_property     
+    def population_density(self) -> Path:
+        """Path to population density CSV file."""
+        return self.data_env / f'processed/{self.country}/sociodemography/population_density.csv'         
+
+class EpiPathsManagerHungary(EpiPathsManager):
+    """ 
+    EpiPathsManger for Hungary specifically
+    """
+
+    def __init__(self,
+                 disease: str,
+                 level: Level):
         
+        self.disease = disease
+
+        # set registry of paths in parent class
+        super().__init__(country = 'hungary', level = level)
+
+    @property
+    @registered_property   
+    def cases(self) -> Path:
+        """Path to disease CSV file."""
+        return self.data_env / f'processed/hungary/epidemiology/{self.disease}.csv'
+                

@@ -67,6 +67,10 @@ class EpiDataReader:
             case 'netherlands':
                 initial_key  = 'lau_key'
                 renamed_key  = 'lau_key'
+
+            case 'hungary':
+                initial_key  = 'nuts3_key'
+                renamed_key  = 'nuts3_key'                
             
             case _:
                 assert_never(self.epiconfig.country)

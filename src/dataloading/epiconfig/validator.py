@@ -141,13 +141,19 @@ class EpiConfigValidator:
             case ('germany', 'ggd' | 'lau'):
                 exceptions.append(EpiConfigValidationError(f'Invalid input for (country, level). {self.epiconfig.level} is unavailable for Germany'))            
 
+            case ('hungary', 'ggd' | 'lau'):
+                exceptions.append(EpiConfigValidationError(f'Invalid input for (country, level). {self.epiconfig.level} is unavailable for Hungary'))  
+
             case ('germany', 'nuts1' | 'nuts2' | 'nuts3'):
                 pass
+
+            case ('hungary', 'nuts1' | 'nuts2' | 'nuts3'):
+                pass            
 
             case _:
                 assert_never(self.epiconfig.country, self.epiconfig.level)                
 
-        if self.epiconfig.country == 'netherlands':
+        if self.epiconfig.country in ['netherlands','hungary']:
 
             unsupported_features = [
                 ("feature_borders", self.epiconfig.feature_borders),
@@ -156,10 +162,13 @@ class EpiConfigValidator:
                 ("feature_popage", self.epiconfig.feature_popage),
             ]
 
+            if self.epiconfig.country == 'hungary':
+                unsupported_features.append( ("feature_popdens", self.epiconfig.feature_popdens))
+
             invalid_features = [name for name, val in unsupported_features if val]
 
             for feature in invalid_features:
-                exceptions.append(EpiConfigValidationError(f'Invalid feature. {feature} is unavailable for the Netherlands.'))                  
+                exceptions.append(EpiConfigValidationError(f'Invalid feature. {feature} is unavailable for {self.epiconfig.country}.'))                  
 
         return exceptions
         
@@ -185,6 +194,14 @@ class EpiConfigValidator:
             case ('netherlands', 'nuts2'):
                 w = EpiConfigWarning('Netherlands - nuts2 units are very large (n = 12). Predictions may not be particulary informative.')
                 print(w)
+
+            case ('hungary', 'nuts1'):
+                w = EpiConfigWarning('Hungary - nuts1 units are very large (n = ?). Predictions may not be particulary informative.')
+                print(w)
+
+            case ('hungary', 'nuts2'):
+                w = EpiConfigWarning('Hungary - nuts2 units are very large (n = ?). Predictions may not be particulary informative.')
+                print(w)                
 
             case ('germany', 'nuts1'):
                 w = EpiConfigWarning('Germany - nuts1 units are very large (n = 16). Predictions may not be particulary informative.')

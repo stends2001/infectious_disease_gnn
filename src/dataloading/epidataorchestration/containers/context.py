@@ -12,7 +12,7 @@ class ContextEpiData:
     """
 
     """    
-    country:                Literal['germany','netherlands']
+    country:                Literal['germany','netherlands', 'hungary']
     level:                  Literal['nuts1', 'nuts2', 'nuts3','ggd','lau']
     global_shapedata:       gpd.GeoDataFrame   
     local_shapedata:        gpd.GeoDataFrame     

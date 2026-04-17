@@ -46,6 +46,9 @@ class EpiDataHarmonizer:
             case 'germany':
                 merge_key = 'nuts3_key'
 
+            case 'hungary':
+                merge_key = 'nuts3_key'                
+
             case _:
                 assert_never(self.epiconfig.country)
 
