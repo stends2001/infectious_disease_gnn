@@ -19,7 +19,8 @@ class PredictionManager:
     Manages predictions in a centralized class.
     Each model has an instance, at `model.predictions`
 
-    Within this class, each of ['train','val','test'] is a collection of prediction - dataframes per horizon
+    Within this class, each of ['train','val','test'] is an
+    instance of PredictionCollection - dataframes per horizon.
 
     Parameters
     ----------
@@ -30,21 +31,22 @@ class PredictionManager:
     temporal_summary: EpiDataTemporalSummary
         the temporal summary of the epidataorchestrator
 
-    Note
+    NOTE
     ----
-    The predictions and the targets are shifted here,
-    meaning that with respect to the final dataorchestrator's df,
-    the timestamp/target is shifted.
+    The predictions and the targets are shifted here back to how they'd be
+    observed in reality. Thus, with respect to the dataorchestrator's 
+    final data, the timestamp/target is shifted.
 
     Methods
     -------
-        External functions
+    ##### public methods
     - `add_horizon_predictions()`
         adds data to PredictionManager: calls all necessary helper functions internally
     - `get_preds()`
         gets data from PredictionManager
 
-        Helper functions
+    ##### hidden functions
+    a range of methods to support the public methods.
     - `_return_dataset()`
     - `_setup_reverse_transformations()`
     - `_setup_required_columns()`
@@ -56,13 +58,9 @@ class PredictionManager:
     - `_validate_predictions_temporally()`
     - `_aggregate_predictions_spatially()`
 
-    Examples
-    --------
-
     See Also
     --------
     PredictionCollection
-
     """
 
     def __init__(self, 
@@ -89,6 +87,17 @@ class PredictionManager:
         """
         Adds a prediction df to the prediction manager
         Internally validates columns, temporal-axis, and everything else.
+        Internally adds transformed and non-transformed data, as well as
+        spatially-aggregated data.
+
+        Parameters
+        ----------
+        dataset: Literal['train','val','test']
+            which dataset (thus which PredictionCollection) the data belongs in
+        horizon_df: pd.DataFrame
+            the actual data for these parameters
+        horizon: int 
+            the idx of the horizon.
 
         TODO: validate that the horizon df doesn't exist yet
         """
@@ -335,6 +344,7 @@ class PredictionManager:
             raise InvalidPredictionsError(
                 f"Prediction timestamps are too numerous. Leftover: {leftover.tolist()}"
             )
+        
     def _aggregate_predictions_spatially(self, df: pd.DataFrame) -> pd.DataFrame:
         """Aggregates regional predictions to a national level.
         
