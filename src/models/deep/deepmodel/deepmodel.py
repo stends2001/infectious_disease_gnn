@@ -192,6 +192,13 @@ class DeepModel(
             dataloadermanager = dataloadermanager,
         ) # type: ignore
 
+        if 'epiconfig_summary' not in save_dict:
+            # TODO this is temporary! until I load and save all models with the respective EpiConfigs
+            print('no epiconfig_summary found in save_dict')
+        
+        else:
+            dataloadermanager.dataorchestrator.config.assert_equals(save_dict['epiconfig_summary'], level = 1)
+
         # load config into the model
         instance.set_model_hparams(**save_dict['model_hparams'])
         instance.set_global_hparams(**save_dict['global_hparams'])

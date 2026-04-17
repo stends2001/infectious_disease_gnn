@@ -48,7 +48,7 @@ class DeepModelCheckpointMixin:
             'model_state':        self.model.state_dict(),
             'model_hparams':      self.config_info.get('model_hparams', {}),
             'global_hparams':     self.config_info.get('global_hparams', {}),
-            'epiconfig':          self.epiconfig.get_summary(level = 1),
+            'epiconfig_summary':  self.epiconfig.get_summary(level = 1),
             'monitoring_metrics': getattr(self, 'monitoring_metrics', None),
         }    
 

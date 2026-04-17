@@ -4,7 +4,7 @@ import torch.optim as optim
 from torch.optim.optimizer import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 
-from ...issues import InvalidOPtimizerError, InvalidSchedulerError
+from ...issues import InvalidOptimizerError, InvalidSchedulerError
 from ...utils.loss.losshandler import LossHandler
 from ...base.basemodel.statusmixin import ModelStatus
 
@@ -144,7 +144,7 @@ class DeepModelGlobalhParamsMixin:
         }
         
         if optimizer_name.lower() not in optimizer_map:
-            raise InvalidOPtimizerError(optimizer_name, list(optimizer_map.keys()))
+            raise InvalidOptimizerError(optimizer_name, list(optimizer_map.keys()))
         
         optimizer_class = optimizer_map[optimizer_name.lower()]
 

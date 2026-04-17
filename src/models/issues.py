@@ -32,7 +32,7 @@ class DeviceWarning(Warning):
 
 # ===== DEEPMODEL FACTORY METHODS ====== #
 
-class InvalidOPtimizerError(Error):
+class InvalidOptimizerError(Error):
     def __init__(self, optimizer_name: str, supported_optimizers: List[str]):
         message = f'Invalid optimizer {optimizer_name}. Supported optimzers are {supported_optimizers}'
         super().__init__(message, code=None, context=None)        
