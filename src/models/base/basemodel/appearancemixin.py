@@ -1,4 +1,5 @@
 from typing import List, TYPE_CHECKING
+import re
 
 from ...utils.modelcolors import model_colors
 
@@ -26,8 +27,20 @@ class ModelAppearanceMixin:
             return model_colors[lookup_name]
         
     def _get_clean_name(self) -> str:
-        """cleans string represenation of model name"""
-        return self.name.lower().replace(' ', '_')
+        """Return a filesystem-safe version of the model name."""
+        name = self.name.lower()
+        
+        # Replace whitespace with underscore
+        name = re.sub(r"\s+", "_", name)
+        
+        # Remove all characters except a-z, 0-9, and underscore
+        name = re.sub(r"[^a-z0-9_]", "", name)
+        
+        # Collapse multiple underscores
+        name = re.sub(r"_+", "_", name)
+        
+        # Strip leading/trailing underscores
+        return name.strip("_")
 
     def _get_pred_cols(self) -> List[str]:
         """ 
