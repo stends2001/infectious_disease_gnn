@@ -2,7 +2,7 @@ from typing import Dict, Any, Union, Tuple, Optional, TYPE_CHECKING
 from tqdm import tqdm 
 import numpy as np
 
-from ...base.statusmixin import ModelStatus
+from ...base.basemodel.statusmixin import ModelStatus
 from ....dataloading.dataloaders import DeepDataLoaderManager, GraphDataLoaderManager
 from ....utils.textformatting import section, align
 

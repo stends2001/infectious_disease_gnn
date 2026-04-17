@@ -6,7 +6,7 @@ from torch.optim.lr_scheduler import _LRScheduler
 
 from ...issues import InvalidOPtimizerError, InvalidSchedulerError
 from ...utils.loss.losshandler import LossHandler
-from ...base.statusmixin import ModelStatus
+from ...base.basemodel.statusmixin import ModelStatus
 
 if TYPE_CHECKING:
     from ....dataloading.epiconfig import EpiConfig

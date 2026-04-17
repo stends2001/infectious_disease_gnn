@@ -42,4 +42,3 @@ class ModelStatusMixin:
                 f"Missing required setup steps: {', '.join(missing)}. "
                 f"Call the corresponding methods first."
             )
-    

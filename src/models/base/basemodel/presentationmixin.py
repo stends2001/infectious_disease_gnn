@@ -49,7 +49,7 @@ class PresentationMixin:
     def __str__(self) -> str:
         """extensive representation"""
         all_keys = (
-            ['name', 'model class'] + list(self.status_dict.keys())
+            ['name', 'model_class'] + list(self.status_dict.keys())
         )
 
         width = max(len(k) for k in all_keys) if all_keys else 20

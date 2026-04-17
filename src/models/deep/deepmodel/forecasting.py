@@ -8,7 +8,7 @@ import numpy as np
 from ....types import DataSetSplit
 from ..issues import UnexpectedDataShape
 from ...issues import ModelStatusError
-from ...base.statusmixin import ModelStatus
+from ...base.basemodel.statusmixin import ModelStatus
 from ....dataloading.dataloaders import DeepDataLoaderManager, GraphDataLoaderManager
 
 if TYPE_CHECKING:

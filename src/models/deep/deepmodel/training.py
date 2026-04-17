@@ -11,7 +11,7 @@ from matplotlib.axes import Axes
 
 from ...issues import ModelStatusError
 from ...utils.loss.losshandler import LossHandler
-from ...base.statusmixin import ModelStatus
+from ...base.basemodel.statusmixin import ModelStatus
 from ....dataloading.dataloaders import DeepDataLoaderManager, GraphDataLoaderManager
 from ....utils.colors import traincolor, valcolor
 
