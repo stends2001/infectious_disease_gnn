@@ -7,7 +7,8 @@ from .metrics import QuantileRegressionMetricsCalculator, PointRegressionMetrics
 from .peakevaluator import PeakEvaluator
 
 from ..utils import check_dataset, warning_emoji
-from ..models.base.basemodel import BaseModel, DLM
+from ..models.base.basemodel import BaseModel
+from ..dataloading.dataloaders import DLM
 from ..dataloading.epiconfig import EpiConfig
 
 from .evaluationplotter import EvaluationPlotter
@@ -175,7 +176,7 @@ class Evaluator:
 
             else:
                 # just compare task - level, not featurewise
-                if not epiconfig.equals(ml.epiconfig, level = 2):
+                if not epiconfig.assert_equals(ml.epiconfig, level = 2):
                     raise ValueError(f'Incompatible prediction modes accross models found! Models {compared} and {model_name} shouldnt be compared to one another.')
                 
         if epiconfig is None: 
