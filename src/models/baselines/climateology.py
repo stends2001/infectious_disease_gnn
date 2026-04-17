@@ -22,7 +22,7 @@ class ClimateologyModel(BaseLineModel):
         self.status_dict.pop('model_hparams_set')
         self.status_dict.pop('global_hparams_set')        
 
-    def train(self):
+    def train(self) -> None:
         """
         Compute per-seasonal-timepoint residual quantiles on training data.
         Uncertainty scales with the season rather than being globally flat.
@@ -47,7 +47,7 @@ class ClimateologyModel(BaseLineModel):
         self._update_status('trained')
 
     @check_dataset()
-    def forecast(self, dataset: Literal['train','val','test'] = 'test'):
+    def forecast(self, dataset: Literal['train','val','test'] = 'test') -> None:
         """
         Forecast for set dataset
         """
@@ -73,7 +73,6 @@ class ClimateologyModel(BaseLineModel):
             self.predictions.add_horizon_predictions(dataset, self._normalize(evaluation_dataset), hh)            
            
         self._update_status('forecasted')   
-        return self  
     
     def _get_seasonal_indexes(self, df: pd.DataFrame) -> pd.DataFrame:
         """Adds t_idx column based on temporal frequency"""

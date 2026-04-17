@@ -42,20 +42,20 @@ class BaseLineModel(BaseModel[BaseLineDataLoaderManager]):
         super().__init__(dataloadermanager = dataloadermanager, name = name, verbose = verbose)
 
     @abstractmethod
-    def forecast(self, dataset: Literal['train','val','test'] = 'test') -> Self:
+    def forecast(self, dataset: Literal['train','val','test'] = 'test') -> None:
         pass
 
     # ====== NONSENSE METHODS ====== #
-    def train(self, *args, **kwargs):
+    def train(self, *args, **kwargs) -> None:
         print("This BaseLineModel doesn't train")
 
-    def set_global_hparams(self, *args, **kwargs):
+    def set_global_hparams(self, *args, **kwargs) -> None:
         print("This BaseLineModel doesn't have global hyper parameters")
 
-    def set_model_hparams(self, *args, **kwargs):
+    def set_model_hparams(self, *args, **kwargs) -> None:
         print("This BaseLineModel doesn't have model hyper parameters") 
 
-    def save_model(self, *args, **kwargs):
+    def save_model(self, *args, **kwargs) -> None:
         print(f'{warning_emoji} Baseline models cant be saved.')
     
     # ======= HIDDEN METHODS ======= 

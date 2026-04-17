@@ -28,7 +28,7 @@ class ConstantModel(BaseLineModel):
         self._update_status('model_hparams_set')
     
     @check_dataset()
-    def forecast(self, dataset: Literal['train','val','test'] = 'test') -> Self:
+    def forecast(self, dataset: Literal['train','val','test'] = 'test') -> None:
         """
         Forecast for set dataset
         """
@@ -48,5 +48,4 @@ class ConstantModel(BaseLineModel):
                         
             self.predictions.add_horizon_predictions(dataset, self._normalize(evaluation_df), hh)
             
-        self._update_status('forecasted')   
-        return self  
+        self._update_status('forecasted')  

@@ -47,7 +47,7 @@ class PersistenceModel(BaseLineModel):
         self._update_status('trained')
 
     @check_dataset()
-    def forecast(self, dataset: Literal['train','val','test'] = 'test'):
+    def forecast(self, dataset: Literal['train','val','test'] = 'test') -> None:
         """
         Forecast for set dataset
         """
@@ -76,7 +76,6 @@ class PersistenceModel(BaseLineModel):
             self.predictions.add_horizon_predictions(dataset, self._normalize(evaluation_dataset), hh)
 
         self._update_status('forecasted')   
-        return self  
     
     def _get_seasonal_index(self, df: pd.DataFrame) -> pd.Series:
         """Returns seasonal index series based on temporal frequency"""
