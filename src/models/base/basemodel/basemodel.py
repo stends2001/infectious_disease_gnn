@@ -3,13 +3,13 @@ from typing import Generic, Dict, Any
 from ..predictions import PredictionManager
 from .forecastdisplaymixin import ForecastDisplayMixin
 from .appearancemixin import ModelAppearanceMixin
-from .verbosemixin import ModelVerboseMixin
+from .presentationmixin import PresentationMixin
 from .statusmixin import ModelStatusMixin
 
 from ...issues import ModelInitError
 from ....dataloading.dataloaders import DLM
 
-class BaseModel(Generic[DLM], ModelStatusMixin, ModelVerboseMixin, ModelAppearanceMixin, ForecastDisplayMixin[DLM]):
+class BaseModel(Generic[DLM], ModelStatusMixin, PresentationMixin, ModelAppearanceMixin, ForecastDisplayMixin[DLM]):
     """ 
     Parent class of ALL models.
     Upon init, all models must supply the following
@@ -66,7 +66,7 @@ class BaseModel(Generic[DLM], ModelStatusMixin, ModelVerboseMixin, ModelAppearan
     #### Helperclasses
     This BaseModel uses the following mixin-classes: short libraries of methods that this class inherits.
     - ModelStatusMixin
-    - ModelVerboseMixin
+    - PresentationMixin
     - ModelAppearanceMixin
     - ForecastDisplayMixin
 

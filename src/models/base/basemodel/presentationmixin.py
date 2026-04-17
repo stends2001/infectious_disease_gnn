@@ -3,7 +3,7 @@ from typing import Dict
 from .statusmixin import ModelStatus
 from ....utils import checkmark, section
 
-class ModelVerboseMixin:
+class PresentationMixin:
     """ 
     Mixin class that covers the verbose / output of any model.
     Mixin class to - BaseModel
