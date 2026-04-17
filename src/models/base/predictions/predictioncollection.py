@@ -62,7 +62,7 @@ class PredictionCollection:
         if key not in self._data:
             raise MissingPredictionsError(f"No predictions found for horizon={horizon}, is_original={is_original}, spatially_aggregated={spatially_aggregated}. Available: {list(self._data.keys())}")
         
-        return self._data[key]
+        return self._data[key].copy()
 
     @property
     def horizons(self) -> list[int]:
