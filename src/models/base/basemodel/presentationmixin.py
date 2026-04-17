@@ -5,12 +5,9 @@ from ....utils import checkmark, section
 
 class PresentationMixin:
     """ 
-    Mixin class that covers the verbose / output of any model.
-    Mixin class to - BaseModel
-
-    See Also
-    --------
-    BaseModel
+    Mixin class that deals with the model's (re)presentation.
+    Contains dunder-methods `repr()` and `str()` as well as
+    hidden methods for status-update printing.
     """
 
     name:           str
@@ -19,7 +16,7 @@ class PresentationMixin:
     verbose:        int
 
     def _print_status_update(self, status: ModelStatus):
-        """Print status update depending on verbosity."""
+        """Print status update depending on `verbose`"""
 
         if self.verbose <= 0:
             return
@@ -46,10 +43,11 @@ class PresentationMixin:
         )
 
     def __repr__(self) -> str:
+        """minimal representation"""
         return f"{self.__class__.__name__}(name={self.name!r})"    
 
     def __str__(self) -> str:
-
+        """extensive representation"""
         all_keys = (
             ['name', 'model class'] + list(self.status_dict.keys())
         )

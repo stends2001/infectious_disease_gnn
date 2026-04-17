@@ -68,10 +68,11 @@ class BaseModel(Generic[DLM], ModelStatusMixin, PresentationMixin, ModelAppearan
     - ModelStatusMixin
     - PresentationMixin
     - ModelAppearanceMixin
+        contains hidden methods used to set attributes in `self.__init__()`
     - ForecastDisplayMixin
+        contains public method `show_forecasts()` and supportive hidden methods.
 
     Additionally, the PredictionManager is of importance. This is where predictions are stored and interacted with.
-    The logic for interaction can be found in ForeCastDisplayMixin
     """
     _expected_dataloadermanager:    str 
     config_info:                    Dict[str, Any]

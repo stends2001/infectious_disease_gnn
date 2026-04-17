@@ -6,17 +6,14 @@ ModelStatus     = Literal['model_initialized', 'model_hparams_set', 'global_hpar
 
 class ModelStatusMixin:
     """ 
-    Mixin class that covers the status management of any model.
-    Mixin class to - BaseModel
-
-    See Also
-    --------
-    BaseModel
+    Mixin class that deals with the model's status in.
+    Contains hidden methods for `status_dict`.
     """
     status_dict: Dict[ModelStatus, bool]
 
     def _init_status(self):
-        """sets attribute status_dict"""
+        """sets attribute status_dict with all values False"""
+
         self.status_dict = {
             'model_initialized' : False,
             'model_hparams_set' : False,

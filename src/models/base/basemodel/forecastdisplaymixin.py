@@ -5,15 +5,14 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from datetime import datetime
 
+SingleNodeType  = Union[int,Literal['national']]
+
 from ...issues import FutureUpdateError
 
 from ....dataloading.dataloaders import DLM
-
 from ....types import DataSetSplit
 from ....plotting import ManagedFigure
 from ....utils import testcolor, color_is_light
-
-SingleNodeType  = Union[int,Literal['national']]
 
 if TYPE_CHECKING:
     from ..predictions import PredictionManager
@@ -24,7 +23,11 @@ if TYPE_CHECKING:
 
 
 class ForecastDisplayMixin(Generic[DLM]):
-
+    """ 
+    Mixin class that deals with the model's forecasts-display.
+    Contains a single public method, `show_forecats()` with
+    supportive hidden methods.
+    """
     predictions:            'PredictionManager'
     dataloadermanager:      DLM
     epiconfig:             'EpiConfig'               
@@ -35,62 +38,7 @@ class ForecastDisplayMixin(Generic[DLM]):
     model_color:            str
     name:                   str
 
-    def _get_forecast_dfs(self, 
-                          node_idx:     Union[SingleNodeType, List[SingleNodeType]], 
-                          dataset:      DataSetSplit, 
-                          horizon:      int, 
-                          is_original:  bool
-                          ) -> Tuple[List[SingleNodeType], Optional[pd.DataFrame], Optional[pd.DataFrame]]:
-        """
-        Retrieves the prediction - datasets for the given input and returns those.
-
-        Parameters
-        ----------
-        node_idx:   Union[SingleNodeType, List[SingleNodeType]]
-            the nodes to retrieve data from (a single node is either an int or 'national')
-        dataset:    DataSetSplit
-            any of ['train','val','test']
-        horizon:    int
-            the horizon idx of the predictions (NOTE always starts at 0! Independent of horizon leadtime)
-        is_original: bool
-            whether to retrieve predictions in transformed scale (is_original = False) or in original scale (True)
-
-        Returns
-        -------
-
-        """
-        nodes_list: List[SingleNodeType]
-
-        predictioncollection = self.predictions.get_preds(dataset)
-
-        df_pred_aggr    = None  
-        df_pred         = None
-
-        match node_idx:
-
-            case int():
-                nodes_list = [node_idx]
-                df_pred    = predictioncollection.get(horizon, is_original, False)
-
-            case str() if node_idx == 'national':
-                nodes_list   = [node_idx]
-                df_pred_aggr = predictioncollection.get(horizon, True, True)
-
-            case str():
-                raise ValueError(f'only "national" is valid as string node_idx, got {node_idx}')
-
-            case list():
-                nodes_list = node_idx
-                if 'national' in nodes_list:
-                    df_pred_aggr = predictioncollection.get(horizon, True, True)
-                if any(n != 'national' for n in nodes_list):
-                    df_pred      = predictioncollection.get(horizon, is_original, False)
-
-            case _:
-                assert_never(node_idx)
-            
-        return nodes_list, df_pred, df_pred_aggr
-
+    # ======== PUBLIC METHODS ========= #
     def show_forecasts(self,
                        node_idx:    Union[SingleNodeType, List[SingleNodeType]]  = 0,
                        dataset:     DataSetSplit                    = 'test',
@@ -99,7 +47,8 @@ class ForecastDisplayMixin(Generic[DLM]):
                        is_original: bool                            = True,
                        ) -> ManagedFigure:
         """
-        Plot forecasts
+        Plot lineplots of predicted timeseries.
+        NOTE Metrics cannot be plotted by a model, instead use Evaluator for that.
 
         Parameters
         ----------
@@ -168,7 +117,6 @@ class ForecastDisplayMixin(Generic[DLM]):
             # basic make up of ax
             self._make_up_ax(xlimits, ax_title, ax)
             
-
         suptitle = self._return_suptitle(dataset, timesteps_ahead, is_original)
     
         plt.close()
@@ -179,7 +127,48 @@ class ForecastDisplayMixin(Generic[DLM]):
 
         return managed_figure
 
+    # ======== HIDDEN METHODS ========= #
+    def _get_forecast_dfs(self, 
+                          node_idx:     Union[SingleNodeType, List[SingleNodeType]], 
+                          dataset:      DataSetSplit, 
+                          horizon:      int, 
+                          is_original:  bool
+                          ) -> Tuple[List[SingleNodeType], Optional[pd.DataFrame], Optional[pd.DataFrame]]:
+        """Retrieves the prediction - datasets for the given input and returns those."""
+        nodes_list: List[SingleNodeType]
+
+        predictioncollection = self.predictions.get_preds(dataset)
+
+        df_pred_aggr    = None  
+        df_pred         = None
+
+        match node_idx:
+
+            case int():
+                nodes_list = [node_idx]
+                df_pred    = predictioncollection.get(horizon, is_original, False)
+
+            case str() if node_idx == 'national':
+                nodes_list   = [node_idx]
+                df_pred_aggr = predictioncollection.get(horizon, True, True)
+
+            case str():
+                raise ValueError(f'only "national" is valid as string node_idx, got {node_idx}')
+
+            case list():
+                nodes_list = node_idx
+                if 'national' in nodes_list:
+                    df_pred_aggr = predictioncollection.get(horizon, True, True)
+                if any(n != 'national' for n in nodes_list):
+                    df_pred      = predictioncollection.get(horizon, is_original, False)
+
+            case _:
+                assert_never(node_idx)
+            
+        return nodes_list, df_pred, df_pred_aggr
+
     def _validate_current_limitations(self, plot_type: str, prediction_mode: Literal['classification','regression']):
+        """simple safeguard that raises informative errors based on plotting-function's input."""
         if plot_type != 'line':
             raise FutureUpdateError(f"Currently only plot_type == 'line' supported, got {plot_type}")
         
@@ -187,6 +176,7 @@ class ForecastDisplayMixin(Generic[DLM]):
             raise FutureUpdateError('currently no forecast for classifications supported')           
 
     def _draw_preds_on_ax(self, df_node: pd.DataFrame, ax: Axes):
+        """plots predictions (single line for point preds, band for uncertainty intervals) on given ax."""
         quantiles           = self.epiconfig.quantiles                            
         if quantiles:
             # find the index of the quantile 0.5
@@ -200,7 +190,7 @@ class ForecastDisplayMixin(Generic[DLM]):
             bottom_col  = None
             top_col     = None
 
-        # 1 line: center col
+        # single line: center col
         sns.lineplot(data           = df_node, 
                          x               = self.epiconfig.temporal_column, 
                          y               = center_col,
@@ -227,6 +217,7 @@ class ForecastDisplayMixin(Generic[DLM]):
             )        
 
     def _draw_target_on_ax(self, df_node: pd.DataFrame, ax: Axes):
+        """plots targets in single line on given ax."""        
         sns.lineplot(data       = df_node, 
                          x          = self.epiconfig.temporal_column, 
                          y          = 'target',    
@@ -237,6 +228,7 @@ class ForecastDisplayMixin(Generic[DLM]):
                          linewidth  = 2)        
     
     def _make_up_ax(self, xlimits: list[datetime], ax_title: str, ax: Axes):
+        """sets basic ax-layout"""
         ax.set_xlabel("")   
         ax.set_xlim(xlimits)    # xlimits is a list of two datetime objects # type: ignore
         ax.set_title(ax_title)    
@@ -244,6 +236,7 @@ class ForecastDisplayMixin(Generic[DLM]):
         ax.grid()          
 
     def _return_suptitle(self, dataset: DataSetSplit, timesteps_ahead: int, is_original: bool) -> str:
+        """returns suptitle based on plotting-function's input."""
         suptitle = f'{self.dataloadermanager.dataorchestrator.config.target_column} predictions by {self.name}, {timesteps_ahead}{self.dataloadermanager.dataorchestrator.config.temporal_frequency} ahead' 
 
         if dataset != 'test':
@@ -253,5 +246,3 @@ class ForecastDisplayMixin(Generic[DLM]):
             suptitle += ' [transformed]'           
 
         return suptitle 
-
-     
