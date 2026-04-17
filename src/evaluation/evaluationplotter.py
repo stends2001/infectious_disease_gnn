@@ -91,6 +91,12 @@ class EvaluationPlotter:
         horizon_str         = f'horizon_{horizon}'
         self._validate_metric(metric)
 
+        # validate max-node
+        if highlight_node:
+            num_nodes = (list(self.evaluator.evaluated_models.values())[0].dataloadermanager.dataorchestrator.data_context.num_nodes-1)
+            if highlight_node > num_nodes:
+                raise ValueError(f'node {highlight_node} invalid. There are {num_nodes} nodes [0-{num_nodes}]') 
+
         # Get colors
         model_class_colors = {ml.model_class: ml.model_color for ml in self.evaluator.evaluated_models.values()}
         
