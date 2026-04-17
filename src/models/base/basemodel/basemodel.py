@@ -84,6 +84,10 @@ class BaseModel(Generic[DLM], ModelStatusMixin, PresentationMixin, ModelAppearan
                  name:              str,
                  verbose:           int  = -1):
 
+        # BaseModel in itself may not be initted
+        if self.__class__ is BaseModel:
+            raise TypeError("BaseModel cannot be instantiated directly")
+
         self.name = name
         self._set_dataloader_attributes(dataloadermanager)
 

@@ -112,6 +112,10 @@ class DeepModel(
                  name:                  str,          
                  verbose:               int = -1):
 
+        # DeepModel in itself may not be initted
+        if self.__class__ is DeepModel:
+            raise TypeError("DeepModel cannot be instantiated directly")
+
         super().__init__(dataloadermanager = dataloadermanager, name = name, verbose = verbose)        
     
         self.evaluation_datasets                            = {}
