@@ -97,6 +97,7 @@ class DeepModel(
         sets basic attributes called when instantiation.
     - DeepModelPresentationMixin
         deals with the (re)presentation of deep models.
+        DeepModel overwrites BaseModel's `__repr__()`. The `__str__()` stays untouched.
     - DeepModelTrainMixin
         deals with model training
     """

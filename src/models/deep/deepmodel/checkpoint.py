@@ -1,7 +1,10 @@
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, TYPE_CHECKING
 import torch 
 from torch import Tensor as Tensor
 from pathlib import Path
+
+if TYPE_CHECKING:
+    from ....dataloading.epiconfig import EpiConfig
 
 class DeepModelCheckpointMixin:
     """ 
@@ -13,6 +16,7 @@ class DeepModelCheckpointMixin:
     models_dir:         Path
     config_info:        Dict[str, Any]
     verbose:            int
+    epiconfig:          'EpiConfig'
 
     def save_model(self, dir: Optional[Path] = None):
         """
@@ -44,6 +48,7 @@ class DeepModelCheckpointMixin:
             'model_state':        self.model.state_dict(),
             'model_hparams':      self.config_info.get('model_hparams', {}),
             'global_hparams':     self.config_info.get('global_hparams', {}),
+            'epiconfig':          self.epiconfig.get_summary(level = 1),
             'monitoring_metrics': getattr(self, 'monitoring_metrics', None),
         }    
 
