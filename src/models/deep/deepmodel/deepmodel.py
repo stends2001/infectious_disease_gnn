@@ -1,10 +1,10 @@
 from typing import Dict,  Union, Optional, Type, Any
 import torch 
-import torch.optim as optim
 from torch.optim.optimizer import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 from pathlib import Path 
 import os
+import pandas as pd
 
 from .internals import DeepModelInternalsMixin
 from .presentation import DeepModelPresentationMixin
@@ -191,13 +191,17 @@ class DeepModel(
             name              = save_dict['name'],
             dataloadermanager = dataloadermanager,
         ) # type: ignore
-
-        if 'epiconfig_summary' not in save_dict:
-            # TODO this is temporary! until I load and save all models with the respective EpiConfigs
-            print('no epiconfig_summary found in save_dict')
         
-        else:
-            dataloadermanager.dataorchestrator.config.assert_equals(save_dict['epiconfig_summary'], level = 1)
+        dataloadermanager.dataorchestrator.config.assert_equals(save_dict['epiconfig_summary'], level = 1)
+
+        saved_test_start  = pd.Timestamp(save_dict['epiconfig_summary']['split_valtest'])
+        new_train_end     = dataloadermanager.dataorchestrator.data_context.temporal_summary.split_valtest
+
+        if new_train_end > saved_test_start:
+            raise ValueError(
+                f"Data leakage: new dataloader's train/val period ({new_train_end}) "
+                f"overlaps with saved model's test period ({saved_test_start})"
+            )
 
         # load config into the model
         instance.set_model_hparams(**save_dict['model_hparams'])
