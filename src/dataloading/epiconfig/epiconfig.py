@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Literal, Optional, List, assert_never, Dict
+from typing import Literal, Optional, List, assert_never, Dict, Union
 from pathlib import Path
 import yaml
 import dataclasses
@@ -90,10 +90,13 @@ class EpiConfig:
         self._classify_attributes()
 
     # ============ Methods =========== #
-    def assert_equals(self, other: 'EpiConfig', level: Literal[0,1,2,3,4] = 1) -> None:
+    def assert_equals(self, other: Union['EpiConfig', Dict[str,str]], level: Literal[0,1,2,3,4] = 1) -> None:
         """for DeepModel - loading use level = 1. For Evaluator use level = 2!"""        
         self_summary  = self.get_summary(level)
-        other_summary = other.get_summary(level)
+        if isinstance(other, dict):
+            other_summary = other
+        else:
+            other_summary = other.get_summary(level)
         diff = {k: (self_summary[k], other_summary.get(k))
                 for k in self_summary if self_summary[k] != other_summary.get(k)}
         if diff:
