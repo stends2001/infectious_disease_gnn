@@ -19,7 +19,7 @@ class DeepModelInternalsMixin:
         """sets device"""
         self.device            = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         
-        if self.device == 'cpu':
+        if self.device.type == 'cpu':
             w = DeviceWarning('device found is CPU')
             print(w)    
 
