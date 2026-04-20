@@ -194,8 +194,9 @@ class DeepModel(
         
         dataloadermanager.dataorchestrator.config.assert_equals(save_dict['epiconfig_summary'], level = 1)
 
+        # compare between raw input timestamps, not the preprocessed ones in temporal_summary
         saved_test_start  = pd.Timestamp(save_dict['epiconfig_summary']['split_valtest'])
-        new_train_end     = dataloadermanager.dataorchestrator.data_context.temporal_summary.split_valtest
+        new_train_end     = pd.Timestamp(dataloadermanager.dataorchestrator.config.split_valtest)
 
         if new_train_end > saved_test_start:
             raise ValueError(
