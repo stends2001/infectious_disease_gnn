@@ -183,13 +183,12 @@ class GCNLSTMModel(DeepModel):
     model.train()
     model.forecast()
     """
-
+    _expected_dataloadermanager = 'GraphDataLoaderManager'
     def __init__(self,
                  dataloadermanager: GraphDataLoaderManager,
                  name:              str = 'gcnlstm_model',
                  verbose:           Literal[-1, 0, 1, 2] = -1):
 
-        self._expected_dataloadermanager = 'GraphDataLoaderManager'
 
         # Reuse StatelessGATv2LSTMStrategy — it already handles
         # (x, edge_index, edge_weight, hidden) -> (y_hat, h, c)

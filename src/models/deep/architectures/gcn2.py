@@ -222,13 +222,11 @@ class GCN2Model(DeepModel):
     model.train()
     model.forecast('test')
     """
-
+    _expected_dataloadermanager = 'GraphDataLoaderManager'
     def __init__(self,
                  dataloadermanager: GraphDataLoaderManager,
                  name:              str           = 'gcnv2_model',
                  verbose:           Literal[-1, 0, 1, 2]   = -1):
-
-        self._expected_dataloadermanager = 'GraphDataLoaderManager'
 
         super().__init__(
             dataloadermanager   = dataloadermanager,

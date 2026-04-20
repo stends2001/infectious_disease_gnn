@@ -290,13 +290,14 @@ class GATv2LSTMModel(DeepModel):
     """
     GAT+LSTM model for spatiotemporal forecasting
     """
+    _expected_dataloadermanager = 'GraphDataLoaderManager'
+
     def __init__(self, 
                  dataloadermanager: GraphDataLoaderManager, 
                  name:              str = 'gatv2lstm_model',
                  reset:             Literal['epoch','dataset'] = 'epoch',                 
                  verbose:           Literal[-1, 0, 1, 2] = -1):
     
-        self._expected_dataloadermanager = 'GraphDataLoaderManager'
 
         strategy = StatelessGATv2LSTMStrategy() if reset == 'epoch' else StatefullGATv2LSTMStrategy()
 

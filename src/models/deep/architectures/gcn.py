@@ -117,13 +117,14 @@ class SimpleGCNModel(DeepModel):
     """
     Simple spatial GCN model without temporal components.
     """
+    _expected_dataloadermanager = 'GraphDataLoaderManager'    
     def __init__(self, 
                  dataloadermanager: GraphDataLoaderManager, 
                  name:              str = 'simplegcn_model',
                  verbose:           Literal[-1, 0, 1, 2] = -1):
     
 
-        self._expected_dataloadermanager = 'GraphDataLoaderManager'
+        
 
         super().__init__(dataloadermanager, name=name , verbose=verbose, strategy=StandardGNNStrategy())                 
 

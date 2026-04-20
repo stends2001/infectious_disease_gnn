@@ -124,13 +124,15 @@ class LSTMModel(DeepModel):
     verbose: Literal[-1,0,1,2]
         quantification of output
     """
+    _expected_dataloadermanager = 'DeepDataLoaderManager'
+
     def __init__(self, 
                  dataloadermanager: DeepDataLoaderManager, 
                  name:              str = 'lstm_model',
                  reset:             Literal['epoch','dataset'] = 'epoch',
                  verbose:           Literal[-1, 0, 1, 2] = -1):        
         
-        self._expected_dataloadermanager = 'DeepDataLoaderManager'
+        #self._expected_dataloadermanager = 'DeepDataLoaderManager'
 
         strategy = StatelessLSTMStrategy() if reset == 'epoch' else StatefullLSTMStrategy()
         
