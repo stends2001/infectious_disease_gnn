@@ -211,7 +211,8 @@ class EpiConfig:
                 f"country={self.country}, "                
                 f"level={self.level}, "
                 f"min_date={self.min_date}, "
-                f"max_date={self.max_date}, "                
+                f"max_date={self.max_date}, "          
+                f"horizon_leadtime={self.horizon_leadtime}, "                      
                 f"horizon_size={self.horizon_size}, "
                 f"sequence_length={self.sequence_length})"  
         )          
