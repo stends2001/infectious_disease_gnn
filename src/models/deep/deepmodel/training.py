@@ -253,12 +253,15 @@ class DeepModelTrainMixin:
 
     def _draw_best_epoch(self, y: Literal['train_loss','val_loss','learning_rate'], ax: Axes) -> None:
         """plots a black dot and arrow on any ax for the best-epoch"""
+        fraction_dist_point_arrow   = 0.1
+
         best_idx        = self.monitoring_metrics['val_loss'].idxmin()
-        x_value, y_value= self.monitoring_metrics['epoch'][best_idx],  self.monitoring_metrics[y][best_idx]
+        x_point, y_point= self.monitoring_metrics['epoch'][best_idx],  self.monitoring_metrics[y][best_idx]
+        y_arrow         = y_point + fraction_dist_point_arrow * y_point if y != 'learning_rate' else y_point - fraction_dist_point_arrow * y_point
 
         ax.annotate(
                 '',
-                xy          =(x_value, y_value),
+                xy          =(x_point, y_arrow),
                 xytext      = (0, 50) if y != 'learning_rate' else (0, -50),
                 textcoords  = 'offset points',
                 ha          = 'center',
@@ -266,8 +269,8 @@ class DeepModelTrainMixin:
                 zorder      = 2
             )
         
-        ax.scatter(x        = x_value, 
-                   y        = y_value, 
+        ax.scatter(x        = x_point, 
+                   y        = y_point, 
                    color    ='black', 
                    marker   ='o', 
                    label    ='Best Epochs',
