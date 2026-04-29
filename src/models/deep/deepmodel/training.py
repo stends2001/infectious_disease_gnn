@@ -187,8 +187,8 @@ class DeepModelTrainMixin:
 
         self._update_status('trained')
 
-    def show_monitoring_metrics(self) -> Figure:
-        """Returns plot of trainloss, valloss, patience and learning rate per epoch."""
+    def show_monitoring_metrics(self) -> None:
+        """Shows plot of trainloss, valloss, patience and learning rate per epoch."""
  
         if not hasattr(self, 'monitoring_metrics'):
             raise ValueError('no monitoring metrics found')
@@ -216,7 +216,6 @@ class DeepModelTrainMixin:
         axes[2].set_yscale('log')
 
         fig.show()
-        return fig
 
     def _plot_scatter_patience_on_ax(self, y: Literal['train_loss','val_loss','learning_rate'], ax: Axes) -> None:
         """plots red cross for patience epoch on any ax"""
