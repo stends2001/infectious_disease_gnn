@@ -67,11 +67,6 @@ class EpiPathsManager(ABC):
         return Path(get_data_env())    
 
     @property
-    @registered_property   
-    def config(self) -> Path:
-        return Path("config/epiconfigs")     
-
-    @property
     @registered_property    
     def population_size(self) -> Path:
         """Path to population size CSV file."""
