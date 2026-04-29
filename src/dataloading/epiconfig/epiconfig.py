@@ -104,28 +104,45 @@ class EpiConfig:
                             "\n".join(f"  {k}: {v[0]} vs {v[1]}" for k, v in diff.items()))
 
     # ============ CONFIG LOADING/SAVING ==============
-    def save_config(self, config_name: str):
+    def save_config(self, path: Path):
         """ 
-        saves EpiConfig to a .yaml of name `config_name` inside
-        the directory returned by `get_config_path()`.
+        saves EpiConfig to a .yaml
         """
+        if not str(path).endswith('.yaml'):
+            raise ValueError('path must end with .yaml')
+
         config_dict = dataclasses.asdict(self)
-        path        = self.path_manager.get('config') / f'{config_name}.yaml'
+        
         with open(path, 'w') as f:
             yaml.dump(config_dict, f, default_flow_style=False, sort_keys=False)    
 
-        print(f'EpiConfig saved to {config_name}.yaml')
+        print(f'EpiConfig saved to {path.name} saved in {path.parent.name}')
+
+    def copy(self, **overrides) -> 'EpiConfig':
+        """
+        Returns a new EpiConfig instance with the same settings.
+        Optionally override specific fields by passing them as keyword arguments.
+
+        Example:
+            new_cfg = cfg.copy(max_date='2021-01-01', horizon_size=2)
+        """
+        fields = {f.name: getattr(self, f.name) for f in dataclasses.fields(self)}
+        fields.update(overrides)
+        return EpiConfig(**fields)
 
     @classmethod
-    def load_config(cls, config_name: str) -> 'EpiConfig':
+    def load_config(cls, path: Path) -> 'EpiConfig':
         """ 
         Loads a .yaml of name `config_name` into an EpiConfig
         the directory returned by `get_config_path()`.
         """        
-        path = Path("config/epiconfigs") / f'{config_name}.yaml'
+        if not str(path).endswith('.yaml'):
+            raise ValueError('path must end with .yaml')
+
         with open(path) as f:
             d = yaml.safe_load(f)
-        print(f'EpiConfig {config_name} loaded')            
+
+        print(f'EpiConfig loaded: {path.name} from {path.parent.name}')      
         return cls(**d)      
 
     # ============= ATTRIBUTE ORGANIZATION ==============
