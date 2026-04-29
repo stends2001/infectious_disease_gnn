@@ -1,4 +1,4 @@
-from typing import Dict, Any, Union, Optional, List, Tuple, TYPE_CHECKING, Literal
+from typing import Dict, Any, Union, Optional, List, Tuple, TYPE_CHECKING, Literal, TypedDict
 import pandas as pd
 import torch 
 from tqdm import tqdm
@@ -17,6 +17,10 @@ from ....utils.colors import traincolor, valcolor
 if TYPE_CHECKING:
     from ....dataloading.epiconfig import EpiConfig
     from ..strategies.basestrategy import Strategy    
+
+Metric = Literal['train_loss', 'val_loss', 'learning_rate']
+
+
 
 class DeepModelTrainMixin:
     """ 
@@ -205,19 +209,25 @@ class DeepModelTrainMixin:
         fig, axes_array = plt.subplots(1, 3, figsize=(24, 4))
         axes: list[Axes]= list(axes_array.flatten())
 
-        # lines: train_loss, val_loss and learning_rate
-        sns.lineplot(data = self.monitoring_metrics, x='epoch', y='train_loss',   color=traincolor,   label='Train Loss',      zorder = 2,   ax=axes[0])
-        sns.lineplot(data = self.monitoring_metrics, x='epoch', y='val_loss',     color=valcolor,     label='Validation Loss', zorder = 2,   ax=axes[1])
-        sns.lineplot(data = self.monitoring_metrics, x='epoch', y='learning_rate',color='black',      label='Learning Rate',   zorder = 2,   ax=axes[2])
+        plots: list[tuple[Metric, str]] = [
+            ('train_loss', traincolor),
+            ('val_loss', valcolor),
+            ('learning_rate', 'black'),
+        ]
 
-        # Scatter patience epochs and corresponding values
-        self._plot_scatter_patience_on_ax('train_loss',     axes[0])
-        self._plot_scatter_patience_on_ax('val_loss',       axes[1])
-        self._plot_scatter_patience_on_ax('learning_rate',  axes[2])          
+        for ax, (variable, color) in zip(axes, plots):
+            sns.lineplot(
+                data=self.monitoring_metrics,
+                x='epoch',
+                y=variable,
+                color=color,
+                label=variable.replace("_", " ").title(),
+                zorder=2,
+                ax=ax
+            )
 
-        self._draw_best_epoch('train_loss',     axes[0])
-        self._draw_best_epoch('val_loss',       axes[1])
-        self._draw_best_epoch('learning_rate',  axes[2])                   
+            self._plot_scatter_patience_on_ax(variable, ax)
+            self._draw_best_epoch(variable, ax)                
 
         for ax in axes:
             self._format_ax(ax)
@@ -249,7 +259,7 @@ class DeepModelTrainMixin:
         ax.annotate(
                 '',
                 xy          =(x_value, y_value),
-                xytext      = (0, 50),
+                xytext      = (0, 50) if y != 'learning_rate' else (0, -50),
                 textcoords  = 'offset points',
                 ha          = 'center',
                 arrowprops  = dict(arrowstyle='->', color='black', lw=1.5),
