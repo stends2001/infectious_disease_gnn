@@ -44,6 +44,7 @@ class DeepModelTrainMixin:
     patience:           int 
     verbose:            int
     monitoring_metrics: pd.DataFrame
+    n_epochs:           int
 
     def train(self):
         """ 
@@ -158,6 +159,9 @@ class DeepModelTrainMixin:
                     if best_model_state is not None:
                         self.model.load_state_dict(best_model_state)
                         print(f"Restored model from best validation loss: {best_val_loss:.4f}")
+
+                if epoch < self.n_epochs/10:
+                    print(f'training was stopped before 10% of the set epochs. Inspect monitoring metrics.')
 
                 break              
 
