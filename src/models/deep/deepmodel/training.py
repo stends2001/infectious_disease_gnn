@@ -79,7 +79,7 @@ class DeepModelTrainMixin:
         #   1. training phase
         #   2. validation phase
         #   3. update phase
-
+        
         for epoch in epoch_iter:
             # for printing purposes
             repr_epoch = epoch + 1 
@@ -246,7 +246,7 @@ class DeepModelTrainMixin:
     # ======== STUBS ======= #
     def _check_status(self, required_states: Union[List[ModelStatus], ModelStatus]) -> None: ...
     def _update_status(self, status: ModelStatus) -> None: ...
-    def _return_verbose_iter(self) -> Tuple[list, Union[range, tqdm[int]]]: ...
+    def _return_verbose_iter(self) -> Tuple[list, Union[range, tqdm]]: ...
     def _return_verbose_line(self, 
                              epoch:         Optional[int]  = None, 
                              train_loss:    Optional[float]= None, 

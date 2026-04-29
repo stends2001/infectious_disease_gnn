@@ -1,4 +1,4 @@
-from typing import Dict, Any, Union, Tuple, Optional, TYPE_CHECKING
+from typing import Dict, Any, Union, Tuple, Optional, TYPE_CHECKING, Iterator
 from tqdm import tqdm 
 import numpy as np
 
@@ -28,7 +28,7 @@ class DeepModelPresentationMixin:
     n_epochs:           int
     dataloadermanager:  Union[DeepDataLoaderManager, GraphDataLoaderManager]
 
-    def _return_verbose_iter(self) -> Tuple[list, Union[range, tqdm[int]]]:
+    def _return_verbose_iter(self) -> Tuple[list, Union[range, tqdm]]:
         # print dataloader snapshot
         if self.verbose >= 2:
             print('Dataloader:' + str(self.dataloadermanager.dataloader_train))        
