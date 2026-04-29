@@ -160,7 +160,10 @@ class DeepModelTrainMixin:
                         self.model.load_state_dict(best_model_state)
                         print(f"Restored model from best validation loss: {best_val_loss:.4f}")
 
-                if epoch < self.n_epochs/10:
+                if epoch < 2*self.patience:
+                    print(f'training was stopped before epoch could reach 2*patience. Inspect monitoring metrics.')                    
+
+                elif epoch < self.n_epochs/10:
                     print(f'training was stopped before 10% of the set epochs. Inspect monitoring metrics.')
 
                 break              
