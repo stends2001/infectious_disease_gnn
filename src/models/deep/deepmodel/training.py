@@ -150,12 +150,14 @@ class DeepModelTrainMixin:
                 patience_counter += 1
                 list_patience.append(True)
 
-            if patience_counter >= self.patience and self.verbose>=0:
-                print(f"Early stopping: Validation loss hasn't improved for {self.patience} epochs")
+            if patience_counter >= self.patience:
+            
+                if self.verbose>=0:
+                    print(f"Early stopping: Validation loss hasn't improved for {self.patience} epochs")
 
-                if best_model_state is not None:
-                    self.model.load_state_dict(best_model_state)
-                    print(f"Restored model from best validation loss: {best_val_loss:.4f}")
+                    if best_model_state is not None:
+                        self.model.load_state_dict(best_model_state)
+                        print(f"Restored model from best validation loss: {best_val_loss:.4f}")
 
                 break              
 
