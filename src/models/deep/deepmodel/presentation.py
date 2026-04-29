@@ -28,7 +28,7 @@ class DeepModelPresentationMixin:
     n_epochs:           int
     dataloadermanager:  Union[DeepDataLoaderManager, GraphDataLoaderManager]
 
-    def _return_verbose_iter(self) -> Tuple[list, Union[range, tqdm]]:
+    def _return_verbose_iter(self) -> Tuple[list, Union[range, tqdm[int]]]:
         # print dataloader snapshot
         if self.verbose >= 2:
             print('Dataloader:' + str(self.dataloadermanager.dataloader_train))        
