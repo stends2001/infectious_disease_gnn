@@ -1,4 +1,4 @@
-from typing import Generic, Dict, Any
+from typing import Generic, Dict, Any, Literal
 
 from ..predictions import PredictionManager
 from .forecastdisplaymixin import ForecastDisplayMixin
@@ -76,7 +76,7 @@ class BaseModel(Generic[DLM], ModelStatusMixin, PresentationMixin, ModelAppearan
 
     Additionally, the PredictionManager is of importance. This is where predictions are stored and interacted with.
     """
-    _expected_dataloadermanager:    str 
+    _expected_dataloadermanager:    Literal['BaseLineDataLoaderManager', 'DeepDataLoaderManager', 'GraphDataLoaderManager'] 
     config_info:                    Dict[str, Any]
 
     def __init__(self, 

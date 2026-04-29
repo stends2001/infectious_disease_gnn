@@ -1,45 +1,22 @@
-from typing import Optional, Dict, Any, List, TYPE_CHECKING
+from typing import Optional, Dict, Any, List
 from torch import Tensor as Tensor
 
-from .standard_losses import MSELoss, MAELoss, HuberLoss, SmoothL1Loss, ExponentialDecayLoss, PolynomialDecayLoss, WeightedMSELoss
-from .outbreak_losses import FocalLoss, OutbreakWeightedLoss
-from .poissonloss import PoissonLoss, NegativeBinomialLoss,ZeroInflatedPoissonLoss, OutbreakAwarePoissonLoss
-from .classification import BCELoss, BCELogitLoss
-from .asymmetricmse import AsymmetricMSELoss
-from .quantile import QuantileLoss
-from .pinball import PinballLoss, PinchPinballLoss
-
+from .baseloss import BaseLoss
 from ...issues import InvalidLossError
-
-LOSS_REGISTRY: Dict[str, type] = {
-    'mse':              MSELoss,
-    'mae':              MAELoss,
-    'huber':            HuberLoss,
-    'smooth_l1':        SmoothL1Loss,
-    'exp_decay':        ExponentialDecayLoss,
-    'poly_decay':       PolynomialDecayLoss,
-    'asymmetric_mse':   AsymmetricMSELoss,
-    'quantile' :        QuantileLoss    ,
-    'weighted_mse' :    WeightedMSELoss,
-    'focal' :           FocalLoss,
-    'outbreakweighted': OutbreakWeightedLoss,
-    'poisson':          PoissonLoss,
-    'binomial':         NegativeBinomialLoss,
-    'poisson3':         ZeroInflatedPoissonLoss,
-    'outbreakpoisson':  OutbreakAwarePoissonLoss,
-    'bce':              BCELoss,    
-    'bcelogit':         BCELogitLoss,
-    'pinball':          PinballLoss,
-    'pinchpinball':     PinchPinballLoss
-}
-
 
 class LossHandler:
     """
     Factory and manager for loss functions.
     Handles instantiation, validation, and usage of loss functions.
+
+    Inside `call()` we delegate to the loss-function having defined 
+    its `forward()` method. As such, `loss_fn(y_hat, snapshot.y)` will
+    already return the loss.
+
+    See Also
+    --------
+    For more loss-function specifics, see BaseLoss and its subclasses.
     """
-    
     def __init__(self, 
                  loss_name: str,
                  loss_kwargs: Optional[Dict[str, Any]] = None):
@@ -49,31 +26,21 @@ class LossHandler:
         Parameters:
         -----------
         loss_name : str
-            Name of loss function (must be in LOSS_REGISTRY)
+            Name of loss function (must be in BaseLoss._registry)
         loss_kwargs : Optional[Dict[str, Any]]
             Keyword arguments to pass to loss function constructor
         """
-        if loss_name not in LOSS_REGISTRY:
-            available = list(LOSS_REGISTRY.keys())
+        if loss_name not in BaseLoss._registry:
+            available = list(BaseLoss._registry.keys())
             raise InvalidLossError(
                 f'{loss_name}', available
             )
         
         loss_kwargs     = loss_kwargs or {}
         self.loss_name  = loss_name
-        self.loss_fn    = LOSS_REGISTRY[loss_name](**loss_kwargs)
+        self.loss_fn    = BaseLoss._registry[loss_name](**loss_kwargs)
     
-    def __call__(self, y_hat: Tensor, y: Tensor) -> Tensor:
-        # Non-quantile losses expect y_hat shape [nodes, horizon]
-        # but model always outputs [nodes, horizon, 1] for consistency.
-        # Squeeze the trailing dim here so individual losses don't need to care.
-        if self.loss_name not in ['pinball','pinchpinball']:
-            if y_hat.shape[-1] == 1:
-                y_hat = y_hat.squeeze(-1)
-
-            if y_hat.shape != y.shape:
-                raise ValueError('unexpected shapes inside losshandler(). y_hat != y')
-        
+    def __call__(self, y_hat: Tensor, y: Tensor) -> Tensor:     
         return self.loss_fn(y_hat, y)
     
     def __repr__(self) -> str:
@@ -82,11 +49,4 @@ class LossHandler:
     @staticmethod
     def list_available_losses() -> List[str]:
         """Return list of available loss functions."""
-        return list(LOSS_REGISTRY.keys())
-    
-    @staticmethod
-    def get_loss_info(loss_name: str) -> str:
-        """Get docstring for a specific loss."""
-        if loss_name not in LOSS_REGISTRY:
-            return f"Loss '{loss_name}' not found"
-        return LOSS_REGISTRY[loss_name].__doc__ or "No documentation available"
+        return list(BaseLoss._registry.keys())

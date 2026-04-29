@@ -12,7 +12,6 @@ from ....dataloading.columnregistration import ColumnRegistry
 from ....dataloading.epidataorchestration.utils.temporal_summary import EpiDataTemporalSummary, TemporalError
 from ....utils import check_dataset
 
-from ...utils.loss.poissonloss import convert_poisson_predictions
 
 class PredictionManager:
     """
@@ -233,9 +232,7 @@ class PredictionManager:
                         df_denorm = reverse_log(df_denorm, col, params.log)
 
         if self.epiconfig.target_column == 'cases':
-            for col in self.column_registration.pred_columns:
-                if col in df_denorm.columns:
-                    df_denorm[col] = convert_poisson_predictions(df_denorm[col], mode='mean')
+            raise ValueError('not dealt with poissonlosses')
 
         return df_denorm
 

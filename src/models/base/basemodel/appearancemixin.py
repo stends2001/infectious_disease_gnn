@@ -34,7 +34,7 @@ class ModelAppearanceMixin:
         name = re.sub(r"\s+", "_", name)
         
         # Remove all characters except a-z, 0-9, and underscore
-        name = re.sub(r"[^a-z0-9_]", "", name)
+        name = re.sub(r"[^a-z0-9_-]", "", name)
         
         # Collapse multiple underscores
         name = re.sub(r"_+", "_", name)

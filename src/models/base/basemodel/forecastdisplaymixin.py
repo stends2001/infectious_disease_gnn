@@ -168,7 +168,7 @@ class ForecastDisplayMixin(Generic[DLM]):
         ints = [x for x in nodes_list if isinstance(x, int)]
 
         for node_idx in ints:
-            if node_idx > self.context_data.num_nodes:
+            if node_idx > (self.context_data.num_nodes - 1):
                 raise ValueError(f'node {node_idx} invalid. There are {self.context_data.num_nodes} nodes [0-{self.context_data.num_nodes-1}]') 
 
         return nodes_list, df_pred, df_pred_aggr

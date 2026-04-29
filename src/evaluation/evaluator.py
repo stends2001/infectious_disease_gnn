@@ -172,12 +172,10 @@ class Evaluator:
 
             if epiconfig is None:
                 epiconfig = ml.epiconfig
-                compared  = model_name
 
             else:
                 # just compare task - level, not featurewise
-                if not epiconfig.assert_equals(ml.epiconfig, level = 2):
-                    raise ValueError(f'Incompatible prediction modes accross models found! Models {compared} and {model_name} shouldnt be compared to one another.')
+                epiconfig.assert_equals(ml.epiconfig, level = 2)
                 
         if epiconfig is None: 
             raise ValueError(f'No valid EpiConfig found among {list(self.evaluated_models.keys())}')            

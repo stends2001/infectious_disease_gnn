@@ -1,9 +1,0 @@
-{
-  "method": "commuter",
-  "self_connection": "eps",
-  "normalization": "rowwise",
-  "kwargs": {
-    "commuting_threshold": 2500,
-    "year": "2024"
-  }
-}
