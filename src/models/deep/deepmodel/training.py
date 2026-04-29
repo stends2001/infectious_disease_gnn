@@ -206,14 +206,18 @@ class DeepModelTrainMixin:
         axes: list[Axes]= list(axes_array.flatten())
 
         # lines: train_loss, val_loss and learning_rate
-        sns.lineplot(data = self.monitoring_metrics, x='epoch', y='train_loss',   color=traincolor,   label='Train Loss',         ax=axes[0])
-        sns.lineplot(data = self.monitoring_metrics, x='epoch', y='val_loss',     color=valcolor,     label='Validation Loss',    ax=axes[1])
-        sns.lineplot(data = self.monitoring_metrics, x='epoch', y='learning_rate',color='black',      label='Learning Rate',      ax=axes[2])
+        sns.lineplot(data = self.monitoring_metrics, x='epoch', y='train_loss',   color=traincolor,   label='Train Loss',      zorder = 2,   ax=axes[0])
+        sns.lineplot(data = self.monitoring_metrics, x='epoch', y='val_loss',     color=valcolor,     label='Validation Loss', zorder = 2,   ax=axes[1])
+        sns.lineplot(data = self.monitoring_metrics, x='epoch', y='learning_rate',color='black',      label='Learning Rate',   zorder = 2,   ax=axes[2])
 
         # Scatter patience epochs and corresponding values
         self._plot_scatter_patience_on_ax('train_loss',     axes[0])
         self._plot_scatter_patience_on_ax('val_loss',       axes[1])
-        self._plot_scatter_patience_on_ax('learning_rate',  axes[2])                
+        self._plot_scatter_patience_on_ax('learning_rate',  axes[2])          
+
+        self._draw_best_epoch('train_loss',     axes[0])
+        self._draw_best_epoch('val_loss',       axes[1])
+        self._draw_best_epoch('learning_rate',  axes[2])                   
 
         for ax in axes:
             self._format_ax(ax)
@@ -234,7 +238,32 @@ class DeepModelTrainMixin:
                    y        = self.monitoring_metrics[y][patience_mask], 
                    color    ='red', 
                    marker   ='x', 
-                   label    ='Patience Epochs')
+                   label    ='Patience Epochs',
+                   zorder   = 1)
+
+    def _draw_best_epoch(self, y: Literal['train_loss','val_loss','learning_rate'], ax: Axes) -> None:
+        """plots a black dot and arrow on any ax for the best-epoch"""
+        best_idx        = self.monitoring_metrics['val_loss'].idxmin()
+        x_value, y_value= self.monitoring_metrics['epoch'][best_idx],  self.monitoring_metrics[y][best_idx]
+
+        ax.annotate(
+                '',
+                xy          =(x_value, y_value),
+                xytext      = (0, 50),
+                textcoords  = 'offset points',
+                ha          = 'center',
+                arrowprops  = dict(arrowstyle='->', color='black', lw=1.5),
+                zorder      = 2
+            )
+        
+        ax.scatter(x        = x_value, 
+                   y        = y_value, 
+                   color    ='black', 
+                   marker   ='o', 
+                   label    ='Best Epochs',
+                   zorder   = 4,
+                   s        = 15
+                   )   
 
     def _format_ax(self, ax: Axes) -> None:
         """basic ax format"""
