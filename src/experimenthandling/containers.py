@@ -57,16 +57,17 @@ class ExperimentConfig:
     FUNDAMENTAL_ATTRIBUTES = ['experiment_name', 'variable', 'variable_alias', 'filename_seperator']
 
     @classmethod
-    def load(cls, dir: Path) -> 'ExperimentConfig':
+    def load(cls, dir: Path, log: bool = True) -> 'ExperimentConfig':
         """load an ExperimentConfig"""
         path = dir
         with open(path) as f:
             d = yaml.safe_load(f)      
 
-        print('loaded')
+        if log:
+            print(f'ExperimentConfig loaded from to {path.name} in {path.parent.name}')
         return cls(**d)   
 
-    def save_config(self, path: Path) -> None: 
+    def save_config(self, path: Path, log: bool = True) -> None: 
         """save ExperimentConfig to dedicated path (must include .yaml)"""
         if not str(path).endswith('.yaml'):
             raise ValueError('path must end with .yaml')
@@ -76,7 +77,8 @@ class ExperimentConfig:
         with open(path, 'w') as f:
             yaml.dump(config_dict, f, default_flow_style=False, sort_keys=False)    
         
-        print(f'{path.name} saved in {path.parent.name}')
+        if log:
+            print(f'ExperimentConfig saved to {path.name} in {path.parent.name}')
 
     def equals(self, other_cfg: 'ExperimentConfig', exclusion_attr: Union[str, List[str]] = []) -> bool:
         """

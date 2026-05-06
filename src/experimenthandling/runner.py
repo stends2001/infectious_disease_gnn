@@ -28,15 +28,17 @@ class ExperimentRunner(ExperimentHandler):
                 epiconfig:        EpiConfig,
                 experimentconfig: ExperimentConfig):
 
-        self.experiment     = experimentconfig.experiment_name
-        self.experiment_dir = Path(get_project_utilities_env()) / "models" / self.experiment
-        self.path_exist     = os.path.exists(self.experiment_dir)
+        experiment_name     = experimentconfig.experiment_name
+        super().__init__(experiment_name)
+
+        self.epicfg         = epiconfig
+        self.expcfg         = experimentconfig
+        self._set_dlms()
 
         # store the new values before merging; preventing new experiment addition from running everything
         self.new_variable_values = experimentconfig.variable_values
 
-        experiment_cfg = self._update_experiment_cfg(epiconfig, experimentconfig)
-        super().__init__(epiconfig, experiment_cfg)
+        experiment_cfg = self._update_experiment_cfg(epiconfig, experimentconfig)       
     
     # ======= METHODS ======= #
     def run(self, global_hparams: dict):
@@ -47,15 +49,15 @@ class ExperimentRunner(ExperimentHandler):
         """
         self._save_cfgs()
         
-        graphlist = [None] if self.experiment_cfg.graphs is None else self.experiment_cfg.graphs
+        graphlist = [None] if self.expcfg.graphs is None else self.expcfg.graphs
 
         for value in self.new_variable_values:
-            for ml in self.experiment_cfg.models:
+            for ml in self.expcfg.models:
                 
                 modeltype  = f"{ml}model"
                 childclass = DeepModel._childclasses[modeltype]
 
-                for sd in self.experiment_cfg.seeds:
+                for sd in self.expcfg.seeds:
 
                     match childclass._expected_dataloadermanager:
 
@@ -98,13 +100,13 @@ class ExperimentRunner(ExperimentHandler):
     def _set_dlms(self) -> None:
         """Only build dataloaders for the new variable values being run."""
         dataloader_managers_dict: Dict[Union[int, str, float], ExperimentDLMs] = {}
-        variable = self.experiment_cfg.variable
+        variable = self.expcfg.variable
 
         for varvalue in self.new_variable_values:
-            cfg = self.epiconfig.copy(**{variable: varvalue})
+            cfg = self.epicfg.copy(**{variable: varvalue})
             epo = EpiDataOrchestrator(cfg).build()
 
-            graphs_list = [] if self.experiment_cfg.graphs is None else self.experiment_cfg.graphs
+            graphs_list = [] if self.expcfg.graphs is None else self.expcfg.graphs
 
             hl_dlms = ExperimentDLMs(
                 baseline = BaseLineDataLoaderManager(epo),
@@ -118,7 +120,7 @@ class ExperimentRunner(ExperimentHandler):
             )
             dataloader_managers_dict[varvalue] = hl_dlms
 
-        self.dlms = dataloader_managers_dict
+        self.dataloadermanagers = dataloader_managers_dict
     
     def _load_model(self, modelname: str, childclass: Type['DeepModel'], value: Union[int, str, float], ml: str, graph: Optional[str]=None) -> 'DeepModel':
         """load instance of model"""
@@ -127,8 +129,8 @@ class ExperimentRunner(ExperimentHandler):
 
     def _get_model_name(self, modeltype: str, varvalue: Union[str, float, int], seed: int, graph: Optional[str] = None) -> str:
         """return model name: to be saved as"""
-        sep = self.experiment_cfg.filename_seperator
-        var = self.experiment_cfg.variable_alias
+        sep = self.expcfg.filename_seperator
+        var = self.expcfg.variable_alias
 
         if graph is None:
             name = f"{modeltype}{sep}{var}{varvalue}{sep}s{seed}"
@@ -146,9 +148,9 @@ class ExperimentRunner(ExperimentHandler):
         # if it does not exist, make it and save epiconfig.
         if not self.path_exist:
             os.mkdir(self.experiment_dir)
-            self.epiconfig.save_config(self.experiment_dir / '_epiconfig.yaml') 
+            self.epicfg.save_config(self.experiment_dir / '_epiconfig.yaml') 
         # save experimentconfig
-        self.experiment_cfg.save_config(self.experiment_dir / '_experiment_config.yaml')        
+        self.expcfg.save_config(self.experiment_dir / '_experiment_config.yaml')        
        
     def _model_to_run(self, modelname: str) -> bool:
         """boolean on whether the modelname already exists or not."""

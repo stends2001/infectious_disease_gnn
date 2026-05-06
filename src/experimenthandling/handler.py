@@ -2,10 +2,9 @@ from pathlib import Path
 from typing import Optional, assert_never, Dict, Union 
 import os
 
-from .containers import ExperimentConfig, ExperimentDLMs
+from .issues import DataLoaderManagerError, ExperimentDirectoryInvalidError
+from .containers import ExperimentDLMs, ExperimentConfig
 from ..dataloading.epiconfig import EpiConfig
-from ..dataloading.epidataorchestration import EpiDataOrchestrator
-from ..dataloading.dataloaders import BaseLineDataLoaderManager, DeepDataLoaderManager, GraphDataLoaderManager
 from ..utils.helpers import get_project_utilities_env
 from ..models.deep.deepmodel import DeepModel
 
@@ -14,91 +13,70 @@ class ExperimentHandler:
     Parent class to those that deal with experiments, namely:
     - ExperimentRunner
     - ExperimentLoader
+    - ExperimentAnalyzer
     
-    TODO These have slightly different downstream-behaviour that I need to clear up
-    a bit still.
-    
+    This parent class only deals with the paths based on the experiment_name.
+    Also defines a `_get_dlm()` method which is shared among the subclasses.
+
     Parameters
     ----------
-    epiconfig: 'EpiConfig'
-        the basis-epiconfig of the experiment
-    experiment_cfg: 'ExperimentConfig'
-        the basis-experimentconfig of this experiment   
+    experiment_name: str 
     """
     
     # class attributes: these are never different!
-    experiment_cfg_filename = '_experiment_config.yaml'
-    epicfg_filename         = '_epiconfig.yaml'
+    dataloadermanagers:         Optional[Dict[Union[int, str, float], ExperimentDLMs]] = None
+    epicfg:                     EpiConfig
+    expcfg:                     ExperimentConfig
 
-    def __init__(self, epiconfig: 'EpiConfig', experiment_cfg: 'ExperimentConfig'):
-        self.experiment         = experiment_cfg.experiment_name    # set experiment name
-        self.epiconfig          = epiconfig
-        self.experiment_cfg     = experiment_cfg
+    experiment_cfg_filename:    str = '_experiment_config.yaml'
+    epicfg_filename:            str = '_epiconfig.yaml'
 
-        self.path_exist         = self._set_exp_dir()               # set whether experiment already exists
-        self._set_dlms()                                            # set dataloadermanagers per variable-value
+    def __init__(self, 
+                 experiment_name: str,
+                 verbose: int = 1):
+        
+        self.experiment         = experiment_name
+        self.verbose            = verbose
+        self.experiment_dir     = self._get_exp_dir()
+        self.path_exist         = self._validate_exp_dir()          # set whether experiment already exists
 
-    def _set_exp_dir(self) -> bool:
+    def _get_exp_dir(self) -> Path:
+        return Path(get_project_utilities_env()) / "models" / self.experiment
+
+    def _validate_exp_dir(self) -> bool:
         """
         Takes care of testing the integrity of experiment-directory.
         Returns a boolean whether or not directory already exists.
         if it does, also checks that the experiment_config and the epiconfig are present.
-        Further sets the attribute `experiment_dir`.
         """
-        self.experiment_dir = Path(get_project_utilities_env()) / "models" / self.experiment
-
         if not os.path.exists(self.experiment_dir):
             return False
 
         files_to_check = [self.experiment_cfg_filename, self.epicfg_filename]
         for ff in files_to_check:
             if ff not in os.listdir(self.experiment_dir):
-                raise ValueError(f'directory {self.experiment} already exists, but {ff} was not found.')        
+                raise ExperimentDirectoryInvalidError(f'directory {self.experiment} already exists, but {ff} was not found.')        
         return True
         
-    def _set_dlms(self) -> None:
-        """Shared dataloader construction — called by Runner and Loader. Sets dlms into `dlms`."""
-        dataloader_managers_dict: Dict[Union[int, str, float], ExperimentDLMs] = {}
-
-        variable  = self.experiment_cfg.variable
-        varvalues = self.experiment_cfg.variable_values
-
-        for varvalue in varvalues:
-            cfg = self.epiconfig.copy(**{variable: varvalue})
-            epo = EpiDataOrchestrator(cfg).build()
-            
-            # graphs needs to be iterable: graph_list
-            graphs_list = [] if self.experiment_cfg.graphs is None else self.experiment_cfg.graphs
-    
-            hl_dlms = ExperimentDLMs(
-                baseline = BaseLineDataLoaderManager(epo),
-                deep     = DeepDataLoaderManager(epo).build(),
-                graphs   = {
-                    graph: GraphDataLoaderManager(epo)
-                               .retrieve_static_graph(graph)
-                               .build()
-                    for graph in graphs_list
-                }
-            )
-
-            dataloader_managers_dict[varvalue] = hl_dlms
-
-        self.dlms = dataloader_managers_dict   
-
     def _get_dlm(self, modelclass: str, varvalue: Union[int, float, str], graphtype: Optional[str] = None):
         """Shared DLM lookup — identical in Runner and Loader."""
+
+        if self.dataloadermanagers is None:
+            raise DataLoaderManagerError('dataloadermanagers attribute has not been set')
+
         childclass  = DeepModel._childclasses[f"{modelclass}model"]
         expected_dlm= childclass._expected_dataloadermanager
 
         match expected_dlm:
 
             case "DeepDataLoaderManager":
-                return self.dlms[varvalue].deep
+                return self.dataloadermanagers[varvalue].deep
         
             case "GraphDataLoaderManager":
                 if graphtype is None:
-                    raise ValueError(f"Graph required for {modelclass}")
-                return self.dlms[varvalue].graphs[graphtype]
+                    raise DataLoaderManagerError(f"Graph required for {modelclass} but got none")
+                
+                return self.dataloadermanagers[varvalue].graphs[graphtype]
         
             case "BaseLineDataLoaderManager":
                 raise ValueError("Baseline models should not be loaded via experiment runner")

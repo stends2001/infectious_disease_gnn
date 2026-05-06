@@ -5,13 +5,15 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import pandas as pd
 import numpy as np
-from .loader import ExperimentLoader
-from .handler import ExperimentHandler
-from .containers import ExperimentConfig
-from ..utils.helpers import get_project_utilities_env
-from ..models.base.basemodel import BaseModel
-from ..evaluation import Evaluator
-from ..models import PersistenceModel, ClimateologyModel
+from tqdm import tqdm
+
+from ..loader import ExperimentLoader
+from ..containers import ExperimentConfig
+from ...utils.helpers import get_project_utilities_env
+from ...models.base.basemodel import BaseModel
+from ...evaluation import Evaluator
+from ...models import PersistenceModel, ClimateologyModel
+from ...dataloading.epidataorchestration import EpiDataOrchestrator
 
 class ExperimentAnalyzerPlotterMixin:
     """
@@ -793,18 +795,19 @@ class ExperimentAnalyzerSpatialAutocorrMixin:
 
         return {'mi_df': mi_df, 'summary': summary}
 
-class ExperimentAnalyzer(ExperimentHandler, 
+class ExperimentAnalyzer(ExperimentLoader, 
                          ExperimentAnalyzerPlotterMixin, 
                          ExperimentAnalyzerTableMixin, 
                          ExperimentAnalyzerSpatialAutocorrMixin):
     """ 
     Analyzes experiments
-    Subclass of ExperimentHandler, that internally uses another subclass of that,
-    namely ExperimentLoader.
+    Subclass of ExperimentLoader, which is in turn a subclass ofExperimentHandler.
 
     See Also
     --------
-    For more information, see ExperimentHandler
+    For more information, see parent classes:
+    - ExperimentLoader
+    - ExperimentHandler
 
     Methods
     -------
@@ -813,24 +816,16 @@ class ExperimentAnalyzer(ExperimentHandler,
     For more methods, see ExperimentAnalyzerPlotterMixin
     """
     def __init__(self, 
-                 experiment: str):
-        self.experiment         = experiment
-        self.experiment_dir     = Path(get_project_utilities_env()) / "models" / experiment
-        self.experiment_loader  = ExperimentLoader(self.experiment)
-        self.experiment_config  = self.experiment_loader.experiment_cfg
-
-        super().__init__(self.experiment_loader.epiconfig, 
-                         self.experiment_config)     
+                 experiment_name:   str,
+                 verbose:           int = 1):
         
-    # ======= METHODS =========== #
-    def _load_models(self) -> Dict[Union[int, str, float], List[BaseModel]]:
-        self.models = self.experiment_loader.load_models()
-
+        super().__init__(experiment_name, verbose)            
+        
     # ========= HIDDEN METHODS ========= #
-    def _load_dataorchs(self):
-        self.data_orch_dict = {
-            hl: self.experiment_loader.dlms[hl].baseline.dataorchestrator 
-                  for hl in self.experiment_loader.dlms}
+    def _load_dataorchs(self) -> Dict[Union[int, str, float], EpiDataOrchestrator]:
+        return {
+            hl: self.dataloadermanagers[hl].baseline.dataorchestrator 
+                  for hl in self.dataloadermanagers}
 
     def compile_metrics(self
     ) -> pd.DataFrame:
@@ -838,19 +833,26 @@ class ExperimentAnalyzer(ExperimentHandler,
         Evaluate all models across horizons and return flat metrics dataframe.
         Adds columns: horizon, seed, model_type, graph, model_color
         """
+        self.epidataorchestrators   = self._load_dataorchs()
+        self.models                 = self.load_models()
+        
         all_metrics     = []
-        varvalues_list  = self.experiment_cfg.variable_values
-        variable_alias  = self.experiment_cfg.variable_alias
+        varvalues_list  = self.expcfg.variable_values
+        variable_alias  = self.expcfg.variable_alias
 
-        for varvalue, models in self.models.items():
+        if self.verbose <= 0 and self.verbose > 1:
+            iterator = self.models.items()
+
+        else:
+            iterator = tqdm(self.models.items(), desc = f'compiling evaluators per value of {variable_alias}')
+
+        for varvalue, models in iterator:
 
             # TODO
             if varvalue not in varvalues_list:
                 raise ValueError(f'value {varvalue} should not exist!')
 
-            print(f"Compiling metrics for: {variable_alias} = {varvalue}")
-
-            baseline_dlm = self.dlms[varvalue].baseline
+            baseline_dlm = self.dataloadermanagers[varvalue].baseline
 
             persistence  = PersistenceModel(baseline_dlm,  f'persistence-{variable_alias}{varvalue}')
             climatology  = ClimateologyModel(baseline_dlm, f'climateology-{variable_alias}{varvalue}')
@@ -863,7 +865,7 @@ class ExperimentAnalyzer(ExperimentHandler,
             for ml in all_models:
                 ml.forecast()
 
-            evaluator  = Evaluator(all_models)
+            evaluator  = Evaluator(all_models, verbose = self.verbose)
             evaluator.add_evaluation(horizon=0, dataset='test')
 
             metrics_hl = evaluator.data_compilation.get_data(0, 'test')['metrics'].copy()
@@ -905,6 +907,10 @@ class ExperimentAnalyzer(ExperimentHandler,
 
             all_metrics.append(metrics_hl)
             del evaluator
-            print(f"  hl={varvalue} done")
+
+            if self.verbose > 1:
+                verbose_line = f"{variable_alias} = {varvalue} done"
+
+                print(verbose_line)
 
         self.metrics_df = pd.concat(all_metrics, ignore_index=True)
