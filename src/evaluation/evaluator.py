@@ -22,6 +22,11 @@ class Evaluator:
     ----------
     models: List[BaseModel[Any]]
         list of any models
+    verbose: int
+        the extent to which return output/updates. Levels are:
+        - v <= 0    --> no output
+        - 0 < v <=1 --> minimal output
+        - v > 1     --> maximal output
 
     Attributes
     -------
@@ -29,7 +34,9 @@ class Evaluator:
     data_compilation    -> EvaluationPredictionsCompilation class
     """
 
-    def __init__(self, models: List[BaseModel[DLM]]):
+    def __init__(self, models: List[BaseModel[DLM]], verbose: int = 1):
+        self.verbose            = verbose
+
         models_list             = models if isinstance(models, list) else [models]
         self.evaluated_models   = {ml.name: ml for ml in models_list}
         self.model_names        = list(self.evaluated_models.keys())
@@ -141,7 +148,12 @@ class Evaluator:
         records = []
         groups = df.groupby([self.id_col, "model"], observed=True) # observed => whether to drop category-combinations that don't appear in data
 
-        for (node, modelname), group in tqdm(groups, desc='computing metrics nodewise', total = groups.ngroups):
+        if self.verbose > 1:
+            iterator = tqdm(groups, desc='computing metrics nodewise', total = groups.ngroups)
+        else:
+            iterator = groups
+
+        for (node, modelname), group in iterator:
             y    = group[self.target_col].to_numpy()
             yhat = group[self.pred_cols].to_numpy() 
 
