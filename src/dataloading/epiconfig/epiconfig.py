@@ -104,7 +104,7 @@ class EpiConfig:
                             "\n".join(f"  {k}: {v[0]} vs {v[1]}" for k, v in diff.items()))
 
     # ============ CONFIG LOADING/SAVING ==============
-    def save_config(self, path: Path):
+    def save_config(self, path: Path, log: bool = True):
         """ 
         saves EpiConfig to a .yaml
         """
@@ -116,7 +116,8 @@ class EpiConfig:
         with open(path, 'w') as f:
             yaml.dump(config_dict, f, default_flow_style=False, sort_keys=False)    
 
-        print(f'EpiConfig saved to {path.name} saved in {path.parent.name}')
+        if log:
+            print(f'EpiConfig saved to {path.name} saved in {path.parent.name}')
 
     def copy(self, **overrides) -> 'EpiConfig':
         """
@@ -131,7 +132,7 @@ class EpiConfig:
         return EpiConfig(**fields)
 
     @classmethod
-    def load_config(cls, path: Path) -> 'EpiConfig':
+    def load_config(cls, path: Path, log: bool = True) -> 'EpiConfig':
         """ 
         Loads a .yaml of name `config_name` into an EpiConfig
         the directory returned by `get_config_path()`.
@@ -142,7 +143,8 @@ class EpiConfig:
         with open(path) as f:
             d = yaml.safe_load(f)
 
-        print(f'EpiConfig loaded: {path.name} from {path.parent.name}')      
+        if log:
+            print(f'EpiConfig loaded from {path.name} from {path.parent.name}')           
         return cls(**d)      
 
     # ============= ATTRIBUTE ORGANIZATION ==============
