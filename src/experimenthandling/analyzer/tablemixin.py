@@ -19,7 +19,7 @@ class ExperimentAnalyzerTableMixin:
     ExperimentAnalyzer
     """
     metrics_df:         pd.DataFrame
-    experiment_config:  ExperimentConfig
+    expcfg:             ExperimentConfig
 
     # ── model display config ──────────────────────────────────────────────
     MODEL_ORDER = [
@@ -79,7 +79,7 @@ class ExperimentAnalyzerTableMixin:
             variable_alias, model_key, {metric}_mean, {metric}_std,
             {metric}_delta_mean, {metric}_delta_std for each metric
         """
-        variable_alias = self.experiment_config.variable_alias
+        variable_alias = self.expcfg.variable_alias
 
         df = self._get_model_key(self.metrics_df)
 
@@ -146,7 +146,7 @@ class ExperimentAnalyzerTableMixin:
         style     : 'absolute', 'delta', or 'both'
         precision : decimal places
         """
-        variable_alias  = self.experiment_config.variable_alias
+        variable_alias  = self.expcfg.variable_alias
         varvalues       = sorted(table[variable_alias].unique())
         models          = table['model'].cat.categories.tolist()
         metric_label    = self.METRIC_LABELS.get(metric, metric.upper())
@@ -200,7 +200,7 @@ class ExperimentAnalyzerTableMixin:
         identity:   str = 'gcn2_graph1',
     ) -> None:
         """Print geo vs identity gap per variable value."""
-        variable_alias = self.experiment_config.variable_alias
+        variable_alias = self.expcfg.variable_alias
         varvalues      = sorted(table[variable_alias].unique())
         metric_label   = self.METRIC_LABELS.get(metric, metric.upper())
 
@@ -243,7 +243,7 @@ class ExperimentAnalyzerTableMixin:
         -------
         pd.DataFrame — full results table
         """
-        variable_alias = self.experiment_config.variable_alias
+        variable_alias = self.expcfg.variable_alias
 
         table = self.create_results_table(
             metrics   = metrics,
@@ -253,7 +253,7 @@ class ExperimentAnalyzerTableMixin:
 
         print(f"\n{'='*80}")
         print(f"  RESULTS SUMMARY")
-        print(f"  experiment : {self.experiment_config.experiment_name}")
+        print(f"  experiment : {self.expcfg.experiment_name}")
         print(f"  reference  : {reference}")
         print(f"  variable   : {variable_alias}")
         print(f"{'='*80}")
