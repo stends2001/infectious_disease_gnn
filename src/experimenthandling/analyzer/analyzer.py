@@ -18,19 +18,56 @@ class ExperimentAnalyzer(ExperimentLoader,
                          ExperimentAnalyzerSpatialAutocorrMixin):
     """ 
     Analyzes experiments
-    Subclass of ExperimentLoader, which is in turn a subclass ofExperimentHandler.
-
-    See Also
-    --------
-    For more information, see parent classes:
-    - ExperimentLoader
-    - ExperimentHandler
+    Subclass 1st degree of ExperimentLoader
+    Sublcass 2nd degree of ExperimentHandler
+    
+    Parameters
+    -------
+    experiment_name: str
+        name of the experiment. This string should be identical to the directory in which the models and configs are saved.
+        From here, EpiConfig and ExperimentConfig are loaded.
+    verbose: int
+        the level to which output/updates are to be returned.
 
     Methods
     -------
+    #### Main
     - `compile_metrics()`
+
+    #### Mixins
+    ##### ExperimentAnalyzerPlotterMixin
+    - `plot_metric_over_reference()`
+    - `plot_graph_advantage()`
+
+    ##### ExperimentAnalyzerTableMixin
+    - `create_results_table()`
+    - `summarise_for_analysis()`
+    - `print_results_table()`
+    - `print_geo_identity_gap()`
+
+    ##### ExperimentAnalyzerSpatialAutocorrMixin
+    - `full_morans_i_analysis()`
+    - `compute_morans_i()`
+    - `plot_morans_i()`
+    - `summarise_morans_i()`
     
-    For more methods, see ExperimentAnalyzerPlotterMixin
+    Mixins
+    ------
+    ExperimentAnalyzerPlotterMixin
+        Allows plotting of experiment
+    ExperimentAnalyzerTableMixin
+        Writes results to tables     
+    ExperimentAnalyzerSpatialAutocorrMixin
+        Deals with spatial autocorrelation in the experiment.
+
+    See Also
+    --------
+    #### Parentclass
+    For more information on basic experiment-handling-behaviour see (1st degree) parent class ExperimentHandler.    
+    For more information on experiment-loading-behaviour see (2nd degree) parent class ExperimentLoader.    
+
+    #### Helper classes
+    for evaluation-specific (i.e. how are metrics defined and computed) information, see Evaluator.
     """
     def __init__(self, 
                  experiment_name:   str,

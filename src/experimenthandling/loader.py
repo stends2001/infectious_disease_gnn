@@ -6,7 +6,6 @@ from .issues import ExperimentDirectoryNotFoundError, InvalidModelNameError
 from .handler import ExperimentHandler
 from .containers import ExperimentConfig, ExperimentDLMs
 from ..dataloading.epiconfig import EpiConfig
-from ..utils.helpers import get_project_utilities_env
 from ..models.deep.deepmodel import DeepModel
 from ..models.base.basemodel import BaseModel
 from ..dataloading.epidataorchestration import EpiDataOrchestrator
@@ -17,15 +16,26 @@ from ..dataloading.dataloaders import DeepDataLoaderManager, GraphDataLoaderMana
 class ExperimentLoader(ExperimentHandler):
     """ 
     Loads experiments
-    Subclass of ExperimentHandler
+    First degree subclass of ExperimentHandler
+    Parent class of ExperimentAnalyzer
 
-    See Also
-    --------
-    For more information, see ExperimentHandler
+    Parameters
+    -------
+    experiment_name: str
+        name of the experiment. This string should be identical to the directory in which the models and configs are saved.
+        From here, EpiConfig and ExperimentConfig are loaded.
+    verbose: int
+        the level to which output/updates are to be returned.
 
     Methods
     -------
     - `load_models()`
+        The main/only function to be ran by users. The hidden functions are all to run internally.
+            
+    See Also
+    --------
+    #### Parentclass
+    For more information on basic experiment-handling-behaviour see parent class ExperimentHandler.    
     """
     def __init__(self, 
                  experiment_name: str,

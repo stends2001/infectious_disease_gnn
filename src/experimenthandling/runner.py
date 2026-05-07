@@ -6,7 +6,6 @@ from .handler import ExperimentHandler
 from .containers import ExperimentConfig
 from ..dataloading.epiconfig import EpiConfig
 from ..dataloading.epidataorchestration import EpiDataOrchestrator
-from ..utils.helpers import get_project_utilities_env
 from ..models.deep.deepmodel import DeepModel
 from .containers import ExperimentConfig, ExperimentDLMs
 from ..dataloading.dataloaders import BaseLineDataLoaderManager, DeepDataLoaderManager, GraphDataLoaderManager
@@ -14,22 +13,34 @@ from ..dataloading.dataloaders import BaseLineDataLoaderManager, DeepDataLoaderM
 class ExperimentRunner(ExperimentHandler):
     """ 
     Runs experiments
-    Subclass of ExperimentHandler
+    First degree subclass of ExperimentHandler
 
-    See Also
-    --------
-    For more information, see ExperimentHandler
+    Parameters
+    -------
+    epiconfig: EpiConfig
+        The base-epiconfig for the experiment. With the exception of the variable that is experimented with,
+        by a range of values, the epiconfig must describe the entire experiment!
+    experimentconfig: ExperimentConfig
+        The config that covers the experiment.
+    verbose: int
+        the level to which output/updates are to be returned.        
 
     Methods
     -------
     - `run()`
+        The main/only function to be ran by users. The hidden functions are all to run internally.
+            
+    See Also
+    --------
+    #### Parentclass
+    For more information on basic experiment-handling-behaviour see parent class ExperimentHandler.
     """
     def __init__(self,
                 epiconfig:        EpiConfig,
-                experimentconfig: ExperimentConfig):
+                experimentconfig: ExperimentConfig,
+                verbose:          int):
 
-        experiment_name     = experimentconfig.experiment_name
-        super().__init__(experiment_name)
+        super().__init__(experimentconfig.experiment_name, verbose)
 
         self.epicfg         = epiconfig
         self.expcfg         = experimentconfig
@@ -44,7 +55,6 @@ class ExperimentRunner(ExperimentHandler):
     def run(self, global_hparams: dict):
         """
         Main function; runs the experiment
-
         Feed in global_hparams for deepmodel instances
         """
         self._save_cfgs()

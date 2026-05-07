@@ -10,10 +10,10 @@ from ..models.deep.deepmodel import DeepModel
 
 class ExperimentHandler:
     """ 
-    Parent class to those that deal with experiments, namely:
+    Parent class of those that deal with experiments, namely:
     - ExperimentRunner
     - ExperimentLoader
-    - ExperimentAnalyzer
+    - ExperimentAnalyzer(second degree; this is a sub-class to ExperimentLoader)
     
     This parent class only deals with the paths based on the experiment_name.
     Also defines a `_get_dlm()` method which is shared among the subclasses.
@@ -21,6 +21,31 @@ class ExperimentHandler:
     Parameters
     ----------
     experiment_name: str 
+        name of the experiment. This string should be identical to the directory in which the models
+        and configs are saved.
+    verbose: int
+        the level to which output/updates are to be returned.        
+    
+    Methods
+    -------
+    - `_get_dlm()`
+        returns a specific dataloadermanager from `.dataloadermanagers`.
+    
+    Attributes
+    ----------
+    dataloadermanagers: Optional[Dict[Union[int, str, float], ExperimentDLMs]] = None
+        Dictionary of ExperimentDLMs per value of the variable in the experiment. `_get_dlm()` returns
+        a specific dataloadermanager from this attribute.
+    epicfg: EpiConfig
+        To be set by sub-class, done differently for ExperimentLoader and for ExperimentRunner!
+    expcfg: ExperimentConfig
+
+    See Also
+    --------
+    The following dataclasses are also intimitately used:
+    - ExperimentConfig
+    - ExperimentDLMs
+    - ModelSpecs
     """
     
     # class attributes: these are never different!
