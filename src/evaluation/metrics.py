@@ -89,7 +89,7 @@ class QuantileRegressionMetricsCalculator(MetricsCalculatorBase):
         yhats: np.ndarray
             predictions - shape N,Q; number of nodes, number of quantiles. 
             Quantiles must be ordered
-        """
+        """        
         assert self.quantiles is not None  # narrows type for linter
 
         n_intervals = len(self.quantiles) // 2
@@ -99,7 +99,7 @@ class QuantileRegressionMetricsCalculator(MetricsCalculatorBase):
 
         for i in range(n_intervals):
             lower  = yhats[:, i]
-            upper  = yhats[:, n_intervals - 1 - i]
+            upper  = yhats[:, len(self.quantiles) - 1 - i]
             alpha  = self.quantiles[i] * 2
 
             width          = upper - lower
@@ -112,6 +112,8 @@ class QuantileRegressionMetricsCalculator(MetricsCalculatorBase):
 
         # WIS = mean over components, then mean over timestamps
         return float(np.mean(np.stack(components, axis=1)))
+
+  
 
     def coverage_score(self, y: np.ndarray, yhats: np.ndarray) -> float:
         """
