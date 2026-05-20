@@ -98,10 +98,7 @@ class EvaluationPlotter:
                 raise ValueError(f'node {highlight_node} invalid. There are {num_nodes} nodes [0-{num_nodes}]') 
 
         # Get colors
-        model_class_colors = {ml.model_class: ml.model_color for ml in self.evaluator.evaluated_models.values()}
-        
-        # when double colors, should be adjusted to have a brighter and darker version TODO
-        model_name_colors  = {ml.name: ml.model_color  for ml in self.evaluator.evaluated_models.values()}
+        model_name_colors  = self.evaluator.model_colors
         
         # Prepare data
         # df: | node | model | {metric_name} |
@@ -121,8 +118,7 @@ class EvaluationPlotter:
                     metric_df           = metrics_df, 
                     metric              = metric, 
                     plot_type           = plot_type, 
-                    model_name_colors   = model_name_colors, 
-                    model_class_colors  = model_class_colors,
+                    model_name_colors   = model_name_colors,
                     add_legend          = legend,
                     log                 = log,
                     vmin                = vmin,
@@ -167,8 +163,7 @@ class EvaluationPlotter:
                                  metric_df: pd.DataFrame, 
                                  metric: str, 
                                  plot_type: Literal['violin','box','kde'],
-                                 model_name_colors: dict, 
-                                 model_class_colors: dict,
+                                 model_name_colors: dict,
                                  add_legend: bool,
                                  log: bool,
                                  vmin: float, 
@@ -280,7 +275,7 @@ class EvaluationPlotter:
         if add_legend:
             handles: list[Union[mpatches.Patch, Line2D]]
             handles = [mpatches.Patch(color=color, label=model_class)
-                    for model_class, color in model_class_colors.items()]
+                    for model_class, color in model_name_colors.items()]
 
             if highlight_node is not None:
                 handles.append(
