@@ -220,6 +220,7 @@ class Evaluator:
         mean_df = agg.mean().reset_index()
         
         return mean_df
+
     @property
     def base_model_names(self) -> list[str]:
         """Model names after seed aggregation — what actually appears in metrics."""
