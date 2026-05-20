@@ -22,29 +22,35 @@ class PersistenceModel(BaseLineModel):
         self.status_dict.pop('global_hparams_set')
 
     def train(self):
-        """
-        Compute per-seasonal-timepoint residual quantiles on training data.
-        Uncertainty scales with the season rather than being globally flat.
-        """
         quantiles = self.dataloadermanager.dataorchestrator.config.quantiles
 
         if quantiles:
-            train_df        = self.dataloadermanager.dataloader_main
-            train_df        = train_df[train_df['train']].sort_values([self.epiconfig.id_column, self.epiconfig.temporal_column]).copy()
-            timeshift_num   = self.dataloadermanager.dataorchestrator.config.horizon_leadtime
-            persistence_pred= train_df.groupby(self.epiconfig.id_column)['target'].shift(timeshift_num)
-
-            residuals       = train_df['target'] - persistence_pred
-            t_idx           = self._get_seasonal_index(train_df)
-
-            # per seasonal timepoint quantiles
-            self._residual_quantiles = (
-                residuals.groupby(t_idx)
-                         .quantile(np.array(quantiles))
-                         .unstack()
-            )
+            self._residual_quantiles = self._compute_residual_quantiles('train')
 
         self._update_status('trained')
+
+    def calibrate(self):
+        """Refit residual quantiles on val data (conformal-style calibration)."""
+        quantiles = self.dataloadermanager.dataorchestrator.config.quantiles
+
+        if quantiles:
+            self._residual_quantiles = self._compute_residual_quantiles('val')
+
+    def _compute_residual_quantiles(self, split: str) -> pd.DataFrame:
+        quantiles       = self.dataloadermanager.dataorchestrator.config.quantiles
+        timeshift_num   = self.dataloadermanager.dataorchestrator.config.horizon_leadtime
+        df              = self.dataloadermanager.dataloader_main
+        df              = df[df[split]].sort_values([self.epiconfig.id_column, self.epiconfig.temporal_column]).copy()
+
+        persistence_pred = df.groupby(self.epiconfig.id_column)['target'].shift(timeshift_num)
+        residuals        = df['target'] - persistence_pred
+        t_idx            = self._get_seasonal_index(df)
+
+        return (
+            residuals.groupby(t_idx)
+                    .quantile(np.array(quantiles))
+                    .unstack()
+        )
 
     @check_dataset()
     def forecast(self, dataset: Literal['train','val','test'] = 'test') -> None:

@@ -22,29 +22,34 @@ class ClimateologyModel(BaseLineModel):
         self.status_dict.pop('model_hparams_set')
         self.status_dict.pop('global_hparams_set')        
 
-    def train(self) -> None:
-        """
-        Compute per-seasonal-timepoint residual quantiles on training data.
-        Uncertainty scales with the season rather than being globally flat.
-        """
+    def train(self):
         quantiles = self.dataloadermanager.dataorchestrator.config.quantiles
 
         if quantiles:
-            train_df = self.dataloadermanager.dataloader_main
-            train_df = train_df[train_df['train']]
-            train_df = self._get_seasonal_indexes(train_df)
-            merged   = pd.merge(train_df, self.seasonal_averages, on=[self.epiconfig.id_column, 't_idx'])
-
-            residuals= merged['target'] - merged['seasonal_mean']
-
-            # per seasonal timepoint quantiles
-            self._residual_quantiles = (
-                residuals.groupby(merged['t_idx'])
-                         .quantile(np.array(quantiles))
-                         .unstack()
-            )
+            self._residual_quantiles = self._compute_residual_quantiles('train')
 
         self._update_status('trained')
+
+    def calibrate(self):
+        """Refit residual quantiles on val data (conformal-style calibration)."""
+        quantiles = self.dataloadermanager.dataorchestrator.config.quantiles
+
+        if quantiles:
+            self._residual_quantiles = self._compute_residual_quantiles('val')
+
+    def _compute_residual_quantiles(self, split: str) -> pd.DataFrame:
+        quantiles   = self.dataloadermanager.dataorchestrator.config.quantiles
+        df          = self.dataloadermanager.dataloader_main
+        df          = df[df[split]]
+        df          = self._get_seasonal_indexes(df)
+        merged      = pd.merge(df, self.seasonal_averages, on=[self.epiconfig.id_column, 't_idx'])
+        residuals   = merged['target'] - merged['seasonal_mean']
+
+        return (
+            residuals.groupby(merged['t_idx'])
+                    .quantile(np.array(quantiles))
+                    .unstack()
+        )
 
     @check_dataset()
     def forecast(self, dataset: Literal['train','val','test'] = 'test') -> None:
