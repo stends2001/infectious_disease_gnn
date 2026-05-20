@@ -11,7 +11,11 @@ from ..models.base.basemodel import BaseModel
 from ..dataloading.dataloaders import DLM
 from ..dataloading.epiconfig import EpiConfig
 
-from .evaluationplotter import EvaluationPlotter
+from .evaluationplotter import EvaluationPlotter 
+
+import re
+from matplotlib.colors import to_rgb, to_hex
+import colorsys
 
 class Evaluator:
 
@@ -34,13 +38,14 @@ class Evaluator:
     data_compilation    -> EvaluationPredictionsCompilation class
     """
 
-    def __init__(self, models: List[BaseModel[DLM]], verbose: int = 1):
+    def __init__(self, models: List[BaseModel[DLM]], verbose: int = 1, aggregate_seeds: bool = True):
         self.verbose            = verbose
 
         models_list             = models if isinstance(models, list) else [models]
         self.evaluated_models   = {ml.name: ml for ml in models_list}
         self.model_names        = list(self.evaluated_models.keys())
         self.epiconfig          = self._validate_epiconfigs()
+        self.aggregate_seeds    = aggregate_seeds
 
         # Column names
         self.target_col     = 'target'
@@ -83,6 +88,9 @@ class Evaluator:
         else:
             preds   = self._compile_predictions(horizon, dataset)
             metrics = self._compile_metrics(preds)
+
+            if self.aggregate_seeds:
+                metrics = self._aggregate_over_seeds(metrics)
 
             self.data_compilation.add_data(preds, metrics, horizon, dataset)
 
@@ -193,6 +201,87 @@ class Evaluator:
             raise ValueError(f'No valid EpiConfig found among {list(self.evaluated_models.keys())}')            
                 
         return epiconfig
+
+    def _aggregate_over_seeds(self, metrics: pd.DataFrame) -> pd.DataFrame:
+        metrics           = metrics.copy()
+        unique_modelnames = metrics['model'].unique()
+
+        mapping_dict = {
+            name: re.sub(r'-s\d+$', '', name)
+            for name in unique_modelnames
+        }
+
+        metrics['model'] = metrics['model'].replace(mapping_dict)
+        
+        metric_cols = self.metric_calculator.supported_metrics
+        
+        agg = metrics.groupby([self.id_col, 'model'])[metric_cols]
+        
+        mean_df = agg.mean().reset_index()
+        
+        return mean_df
+    @property
+    def base_model_names(self) -> list[str]:
+        """Model names after seed aggregation — what actually appears in metrics."""
+        
+        if self.aggregate_seeds:
+            seen = {}
+            for name in self.model_names:
+                base = re.sub(r'-s\d+$', '', name)
+                seen[base] = None  # dict preserves insertion order, deduplicates
+            return list(seen.keys())
+        
+        return list(self.evaluated_models.keys())
+
+    @property
+    def model_colors(self) -> dict[str, str]:
+        """
+        Returns {model_name: color} mapping, accounting for:
+        - seed aggregation (base name used as key)
+        - duplicate colors (alternating lighter/darker shades when models share a color)
+        """
+
+        def _adjust_lightness(hex_color: str, factor: float) -> str:
+            r, g, b = to_rgb(hex_color)
+            h, l, s = colorsys.rgb_to_hls(r, g, b)
+            l = max(0.0, min(1.0, l + factor))
+            return to_hex(colorsys.hls_to_rgb(h, l, s))
+
+        # alternating shade adjustments for duplicates: light, dark, lighter, darker ...
+        shade_cycle = [0.12, -0.12, 0.22, -0.22]
+
+        seen_colors = {}   # original color -> list of base_names that claimed it
+        name_colors = {}   # base_name -> final color
+
+        for ml in self.evaluated_models.values():
+            base_name = re.sub(r'-s\d+$', '', ml.name) if self.aggregate_seeds else ml.name
+
+            if base_name in name_colors:
+                continue  # already resolved (multiple seeds of same base model)
+
+            original_color = ml.model_color
+
+            if original_color not in seen_colors:
+                seen_colors[original_color] = []
+                final_color = original_color  # first model keeps original
+            else:
+                n           = len(seen_colors[original_color])
+                factor      = shade_cycle[(n - 1) % len(shade_cycle)]
+                final_color = _adjust_lightness(original_color, factor)
+
+            seen_colors[original_color].append(base_name)
+            name_colors[base_name] = final_color
+
+        return name_colors
+
+    @property
+    def seed_counts(self) -> dict[str, int]:
+        """Returns {base_model_name: n_seeds} for all models."""
+        counts = {}
+        for name in self.model_names:
+            base = re.sub(r'-s\d+$', '', name) if self.aggregate_seeds else name
+            counts[base] = counts.get(base, 0) + 1
+        return counts
 
     def __repr__(self) -> str:
         representation = [f"<{self.__class__.__name__}("]
