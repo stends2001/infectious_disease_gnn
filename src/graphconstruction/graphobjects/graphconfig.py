@@ -51,9 +51,6 @@ class GraphConfig:
     -------
     - `asdict()`
     - `fromdict()` (classmethod)
-    
-    Attributes
-    ----------
 
     Downstream Use
     --------------
