@@ -8,12 +8,15 @@ from ...utils import PathNotFound
 
 class GraphRegistry:
     """
-    Registry of GraphObject objects
+    Registry of GraphObject instances: stores, saves and loads them.
 
     Parameters
     ----------
-    graph_dir: str
-        directory in which to save graphstructures from the registry
+    graph_partition_dir: str
+        partition-directory in which to save graphstructures from the registry.
+        That is, the path in which different graph representations of the same 
+        thing are stored (same country/level combination). These structures
+        have a shared `tokenization_map`.
 
     Methods
     -------
@@ -28,19 +31,29 @@ class GraphRegistry:
     Attributes
     ----------
     - `entry_names`
+
+    See Also
+    --------
+    - GraphObject
+    - GraphConfig
+    - GraphStrucure
+
+    Downstream Use
+    ---------------
+    GraphManager
+        Each instance of GraphManager has a registry as attribute.
     """
-    def __init__(self, graph_dir: Union[str,Path]):
+    def __init__(self, graph_partition_dir: Union[str,Path]):
         self._registry: Dict[str, GraphObject]= {}
-        
-        graph_path = Path(graph_dir)
-        
-        # saving graphs into:
-        if not graph_path.exists():
-            raise PathNotFound(graph_dir)
 
-        self.graph_dir                      = graph_path
+        graph_partition_dir = Path(graph_partition_dir)
+        
+        if not graph_partition_dir.exists():
+            raise PathNotFound(graph_partition_dir)
 
-    def add_entry(self, graphname: str, entry: GraphObject):
+        self.graph_partition_dir = graph_partition_dir
+
+    def add_entry(self, graphname: str, entry: GraphObject) -> None:
         """adds entry to registry under graphname"""
         if self._check_presence(graphname):
            print(GraphEntryAlreadyExists(graphname))
@@ -57,7 +70,7 @@ class GraphRegistry:
         else:
             return self._registry[graphname]
 
-    def rename_entry(self, current_graphname: str, new_graphname: str):
+    def rename_entry(self, current_graphname: str, new_graphname: str) -> None:
         """renames entry from current_graphname to new_graphname; current_graphname is removed"""        
         if self._check_presence(new_graphname):
             print(GraphEntryAlreadyExists(new_graphname))
@@ -65,14 +78,15 @@ class GraphRegistry:
             self.add_entry(new_graphname, self._registry[current_graphname])
             self.remove_entry(current_graphname)          
 
-    def remove_entry(self, graphname):
+    def remove_entry(self, graphname) -> None:
+        """removes entry from registry"""
         if not self._check_presence(graphname):
             print(GraphEntryDoesntExist(graphname, self.entry_names))
 
         del self._registry[graphname]
 
     def save_entry(self, graphname: str) -> None:
-        """save a graph entry"""
+        """save a graph entry from registry to `self.graph_partition_dir` / `graphname` """
         entry_to_save = self.get_entry(graphname)
         
         if entry_to_save is None:
@@ -80,20 +94,23 @@ class GraphRegistry:
 
         self._validate_graphentry_name(graphname)
         
-        entry_to_save.save(self.graph_dir)
+        # save into partition (country / level) / graphname
+        entry_to_save.save(self.graph_partition_dir / graphname)
 
         print(GraphStructureSaved(graphname))
 
-    def save_all_entries(self, confirm: bool = False):
+    def save_all_entries(self, confirm: bool = False) -> None:
         if not confirm:
             raise ValueError(f'when saving all graph structures, please confirm by argument')
         
         for entryname in self.entry_names:
             self.save_entry(entryname)
 
-    def load_entry(self, graphname: str):
-        """load a graph entry from file"""       
-        graph_object = GraphObject.load(self.graph_dir / graphname)
+    def load_entry(self, graphname: str) -> None:
+        """load a graph entry from directory"""       
+
+        # load from partition (country / level) / graphname        
+        graph_object = GraphObject.load(self.graph_partition_dir / graphname)
 
         self.add_entry(graphname, graph_object)
 
@@ -102,7 +119,6 @@ class GraphRegistry:
         return list(self._registry.keys())
     
     # ============ HIDDEN METHODS ================ #
-
     def _check_presence(self, graphname: str) -> bool:
         return graphname in self._registry.keys()
 
