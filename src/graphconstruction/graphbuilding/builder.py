@@ -6,17 +6,34 @@ import pandas as pd
 from numpy.typing import NDArray
 import numpy as np
 
-from ...utils import registry_method, get_registered_methods, MethodNotInRegistry, CRS_DEGREES, CRS_GERMANY_METRES
+from ...utils import registry_method, get_registered_methods, MethodNotInRegistry, CRS_GERMANY_METRES
 from ...utils.types import GraphType
 
 class GraphBuilder:
     """ 
+    Delegation - class to GraphManager, responsible for the buidling the raw graph
+    Raw as in, the graph is normalized later. Raw graphs are returned as lists.
+
+    main method to be called is `build()`
+    normalization-methods are stored in methods-registry (`.methods`).    
+
+    Parameters
+    ----------
+    id_col: str
+    token_col: str
+    shape_data: gpd.GeoDataFrame
+    population_data: pd.DataFrame
+
+    See Also
+    --------
+    for more information, see GraphManager
     """
     def __init__(self,
                  id_col:            str,
                  token_col:         str,                 
                  shape_data:        gpd.GeoDataFrame,
-                 population_data:   pd.DataFrame):
+                 population_data:   pd.DataFrame
+                 ):
         
         self.id_col     = id_col 
         self.token_col  = token_col  
@@ -28,7 +45,17 @@ class GraphBuilder:
 
     def build(self, method: GraphType, *args, **kwargs) -> Tuple[List[Tuple[int, int]], List[float]]:
         """
-        Main function to be called for building a graph structure. args and kwargs depend on the given method.
+        buidls edge-index and edge-weights according to method. Specific methods may require *args or **kwargs 
+
+        Parameters
+        ----------
+        method: GraphType
+            the method with which to generate the edge indices and edge weights    
+
+        See Also
+        --------
+        for more information on what parameters are required per method, please see
+        the documentation for that method.
 
         Returns
         -------
@@ -68,10 +95,10 @@ class GraphBuilder:
 
     @registry_method
     def gravity_model(self,
-                    alpha:             float = 2.0,
-                    epsilon:           float = 1e-6,
-                    decay:             float = 1.0,
-                    max_distance:      float = 100_000) -> Tuple[List[Tuple[int, int]], List[float]]:
+                      alpha:             float = 2.0,
+                      epsilon:           float = 1e-6,
+                      decay:             float = 1.0,
+                      max_distance:      float = 100_000) -> Tuple[List[Tuple[int, int]], List[float]]:
         """
         Build a gravity-model based graph: connection strength depends on distance and population size.
 

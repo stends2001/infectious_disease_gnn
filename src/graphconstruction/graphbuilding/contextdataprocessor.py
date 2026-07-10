@@ -6,38 +6,62 @@ from pathlib import Path
 from ...utils import compare_sets
 from ..exceptions import MissingColumnError
 
-
 class GraphContextDataProcessor:
-    """ 
-    TODO:
-        popsize filter on 2020 -> dynamic
+    """
+    Delegation - class to GraphManager, responsible for the loading/preprocessing of data:
 
-    call `process()`    
+    main method to be called is `process()`
+
+    Parameters
+    ----------
+    level: str
+    id_col: str
+    token_col: str
+    country_data_path: Path
+
+    See Also
+    --------
+    for more information, see GraphManager
+
+    NOTE
+    ----
+    commuting data has been removed.
+    TODO
+        popsize filter on 2020 -> dynamic
     """
     def __init__(self,
                  level:             str,
                  id_col:            str,
                  token_col:         str,
-                 country_path:      Path
+                 country_data_path: Path
                  ):
         
-        self.id_col         = id_col 
-        self.token_col      = token_col  
-        self.level          = level  
-        self.country_path   = country_path
+        self.id_col             = id_col 
+        self.token_col          = token_col  
+        self.level              = level  
+        self.country_data_path  = country_data_path
 
+        # load raw data
         self.shp_raw, self.pop_raw = self._load()
+
+        # validate input
         self._validate()
 
     def process(self) -> Tuple[gpd.GeoDataFrame, pd.DataFrame, Dict[str, int]]:
+        """
+        processes raw data and returns processed data; shapedata and populationdata
+        interanlly calls `_filter()` and `_tokenize()`
+        """
         shp_f, pop_f = self._filter(self.shp_raw, self.pop_raw)
         shp_t, pop_t, map_t = self._tokenize(shp_f, pop_f)
 
         return shp_t, pop_t, map_t
 
+    # ============= HIDDEN METHODS ============ #
     def _load(self) -> Tuple[gpd.GeoDataFrame, pd.DataFrame]:
-        shp = gpd.read_file(self.country_path / 'geospatial' / 'level_shapes.shp')
-        pop = pd.read_csv(self.country_path  / 'sociodemography' / 'population_size.csv', dtype = {'key': 'str'})        
+        """loads and returns shapedata and population data"""
+        shp = gpd.read_file(self.country_data_path / 'geospatial' / 'level_shapes.shp')
+        pop = pd.read_csv(self.country_data_path  / 'sociodemography' / 'population_size.csv', dtype = {'key': 'str'})        
         return shp, pop
 
     def _validate(self):
@@ -97,3 +121,7 @@ class GraphContextDataProcessor:
         shape_data.drop(columns = self.id_col, inplace = True)            
 
         return shape_data, population_data, tokenization_map
+    
+    def __repr__(self) -> str:
+        representation = f'<{self.__class__.__name__}>'
+        return representation

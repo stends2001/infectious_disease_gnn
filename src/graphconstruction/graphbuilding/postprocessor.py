@@ -1,12 +1,22 @@
 import torch
 from typing import Literal, assert_never
 
-from ..graphobjects import GraphStructure, TopKConfig
+from ..graphobjects import GraphStructure
 from ...utils import registry_method, get_registered_methods, MethodNotInRegistry
 from ...utils.types import GraphNormType
 
 class GraphPostProcessor:
-    """    
+    """
+    Delegation - class to GraphManager, responsible for the processing of Graphs through:
+    - (optional) top_k - filtering
+    - edge-weight normalization
+
+    main method to be called is `normalize()`
+    normalization-methods are stored in methods-registry (`.methods`).
+
+    See Also
+    --------
+    for more information, see GraphManager
     """
     def __init__(self):
         self.methods     = get_registered_methods(self.__class__)
@@ -16,14 +26,27 @@ class GraphPostProcessor:
                      mode: Literal['local','global'],
                      k: int
                      ) -> GraphStructure:
-        """ 
         """
-        # unpacking topk_cfg:
+        top_k filtering: selecting the `k` most weighted edges, either
+        globally or locally (per neighborhood/node).
+        
+        Parameters
+        ----------
+        graph_structure: GraphStructure
+            graph structure to which edges are to be filtered
+        mode: Literal['local','global']
+            to determine the number of connections over the entire graph or per node
+        k: int
+            the number of connections to keep
 
-
+        Returns
+        -------
+        Graphstructure
+        """
         edge_index   = graph_structure.edge_index
-        edge_weight = graph_structure.edge_weight
+        edge_weight  = graph_structure.edge_weight
 
+        # determine the edge indices to keep
         match mode:
 
             case "global":
@@ -47,12 +70,13 @@ class GraphPostProcessor:
             case _:
                 assert_never(mode)
 
-        filtered_edge_index = edge_index[:, keep]
-        filtered_edge_weight = edge_weight[keep]
+        # filter on these edges
+        edge_index_f  = edge_index[:, keep]
+        edge_weight_f = edge_weight[keep]
 
         filtered_graphstructure = GraphStructure(
-            filtered_edge_index,
-            filtered_edge_weight,
+            edge_index_f,
+            edge_weight_f,
             graph_structure.num_nodes,
         )
 
@@ -61,7 +85,19 @@ class GraphPostProcessor:
     def normalize(self, graph_structure: GraphStructure, method: GraphNormType, *args, **kwargs) -> GraphStructure:
         """ 
         Normalizes edge-weights according to method. Specific methods may require *args or **kwargs
-        Returns a GraphStructure with normalized edge-weight and unchanged edge-index.        
+        Returns a GraphStructure with normalized edge-weight and unchanged edge-index.    
+
+        Parameters
+        ----------
+        graph_structure: GraphStructure
+            the graph structure to be normalized
+        method: GraphNormType
+            the method with which to normalize the edge weights    
+
+        See Also
+        --------
+        for more information on what parameters are required per method, please see
+        the documentation for that method.
         """        
         if method not in self.methods:
             raise MethodNotInRegistry(method, list(self.methods))
@@ -77,9 +113,16 @@ class GraphPostProcessor:
         return normalized_graph_structure
 
     @registry_method
-    def minmax(self, graph_structure: GraphStructure, epsilon: float = 1e-3) -> torch.Tensor:
+    def minmax(self, 
+               graph_structure: GraphStructure, 
+               epsilon: float = 1e-3) -> torch.Tensor:
         """
         scales edge-weights by minmax (i.e. max => 1 and min => 0 + `epsilon`)
+
+        Parameters
+        ----------
+        epsilon: float = 1e-3
+            the mininum value
         """
         raw_weights = graph_structure.edge_weight
 
@@ -97,7 +140,10 @@ class GraphPostProcessor:
     def symmetric(self, graph_structure: GraphStructure) -> torch.Tensor:
         """
         Applies symmetric normalization to edge weights.
-        NOTE This should be the default normalization method
+        
+        Further Reading
+        ---------------
+        This should be the default normalization method
 
         This computes the normalized edge weights according to:
 

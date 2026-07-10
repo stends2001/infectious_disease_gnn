@@ -13,17 +13,48 @@ from ...utils.types import GraphType, GraphNormType, Country, Level
 
 class GraphManager:
     """
-    """
-    country:    Country 
-    level:      Level
+    Main class used to construct graphs. The heavy lifting is outsourced to 'delegation classes'.
+    Note that each instance of GraphManager is associated with a single combination of country and level.
+    
+    Parameters
+    ----------
+    country: Country
+        country represented by the graph structure(s) to be created
+        Country = Literal['germany', 'hungary']        
+    level: Level
+        level of the country represented by the graph structure(s) to be created
+        Level = Literal['nuts1', 'nuts2', 'nuts3']
+    id_col: str = 'key
+        the column name in which the code of each spatial unit is stored. These are the ones that will be 
+        mapped to node-idx (tokens) alphabetically, the mapping of which will be stored in the overarching
+        directory (self.dir_graphs_partition) under tokenization_map.json
+    token_col: str = 'node'
+        the column name in which the tokens of the `id_col` will be stored
 
+    Attributes
+    ----------
+    - `graph_registry`
+    - `num_nodes`
+    - `tokenization_map`
+
+    See Also
+    --------
+    #### Delegation classes
+    - GraphContextDataProcessor
+    - GraphBuilder
+    - GraphPostProcessor
+    - GraphViewer
+
+    #### Others
+    - PathManager
+    - GraphRegistry
+    """
     def __init__(self,                  
                  country:           Country,
                  level:             Level,
                  
                  id_col:            str = 'key',
                  token_col:         str = 'node'):
-        
 
         self.id_col             = id_col 
         self.token_col          = token_col   
@@ -31,16 +62,21 @@ class GraphManager:
         self.country            = country
 
         # ======== MANAGE PATHS ======== #
-        self._pathmanager       = PathManager()
-        self.dir_country_data   = self._pathmanager.data / 'data' / country
-        self.dir_graphs_root    = self.dir_country_data  / 'graphs'
-        self.dir_graph_partition= self.dir_graphs_root   / level 
+        self._pathmanager        = PathManager()
+        self.dir_country_data    = self._pathmanager.data / 'data' / country        # 
+        self.dir_graphs_root     = self.dir_country_data  / 'graphs'                # path points to all graphs of all different partitions (nuts1/2/3)
+        self.dir_graphs_partition= self.dir_graphs_root   / level                   # path points to all graphs of 1 partition (nuts1 OR nuts2 OR nuts3). These have a shared tokenization map
+
+        if not self.dir_graphs_root.exists():
+            self.dir_graphs_root.mkdir()
+
+        if not self.dir_graphs_partition.exists():
+            self.dir_graphs_partition.mkdir()            
 
         # ========= DELEGATION CLASSES ============ #
-        self.graph_registry = GraphRegistry(self.dir_graph_partition)
-        self.preprocessor   = GraphContextDataProcessor(level, id_col, token_col, self.dir_country_data)
+        self.graph_registry = GraphRegistry(self.dir_graphs_partition)
 
-        # get data (shape & population size)        
+        self.preprocessor   = GraphContextDataProcessor(level, id_col, token_col, self.dir_country_data)
         self.shape_data, self.population_data, self.tokenization_map = self.preprocessor.process()
         self.num_nodes                                               = len(self.tokenization_map.keys())
         
@@ -50,33 +86,36 @@ class GraphManager:
     
     # ======= HIDDEN METHODS ======== #
     def construct_graph(self, 
-                        graphname: str,                         
+                        graph_name: str,                         
                         graph_type: GraphType, 
                         normalization_method: GraphNormType, 
                         top_k: Optional[Dict[str,Any]] = None, 
-                        *args, **kwargs):
+                        *args, **kwargs) -> None:
         """
-        Main function of the class. Creates and processes a graph strucutre, which is saved in self.graph_registry.
+        Main function of the class. Creates and processes a graph strucutre, 
+        which is saved in self.graph_registry
 
         Parameters
         ----------
-        graph_type: str
-            actually a Literal. An exception is raised when argument doens't match.
-        graphname: str
-            name under which GraphStructure is saved in GraphRegistry
-        normalization_method: str
-            actually a Literal. An exception is raised when argument doesn't match.
-        top_k: Optional[int] = None
-            the top number of connections to keep. By default None (meaning no filter).
-        *args / **kwargs
-            some graph_method and normalize_method - functions may require additions args and kwargs.
+        graph_name: str
+            the name under which graph has been saved
+        graph_type: GraphType
+            the type of graph. The following are supported: 
+            GraphType = Literal['identity', 'geographical_contiguity', 'gravity_model', 'random', 'fully_connected']
+        normalization_method: GraphNormType
+            method used to normalize edge_weights. the following are supported:
+            GraphNormType = Literal['minmax', 'symmetric', 'rowwise']
+        top_k: Optional[Dict[str,Any]]  
+            top-k arguments. Optional, may therefore be None, or a dictionary with keys 'k': int and 'mode': Literal['local','global']
+        args: List[Any]
+            any other arguments (`seed` for graph_type == 'random')
+        kwargs: Dict[str, Any]
         """
-
         topk_cfg = None if top_k is None else TopKConfig(**top_k)
 
         # step 1: produce graphconfig:
         graphcfg = self._build_graphconfig(
-            graphname,            
+            graph_name,            
             graph_type,
             self.num_nodes,
             normalization_method,
@@ -105,20 +144,21 @@ class GraphManager:
         )
 
         # step 7: store graph in graph_registry
-        self.graph_registry.add_entry(graphname, graph_object)
+        self.graph_registry.add_entry(graph_name, graph_object)
 
     # ======= METHODS ======== #
     def _build_graphconfig(self, 
-                           graphname: str,
+                           graph_name: str,
                            graph_type: GraphType,
                            num_nodes: int,
                            normalization_method: GraphNormType,
                            top_k: Optional[TopKConfig],
                            *args: List[Any],
                            **kwargs: Dict[str, Any]) -> GraphConfig:
+        """builds and returns an instance of GraphConfig based on input from `construct_graph()`"""
         
         return GraphConfig(
-            graphname, 
+            graph_name, 
             graph_type,
             num_nodes,             
             normalization_method,
@@ -126,8 +166,7 @@ class GraphManager:
             args,
             kwargs
         )
-        
-
+    
     def preview(self, 
                 graph_name: str, 
                 variable:   Literal['edge_weights','network','degree','strength','strength_vs_degree'],
@@ -136,7 +175,7 @@ class GraphManager:
                 neighborhood: Optional[int],
                 connections_type: Optional[Literal['in','out']]):
         """ 
-        Preview registered GraphStructure from `graph_registry`.
+        Previews registered GraphStructure from `graph_registry`.
 
         Parameters
         ----------
@@ -170,7 +209,8 @@ class GraphManager:
             plot_type: Literal['histogram','map'],
             neighborhood: Optional[int] = None,
             connections_type: Optional[Literal['in','out']] = None
-        ):                             
+        ):              
+            """validates the input given into `preview()`"""               
             match (variable, locality, plot_type, neighborhood, connections_type):
 
                 # 'network' must use 'map' plot
@@ -220,7 +260,6 @@ class GraphManager:
                 # anything else is valid
                 case _:
                     pass
-
 
     def __repr__(self) -> str:
         representation = f"<{self.__class__.__name__}({self.country}, {self.level})>"
