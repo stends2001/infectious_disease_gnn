@@ -1,17 +1,102 @@
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Union 
 from pathlib import Path
 import os
 import numpy as np
 import yaml
-
+import pickle, json, copy
 from functools import wraps
 import inspect
 from typing import Iterable, Any
 
+from typing import Literal, Callable, List
+import inspect
+
+class MethodNotInRegistry(Exception):
+
+    def __init__(self, method: str, available_methods: List[str]):
+        msg = f'Unknown method {method}. Available methods are: {available_methods}'
+        super().__init__(msg)
+
+
+def registry_method(func: Callable) -> Callable:
+    """
+    Decorator that marks a method as a registered one.
+    Used to create a selection of methods for graph-building
+    and graph-normalization.
+    """
+    setattr(func, '_is_registered_method', True)
+    return func
+
+
+def get_registered_methods(cls: type) -> List[str]:
+    """
+    Returns the names of all methods decorated with @registry_method
+    for a given class.
+    """
+    return [
+        name for name, func in inspect.getmembers(cls, predicate=inspect.isfunction)
+        if getattr(func, '_is_registered_method', False)
+    ]
+
+class UnequalSetsError(Exception):
+
+    def __init__(self, message: str):
+        super().__init__(message)
+
+def compare_sets(set1: set, set2: set):
+
+    if set1 != set2:
+        missing = set(set1) - set(set2)
+        leftover= set(set2) - set(set1)
+
+        raise UnequalSetsError(f'missing from set 2 are: {missing}. Leftover in set 1 are: {leftover}')
+        
+
+class PathNotFound(Exception):
+
+    def __init__(self, path: Union[str, Path]):
+        super().__init__(f'Path was not found: {path}')
+
+def load_mapping_dict(path: Union[str, Path]) -> Dict[Any, Any]:
+
+    if isinstance(path, str):
+        path = Path(path)
+
+    match path.suffix:
+        case ".pkl":
+            with open(path, "rb") as f:
+                data = pickle.load(f)        
+        case ".json":
+            with open(path, "r") as f:
+                data = json.load(f)
+        case _:
+            raise ValueError('the only type of files suppported in load_mapping_dict are ".pkl" and "json"')
+
+    if type(data) != dict:
+        raise ValueError(f'expected dictionary. got {type(data)}')
+    return copy.deepcopy(data)
+
+def save_mapping_dict(dictionary: Dict[Any,Any], path: Union[str, Path]):
+
+    if isinstance(path, str):
+        path = Path(path)
+
+    if not path.parent.exists():
+        raise PathNotFound(path.parent)
+
+    match path.suffix:
+        case ".pkl":
+            raise ValueError('you should probably save this file as a .json instead!')
+        case ".json":
+            with open(path, "w") as f:
+                json.dump(dictionary,f,indent = 4)
+        case _:
+            raise ValueError('the only type of files suppported in load_mapping_dict are ".pkl" and "json"')
+
+
 class InvalidDataSetError(Exception):
     def __init__(self, input: str):
         super().__init__(f"Invalid value for dataset: {input}. Expected one of ['train','val','test']")    
-
 
 # function receives arguments for decorator
 def check_dataset(allowed_values: Iterable =("train", "val", "test"), arg_name: str="dataset"):

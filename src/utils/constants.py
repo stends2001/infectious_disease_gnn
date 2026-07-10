@@ -6,3 +6,6 @@ token_hamburg    = 15
 
 berlin_district_ids = ['11001', '11002', '11003', '11004', '11005', '11006', '11007', '11008', '11009', '11010', '11011', '11012']
 berlin_id           = '11000'
+
+CRS_DEGREES         = "EPSG:4326"
+CRS_GERMANY_METRES  = "EPSG:25833"
