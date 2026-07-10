@@ -185,7 +185,7 @@ class GraphPostProcessor:
         raw_weights = graph_structure.edge_weight
         row, col    = indices[0], indices[1]
 
-        deg = deg = torch.zeros(graph_structure.num_nodes).to(raw_weights)
+        deg = torch.zeros(graph_structure.num_nodes).to(raw_weights)
         deg.scatter_add_(0, row, raw_weights)
 
         deg_inv                          = deg.pow(-1)
