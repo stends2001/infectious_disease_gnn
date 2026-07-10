@@ -112,5 +112,3 @@ class GraphStructure:
     def __repr__(self) -> str:
         representation = f'<{self.__class__.__name__}(num_nodes = {self.num_nodes}, num_edges = {self.num_edges})>'
         return representation 
-
-

@@ -58,7 +58,10 @@ class GraphObject:
         if isinstance(path, str):
             path = Path(path)
 
-        graphconfig_dict = vars(self.config)
+        graphconfig_dict = self.config.asdict()
+
+        if not path.exists():
+            path.mkdir()
 
         save_mapping_dict(graphconfig_dict, path / self.graphconfig_filename)
 
@@ -66,8 +69,7 @@ class GraphObject:
         torch.save(self.graph.edge_weight, path /self.edge_weight_filename)             
         
         if self.tokenization_map_filename not in os.listdir(str(path.parent)):
-            save_mapping_dict(graphconfig_dict, path.parent / self.tokenization_map_filename)
-
+            save_mapping_dict(self.tokenization_map, path.parent / self.tokenization_map_filename)
 
     @classmethod
     def load(cls, path: Union[str, Path]) -> Self:
@@ -76,8 +78,8 @@ class GraphObject:
         if isinstance(path, str):
             path = Path(path)
 
-        graphconfig_dict: Dict[str, Any]= load_mapping_dict(path / 'config.json')
-        graphconfig                     = GraphConfig(**graphconfig_dict)    
+        graphconfig_dict= load_mapping_dict(path / "config.json")
+        graphconfig     = GraphConfig.fromdict(graphconfig_dict)        
 
         edge_index      = torch.load(path / "edge_index.pt", weights_only=True)
         edge_weight     = torch.load(path / "edge_weight.pt", weights_only=True)
