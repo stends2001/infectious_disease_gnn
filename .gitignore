@@ -6,3 +6,4 @@ experiments/
 logs/
 sbatch/
 src/notebooks
+/data
