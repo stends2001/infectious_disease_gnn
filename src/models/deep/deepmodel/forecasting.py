@@ -1,4 +1,4 @@
-from typing import Union, List, TYPE_CHECKING, Literal, assert_never
+from typing import Union, List, TYPE_CHECKING, Literal, assert_never, Dict, Tuple
 import pandas as pd
 import torch 
 from tqdm import tqdm
@@ -35,6 +35,7 @@ class DeepModelForecastMixin:
     loss:               'LossHandler'
     predictions:        'PredictionManager'
     context_data:       'ContextEpiData'
+    _residual_quantiles: Dict[Tuple[int, int], Dict[int, float]]  
 
     def forecast(self, dataset: DataSetSplit = 'test'):
         """forecast the given dataset"""
@@ -65,10 +66,11 @@ class DeepModelForecastMixin:
         
         # setup expected predictions-shape [num_nodes, horizon_size, num_quantiles]
         num_nodes           = self.context_data.num_nodes
-        expected_shape_yhat = [num_nodes, 
-                               self.epiconfig.horizon_size, 
-                               max(1,self.epiconfig._num_quantiles)
-                               ]
+        _out_quantiles      = 1 if (hasattr(self, '_residual_quantiles') or self.epiconfig._num_quantiles == 0) else self.epiconfig._num_quantiles
+        expected_shape_yhat = [num_nodes,
+                            self.epiconfig.horizon_size,
+                            max(1, _out_quantiles)
+                            ]
 
         # turn off gradient tracking
         with torch.no_grad():
@@ -104,7 +106,7 @@ class DeepModelForecastMixin:
         predictions_tensor  = torch.stack(raw_predictions)
         targets_tensor      = torch.stack(raw_targets)
 
-        expected_shape_predictions  = [len(dataloader), num_nodes, self.epiconfig.horizon_size, max(1,self.epiconfig._num_quantiles)]
+        expected_shape_predictions = [len(dataloader), num_nodes, self.epiconfig.horizon_size, max(1, _out_quantiles)]
         expected_shape_targets      = [len(dataloader), num_nodes, self.epiconfig.horizon_size]        
 
         received_shape_predictions  = list(predictions_tensor.shape)
@@ -117,6 +119,19 @@ class DeepModelForecastMixin:
             raise UnexpectedDataShape(f'{received_shape_targets}', f'{expected_shape_targets}', "stacked raw targets")
 
         num_timesteps, num_nodes, horizon_size, num_quantiles = predictions_tensor.shape
+
+        # =========== CALIBRATION ============= #
+        # If calibrate() has been called on a point-loss model, expand the
+        # single pred dim into Q quantile columns using val residuals.
+        if len(self._residual_quantiles) >0 and self.loss.loss_name not in ['pinball', 'pinchpinball']:
+            predictions_tensor = self._apply_calibration(predictions_tensor, dataset)
+            num_quantiles      = predictions_tensor.shape[-1]  # update: 1 → Q
+
+        # Get the quantile column names from the column registry
+        if self.epiconfig._num_quantiles == 0:
+            pred_col_names = ['pred']                  
+        else:
+            pred_col_names = [c for c in self.predictions.column_registration.pred_columns if c != 'pred'] 
 
         # Get the quantile column names from the column registry
         # These are the names PredictionManager expects, e.g. ['q_0.1', 'q_0.5', 'q_0.9']
@@ -218,6 +233,52 @@ class DeepModelForecastMixin:
             results[f'target_{hh}'] = target_reshaped[:, hh]
 
         return results
+
+    def _apply_calibration(
+        self,
+        predictions_tensor: torch.Tensor,
+        dataset: Literal['train', 'val', 'test'],
+    ) -> torch.Tensor:
+        """
+        If calibration has been run, replace the single point-forecast quantile dim
+        with Q calibrated quantile offsets applied to the median prediction.
+        predictions_tensor: [num_timesteps, num_nodes, horizon_size, 1]
+        returns:            [num_timesteps, num_nodes, horizon_size, Q]
+        """
+        import numpy as np
+
+        quantiles   = self.epiconfig.quantiles
+        time_splits = self.dataloadermanager.time_splits
+        freq        = self.dataloadermanager.dataorchestrator.config.temporal_frequency
+
+        timestamps  = pd.to_datetime(
+            time_splits[time_splits[dataset]][self.epiconfig.temporal_column].values
+        )
+
+        if freq == 'w':
+            t_idx = timestamps.isocalendar().week.astype(int).values
+        elif freq == 'm':
+            t_idx = timestamps.month.values
+        elif freq == 'd':
+            t_idx = timestamps.isocalendar().day.astype(int).values
+        else:
+            raise ValueError(f'Unknown temporal frequency: {freq}')
+
+        num_timesteps, num_nodes, horizon_size, _ = predictions_tensor.shape
+        point_preds = predictions_tensor.squeeze(-1).numpy()  # [T, N, H]
+        q_preds     = np.zeros((num_timesteps, num_nodes, horizon_size, len(quantiles)))
+
+        for hh in range(horizon_size):
+            for q_idx in range(len(quantiles)):
+                offsets = np.array([
+                    self._residual_quantiles[(hh, q_idx)].get(t, 0.0)
+                    for t in t_idx
+                ])  # [T]
+                # broadcast over nodes: [T, 1] + [T, N]
+                q_preds[:, :, hh, q_idx] = point_preds[:, :, hh] + offsets[:, None]
+
+        return torch.tensor(q_preds, dtype=torch.float32)
+
 
     # ========== STUBS ========== #
     def _check_status(self, required_states: Union[List[ModelStatus], ModelStatus]) -> None: ...

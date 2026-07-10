@@ -226,6 +226,7 @@ class GCN2Model(DeepModel):
     def __init__(self,
                  dataloadermanager: GraphDataLoaderManager,
                  name:              str           = 'gcnv2_model',
+                 num_quantiles : int = 1,
                  verbose:           Literal[-1, 0, 1, 2]   = -1):
 
         super().__init__(
@@ -234,6 +235,7 @@ class GCN2Model(DeepModel):
             verbose             = verbose,
             strategy            = StandardGNNStrategy()
         )
+        self.num_quantiles = num_quantiles
 
     def set_model_hparams(self,
                           hidden_size:  int   = 64,
@@ -277,7 +279,7 @@ class GCN2Model(DeepModel):
         _num_nodes      = len(self.dataloadermanager.dataorchestrator.data_context.local_shapedata)
         _horizon_size   = self.dataloadermanager.dataorchestrator.config.horizon_size
         _seq_length     = self.dataloadermanager.dataorchestrator.config.sequence_length
-        _num_quantiles  = max(self.dataloadermanager.dataorchestrator.config._num_quantiles, 1)
+        _num_quantiles  = self.num_quantiles
 
         self.model = SpatialDominantGCNModule(
             num_features    = _num_features,

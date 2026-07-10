@@ -1,4 +1,4 @@
-from typing import Dict,  Union, Optional, Type, Any
+from typing import Dict,  Union, Optional, Type, Any, Literal, Tuple
 import torch 
 from torch.optim.optimizer import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
@@ -120,6 +120,8 @@ class DeepModel(
         super().__init__(dataloadermanager = dataloadermanager, name = name, verbose = verbose)        
     
         self.evaluation_datasets                            = {}
+        self._residual_quantiles: Dict[Tuple[int, int], Dict[int, float]] = {}
+
 
         # using hidden methods in DeepModelInternalsMixin, set attributes
         self._set_device()
@@ -137,7 +139,7 @@ class DeepModel(
     def load_model(cls,
                    model_name:        str,
                    dataloadermanager: Union[GraphDataLoaderManager, DeepDataLoaderManager],
-                   subdir:            Optional[str] = None,
+                   subdir:            str,
                    ) -> 'DeepModel':
         """
         Loads a saved model, and sets model hyper-parameters, global-hyperparameters
@@ -159,8 +161,8 @@ class DeepModel(
         """
 
         # build path — use class-level helper, not instance attribute
-        base_dir = Path(os.path.join(get_project_utilities_env(), 'models'))
-        base     = base_dir / subdir if subdir else base_dir
+        # base_dir = Path(os.path.join(get_project_utilities_env(), 'models'))
+        base     = Path('data/experiment_outcomes') / Path(subdir)
         
         # construct model path
         if model_name.endswith('.pt'):
@@ -215,6 +217,82 @@ class DeepModel(
         instance._update_status('trained')
 
         return instance
+
+    def calibrate(self) -> 'DeepModel':
+        """
+        Post-hoc quantile calibration on val data (conformal-style).
+        Call after train() when using a point loss (mse/mae/huber) with epiconfig.quantiles set.
+        Fits per-seasonal-timepoint residual quantiles, identical in spirit to the baseline models.
+        """
+        self._check_status(['trained'])
+
+        quantiles = self.epiconfig.quantiles
+        if not quantiles:
+            raise ValueError('calibrate() called but epiconfig.quantiles is None.')
+
+        if self.loss.loss_name in ['pinball', 'pinchpinball']:
+            raise ValueError('calibrate() is for point-loss models. You are using pinball — no calibration needed.')
+
+        import numpy as np
+
+        self.model.eval()
+        val_loader  = self.dataloadermanager.dataloader_val
+        time_splits = self.dataloadermanager.time_splits  # DataFrame with temporal_column + split bools
+
+        all_preds   = []
+        all_targets = []
+        all_t_idx   = []
+
+        with torch.no_grad():
+            for idx, snapshot in enumerate(val_loader):
+                snapshot    = snapshot.to(self.device)
+                y_hat, _    = self.strategy.forecast_step(
+                    model   = self.model,
+                    snapshot= snapshot,
+                    loss_fn = self.loss
+                )
+                # y_hat: [num_nodes, horizon_size, 1]  (point forecast)
+                # snapshot.y: [num_nodes, horizon_size]
+                all_preds.append(y_hat.squeeze(-1).cpu())   # [num_nodes, horizon_size]
+                all_targets.append(snapshot.y.cpu())         # [num_nodes, horizon_size]
+
+        # stack: [num_val_timesteps, num_nodes, horizon_size]
+        preds   = torch.stack(all_preds).numpy()
+        targets = torch.stack(all_targets).numpy()
+
+        # residuals: [num_val_timesteps, num_nodes, horizon_size]
+        residuals = targets - preds
+
+        # get the seasonal index for each val timestep
+        val_times = time_splits[time_splits['val']][self.epiconfig.temporal_column].values
+        freq      = self.dataloadermanager.dataorchestrator.config.temporal_frequency
+
+        val_timestamps = pd.to_datetime(val_times)
+        if freq == 'w':
+            t_idx = val_timestamps.isocalendar().week.astype(int).values
+        elif freq == 'm':
+            t_idx = val_timestamps.month.values
+        elif freq == 'd':
+            t_idx = val_timestamps.isocalendar().day.astype(int).values
+        else:
+            raise ValueError(f'Unknown temporal frequency: {freq}')
+
+        # fit residual quantiles per (seasonal_idx, horizon, quantile)
+        # store as dict: {(hh, q_idx): {t_idx_val: offset}}
+        residual_quantiles: Dict[Tuple[int, int], Dict[int, float]] = {}
+
+        num_timesteps, num_nodes, horizon_size = residuals.shape
+
+        for hh in range(horizon_size):
+            for q_idx, q in enumerate(quantiles):
+                seasonal_quantiles: dict = {}
+                for unique_t in np.unique(t_idx):
+                    mask        = t_idx == unique_t
+                    res_slice   = residuals[mask, :, hh].ravel()  # all nodes, this season, this horizon
+                    seasonal_quantiles[unique_t] = float(np.quantile(res_slice, q))
+                residual_quantiles[(hh, q_idx)] = seasonal_quantiles
+        self._residual_quantiles = residual_quantiles
+        return self
 
     def set_model_hparams(self):
         """must be set by subclasses"""

@@ -27,17 +27,17 @@ class DeepModelCheckpointMixin:
             raise ValueError('No model found!')
 
         base_dir    = self.models_dir 
-        sub_dir     = dir
 
         # if base dir doesn't exist, error
         if not base_dir.exists():
             raise FileNotFoundError(f".base_dir {base_dir} does not exist")
 
-        if sub_dir is not None:
-            full_sub_dir = base_dir / sub_dir
+        if dir is not None:
+            full_sub_dir = base_dir / dir
             # if subdir doesn't exist, make it
             full_sub_dir.mkdir(exist_ok=True)
             filepath = full_sub_dir / f"{self.clean_name}.pt"
+            print(filepath)
 
         else:
             filepath = base_dir / f"{self.clean_name}.pt"

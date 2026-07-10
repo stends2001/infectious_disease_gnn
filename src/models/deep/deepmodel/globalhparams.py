@@ -122,9 +122,10 @@ class DeepModelGlobalhParamsMixin:
 
     def _validate_global_hparams(self):        
         """validate global hyperparameters"""
-        if self.epiconfig.quantiles:
-            if self.loss.loss_name not in ['pinball','pinchpinball']:
-                raise ValueError('quantiles given to DeepModel, yet loss is not pinball.')
+        if self.epiconfig.quantiles is None:
+            if self.loss.loss_name in ('pinball', 'pinchball'):
+                raise ValueError(f"{self.loss.loss_name} may only be used when predicting quantiles")
+            
 
     def _get_optimizer(self, 
                        optimizer_name:  str, 

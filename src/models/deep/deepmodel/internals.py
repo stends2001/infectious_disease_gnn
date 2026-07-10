@@ -4,7 +4,6 @@ import os
 
 from ..strategies.basestrategy import Strategy
 from ...issues import DeviceWarning
-from ....utils.helpers import get_project_utilities_env
 
 class DeepModelInternalsMixin:
     """ 
@@ -25,7 +24,7 @@ class DeepModelInternalsMixin:
 
     def _set_models_directory(self):
         """sets model directory"""
-        base_dir = Path(os.path.join(get_project_utilities_env(), 'models')) 
+        base_dir = Path('data/experiment_outcomes')
         base_dir.mkdir(parents=True, exist_ok=True)
         
         self.models_dir = base_dir  
