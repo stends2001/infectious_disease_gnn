@@ -1,11 +1,12 @@
 import torch
 from torch import Tensor as Tensor
 import os
-from typing import Optional, Literal, cast, List
+from typing import Optional, Literal, cast
 from ..issues import DataEntryError
 from ....dataloading.epidataorchestration.orchestrator import EpiDataOrchestrator
 from .baseloader import DeepBaseDataLoaderManager
-from .datacontainers import GraphData, GraphDataList, GraphStructure
+from .datacontainers import GraphData, GraphDataList
+from ....graphconstruction import GraphObject
 
 from ....utils.helpers import get_project_utilities_env
 
@@ -17,13 +18,15 @@ class GraphDataLoaderManager(DeepBaseDataLoaderManager):
         self._graphmode: Optional[Literal['static','dynamic']] = None
         self.basedir = get_project_utilities_env()
     
-    def retrieve_static_graph(self, graphname: str, graphdirectory: str = 'graphs') -> 'GraphDataLoaderManager':
+    def retrieve_static_graph(self, graphname: str) -> 'GraphDataLoaderManager':
         """retrieves a static (opposed to dynamic) graph structure"""
-        graphpath = os.path.join(self.basedir, graphdirectory, self.dataorchestrator.config.country, self.dataorchestrator.config.level, graphname)
+
+        graphdir_parent = self.dataorchestrator.config.path_manager.tokenization_map.parent
+
+        graphpath   = os.path.join(str(graphdir_parent), graphname)
+        graphobject = GraphObject.load(graphpath)
         
-        edge_index      = torch.load(os.path.join(graphpath, 'edge_index.pt'), weights_only=False)
-        edge_weight     = torch.load(os.path.join(graphpath, 'edge_weight.pt'), weights_only=False)
-        graph_structure = GraphStructure(edge_index, edge_weight)
+        graph_structure = graphobject.graph
 
         self.graph      = graph_structure
         self._graphmode = 'static'

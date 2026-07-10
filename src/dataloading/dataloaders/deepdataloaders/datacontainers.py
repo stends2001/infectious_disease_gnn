@@ -1,5 +1,6 @@
 from torch import Tensor as Tensor
 import torch
+import numpy as np
 from typing import List
 from dataclasses import dataclass
 
@@ -96,28 +97,6 @@ class DeepDataList:
         )
         return f"{cls}({info})"      
 
-@dataclass 
-class GraphStructure:
-    """
-    edge_index:     torch.Tensor 
-    edge_weight:    torch.Tensor   
-    """
-    edge_index:     torch.Tensor 
-    edge_weight:    torch.Tensor    
-
-    def __post_init__(self):
-        if self.edge_index.shape[1] != len(self.edge_weight):
-            raise ValueError(
-                f"Incompatiable shapes of edge_index (len = {self.edge_index.shape[1]}) and edge_weight (len = {len(self.edge_weight)}) in GraphStructure"
-            )
-        
-        self.num_nodes      = len(self.edge_index[0].unique())
-        self.num_edges      = len(self.edge_index)
-    
-    def __repr__(self) -> str:
-        representation = f'<GraphStructure(num_nodes = {self.num_nodes}, num_edges = {len(self.edge_weight)})>'
-        return representation 
-
 class GraphData(DeepData):
     """
     An alternative to the Pytorch Data class for data-entries of X, y, edge_index and edge_weight
@@ -189,9 +168,9 @@ class GraphDataList:
     def __init__(self, data_list: List[GraphData]):
         self.data_list = data_list
 
-        self.__post_init_validate()
+        self._post_init_validate()
 
-    def __post_init_validate(self) -> None:
+    def _post_init_validate(self) -> None:
         """validate entry against expected shapes"""
         data_entry_validation_errors = []
         
