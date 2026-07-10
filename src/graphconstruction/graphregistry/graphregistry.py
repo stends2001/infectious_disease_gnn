@@ -72,17 +72,23 @@ class GraphRegistry:
 
     def rename_entry(self, current_graphname: str, new_graphname: str) -> None:
         """renames entry from current_graphname to new_graphname; current_graphname is removed"""        
+        if self._check_presence(current_graphname):
+            print(GraphEntryDoesntExist(current_graphname, self.entry_names))
+            return
+        
         if self._check_presence(new_graphname):
             print(GraphEntryAlreadyExists(new_graphname))
-        else:
-            self.add_entry(new_graphname, self._registry[current_graphname])
-            self.remove_entry(current_graphname)          
+            return 
+
+        self.add_entry(new_graphname, self._registry[current_graphname])
+        self.remove_entry(current_graphname)          
 
     def remove_entry(self, graphname) -> None:
         """removes entry from registry"""
         if not self._check_presence(graphname):
             print(GraphEntryDoesntExist(graphname, self.entry_names))
-
+            return 
+        
         del self._registry[graphname]
 
     def save_entry(self, graphname: str) -> None:
