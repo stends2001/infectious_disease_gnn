@@ -15,3 +15,7 @@ class ExperimentDirectoryInvalidError(Error):
 class InvalidModelNameError(Error):
     def __init__(self, message: str, *, code: str | None = None, context: str | None = None):
         super().__init__(message, code=code, context=context)      
+
+class MetricsException(Exception):
+    def __init__(self, msg: str):
+        super().__init__(msg)

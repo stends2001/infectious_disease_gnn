@@ -5,7 +5,7 @@ import os
 from .issues import DataLoaderManagerError, ExperimentDirectoryInvalidError
 from .containers import ExperimentDLMs, ExperimentConfig
 from ..dataloading.epiconfig import EpiConfig
-from ..utils.helpers import get_project_utilities_env
+from ..utils.pathmanager import PathManager
 from ..models.deep.deepmodel import DeepModel
 
 class ExperimentHandler:
@@ -13,7 +13,7 @@ class ExperimentHandler:
     Parent class of those that deal with experiments, namely:
     - ExperimentRunner
     - ExperimentLoader
-    - ExperimentAnalyzer(second degree; this is a sub-class to ExperimentLoader)
+        - ExperimentAnalyzer(second degree; this is a sub-class to ExperimentLoader)
     
     This parent class only deals with the paths based on the experiment_name.
     Also defines a `_get_dlm()` method which is shared among the subclasses.
@@ -46,43 +46,45 @@ class ExperimentHandler:
     - ExperimentConfig
     - ExperimentDLMs
     - ModelSpecs
-    """
-    
-    # class attributes: these are never different!
-    dataloadermanagers:         Optional[Dict[Union[int, str, float], ExperimentDLMs]] = None
-    epicfg:                     EpiConfig
+    """    
+    dataloadermanagers:         Optional[Dict[Union[int, str, float], ExperimentDLMs]] = None               # TODO
+    epicfg:                     EpiConfig           
     expcfg:                     ExperimentConfig
 
-    experiment_cfg_filename:    str = '_experiment_config.yaml'
+    expcfg_filename:            str = '_experiment_config.yaml'
     epicfg_filename:            str = '_epiconfig.yaml'
 
     def __init__(self, 
                  experiment_name: str,
                  verbose: int = 1):
         
-        self.experiment         = experiment_name
-        self.verbose            = verbose
-        self.experiment_dir     = self._get_exp_dir()
-        self.path_exist         = self._validate_exp_dir()          # set whether experiment already exists
-
-    def _get_exp_dir(self) -> Path:
-        return Path(get_project_utilities_env()) / "models" / self.experiment
-
-    def _validate_exp_dir(self) -> bool:
+        self.experiment          = experiment_name
+        self.verbose             = verbose
+        
+        # paths
+        self.pm                  = PathManager()
+        self.path_exp_root       = self.pm.exp_out
+        self.path_exp            = self.pm.exp_out / experiment_name
+        self.exp_exists          = self._exp_directory_exists()
+  
+    def _exp_directory_exists(self) -> bool:
         """
         Takes care of testing the integrity of experiment-directory.
         Returns a boolean whether or not directory already exists.
         if it does, also checks that the experiment_config and the epiconfig are present.
         """
-        if not os.path.exists(self.experiment_dir):
+        if not os.path.exists(self.path_exp_root):
+            raise ValueError('Experiment root not found')
+
+        if not os.path.exists(self.path_exp):
             return False
 
-        files_to_check = [self.experiment_cfg_filename, self.epicfg_filename]
+        files_to_check = [self.expcfg_filename, self.epicfg_filename]
         for ff in files_to_check:
-            if ff not in os.listdir(self.experiment_dir):
+            if ff not in os.listdir(self.path_exp):
                 raise ExperimentDirectoryInvalidError(f'directory {self.experiment} already exists, but {ff} was not found.')        
-        return True
-        
+        return True  
+
     def _get_dlm(self, modelclass: str, varvalue: Union[int, float, str], graphtype: Optional[str] = None):
         """Shared DLM lookup — identical in Runner and Loader."""
 
@@ -109,4 +111,4 @@ class ExperimentHandler:
         assert_never(expected_dlm)
 
     def __repr__(self) -> str:
-        return f"<{self.__class__.__name__}({self.experiment})>"
+        return f"<{self.__class__.__name__}({self.experiment})>"        

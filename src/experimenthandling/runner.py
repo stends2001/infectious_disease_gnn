@@ -32,25 +32,29 @@ class ExperimentRunner(ExperimentHandler):
             
     See Also
     --------
-    #### Parentclass
     For more information on basic experiment-handling-behaviour see parent class ExperimentHandler.
+
+    Examples
+    --------
     """
     def __init__(self,
-                epiconfig:        EpiConfig,
-                experimentconfig: ExperimentConfig,
-                verbose:          int):
+                 epiconfig:        EpiConfig,
+                 experimentconfig: ExperimentConfig,
+                 verbose:          int):
 
         super().__init__(experimentconfig.experiment_name, verbose)
 
         self.epicfg         = epiconfig
-        self.expcfg         = experimentconfig
+        self.expcfg         = experimentconfig       
+
+        # store the new values before merging; preventing new experiment addition from running everything.
+        # NOTE: the exp cfg saved contains that of previous sub-experiments, with the new variable added (`expcfg_to_save`).
+        # What's executed in this instance, however, is the specific expcfg inputed, saved as `expcfg`.
+        self.new_variable_values    = experimentconfig.variable_values
+        self.expcfg_to_save         = self._update_experiment_cfg(epiconfig, experimentconfig)    
+
         self._set_dlms()
-
-        # store the new values before merging; preventing new experiment addition from running everything
-        self.new_variable_values = experimentconfig.variable_values
-
-        experiment_cfg = self._update_experiment_cfg(epiconfig, experimentconfig)       
-    
+           
     # ======= METHODS ======= #
     def run(self, global_hparams: dict):
         """
@@ -60,6 +64,9 @@ class ExperimentRunner(ExperimentHandler):
         self._save_cfgs()
         
         graphlist = [None] if self.expcfg.graphs is None else self.expcfg.graphs
+
+        if self.verbose >= 1:
+            print('running models ...')
 
         for value in self.new_variable_values:
             for ml in self.expcfg.models:
@@ -80,6 +87,8 @@ class ExperimentRunner(ExperimentHandler):
                                     model.set_global_hparams(**global_hparams)
                                     model.train()
                                     model.save_model(dir=Path(self.experiment))
+                                    if self.verbose >= 2:
+                                        print(f'{modelname} saved')
 
                         case 'DeepDataLoaderManager':
                             modelname = self._get_model_name(ml, value, sd, None)
@@ -89,7 +98,12 @@ class ExperimentRunner(ExperimentHandler):
                                 model.set_global_hparams(**global_hparams)
                                 model.train()
                                 model.save_model(dir=Path(self.experiment))
-    
+                                if self.verbose >= 2:
+                                    print(f'{modelname} saved')
+
+        if self.verbose >= 1:
+            print('models ran')
+     
     # ======= HIDDEN METHODS ======== #
     def _update_experiment_cfg(self, new_epiconfig: EpiConfig , new_experimentconfig: ExperimentConfig) -> ExperimentConfig:
         """
@@ -97,11 +111,11 @@ class ExperimentRunner(ExperimentHandler):
         also for epiconfig, with pre-existing experiment-directory.
         """
         # if path does exist, save epiconfig and experimentconfig into pre-existing values (prex) and validate compatibility
-        if self.path_exist:
-            prex_cfg      = ExperimentConfig.load(self.experiment_dir / self.experiment_cfg_filename)
-            prex_epiconfig= EpiConfig.load_config(self.experiment_dir / self.epicfg_filename)
-            prex_epiconfig.assert_equals(new_epiconfig)
-            return prex_cfg.merge(new_experimentconfig)
+        if self.exp_exists:
+            current_expcfg      = ExperimentConfig.load(self.path_exp / self.expcfg_filename)
+            current_epicfg      = EpiConfig.load_config(self.path_exp / self.epicfg_filename)
+            current_epicfg.assert_equals(new_epiconfig)
+            return current_expcfg.merge(new_experimentconfig)
         
         # else, experimentconfig doesn't change
         else:
@@ -109,20 +123,24 @@ class ExperimentRunner(ExperimentHandler):
         
     def _set_dlms(self) -> None:
         """Only build dataloaders for the new variable values being run."""
+
+        if self.verbose > 0:
+            print('setting dlms ...')
+
         dataloader_managers_dict: Dict[Union[int, str, float], ExperimentDLMs] = {}
         variable = self.expcfg.variable
 
         for varvalue in self.new_variable_values:
-            cfg = self.epicfg.copy(**{variable: varvalue})
-            epo = EpiDataOrchestrator(cfg).build()
+            epicfg                  = self.epicfg.copy(**{variable: varvalue})
+            epidata_orchestrator    = EpiDataOrchestrator(epicfg).build()
 
             graphs_list = [] if self.expcfg.graphs is None else self.expcfg.graphs
 
             hl_dlms = ExperimentDLMs(
-                baseline = BaseLineDataLoaderManager(epo),
-                deep     = DeepDataLoaderManager(epo).build(),
+                baseline = BaseLineDataLoaderManager(epidata_orchestrator),
+                deep     = DeepDataLoaderManager(epidata_orchestrator).build(),
                 graphs   = {
-                    graph: GraphDataLoaderManager(epo)
+                    graph: GraphDataLoaderManager(epidata_orchestrator)
                             .retrieve_static_graph(graph)
                             .build()
                     for graph in graphs_list
@@ -131,6 +149,9 @@ class ExperimentRunner(ExperimentHandler):
             dataloader_managers_dict[varvalue] = hl_dlms
 
         self.dataloadermanagers = dataloader_managers_dict
+        
+        if self.verbose > 0:
+            print('dlms set')        
     
     def _load_model(self, modelname: str, childclass: Type['DeepModel'], value: Union[int, str, float], ml: str, graph: Optional[str]=None) -> 'DeepModel':
         """load instance of model"""
@@ -151,22 +172,24 @@ class ExperimentRunner(ExperimentHandler):
         return name
         
     def _save_cfgs(self) -> None:
-        """
-        saves ExperimentConfig and EpiConfig. 
-        Two options: experiment folder already exists, or it does not.
-        """
-        # if it does not exist, make it and save epiconfig.
-        if not self.path_exist:
-            os.mkdir(self.experiment_dir)
-            self.epicfg.save_config(self.experiment_dir / '_epiconfig.yaml') 
-        # save experimentconfig
-        self.expcfg.save_config(self.experiment_dir / '_experiment_config.yaml')        
-       
+        """save experiment config and epi config. If exp path doesnt yet exist, will be created here."""
+        if not self.exp_exists:
+            os.mkdir(self.path_exp)    
+            self.exp_exists          = True
+
+        log = self.verbose > 1
+
+        self.epicfg.save_config(self.path_exp / self.epicfg_filename, log) 
+        self.expcfg_to_save.save_config(self.path_exp / self.expcfg_filename, log)         
+        
     def _model_to_run(self, modelname: str) -> bool:
         """boolean on whether the modelname already exists or not."""
         saved_models = {
             os.path.splitext(f)[0] 
-            for f in os.listdir(self.experiment_dir) 
+            for f in os.listdir(self.path_exp) 
             if f.endswith('.pt')
         }
-        return modelname not in saved_models
+        if modelname in saved_models:
+            print(f'Weights for model {modelname} already exist')
+            return False
+        return True
