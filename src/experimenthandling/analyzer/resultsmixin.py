@@ -5,17 +5,19 @@ from scipy.stats import wilcoxon
 import seaborn as sns
 import matplotlib.pyplot as plt
 
-from ..issues import MetricsException
+from ..exceptions import MetricsException
 from ..containers import ExperimentConfig
 from ...dataloading.epidataorchestration import EpiDataOrchestrator
 
 class ResultsMixin:
     """
-    Mixin class to ExperimentAnalyzer.
+    Mixinclass to ExperimentAnalyzer that deals with the saving of metrics_df. 
 
     Methods
     -------
-    - `plot_metric_over_reference()`
+    - `summarize_absolute_metric()`
+    - `summarize_graph_advantage()`
+    - `plot_datasplit()`
     - `plot_graph_advantage()`
     """
     metrics_df:  Optional[pd.DataFrame]

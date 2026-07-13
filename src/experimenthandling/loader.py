@@ -2,7 +2,7 @@ from typing import List, Union, Dict, Optional
 import os
 from tqdm import tqdm
 
-from .issues import ExperimentDirectoryNotFoundError, InvalidModelNameError
+from .exceptions import ExperimentDirectoryNotFoundError, InvalidModelNameError
 from .handler import ExperimentHandler
 from .containers import ExperimentConfig, ExperimentDLMs
 from ..dataloading.epiconfig import EpiConfig
@@ -23,7 +23,7 @@ class ExperimentLoader(ExperimentHandler):
     Parent class of ExperimentAnalyzer
 
     Parameters
-    -------
+    ----------
     experiment_name: str
         name of the experiment. This string should be identical to the directory in which the models and configs are saved.
         From here, EpiConfig and ExperimentConfig are loaded.

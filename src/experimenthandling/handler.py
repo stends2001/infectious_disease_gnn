@@ -1,8 +1,7 @@
-from pathlib import Path 
 from typing import Optional, assert_never, Dict, Union 
 import os
 
-from .issues import DataLoaderManagerError, ExperimentDirectoryInvalidError
+from .exceptions import DataLoaderManagerError, ExperimentDirectoryInvalidError
 from .containers import ExperimentDLMs, ExperimentConfig
 from ..dataloading.epiconfig import EpiConfig
 from ..utils.pathmanager import PathManager
@@ -20,6 +19,7 @@ class ExperimentHandler:
         - ExperimentAnalyzer(second degree; this is a sub-class to ExperimentLoader)
     
     This parent class only deals with the paths based on the experiment_name.
+    This class should not be called in itself, but rather, its subclasses should.
     Also defines a `_get_dlm()` method which is shared among the subclasses.
 
     Parameters
@@ -73,17 +73,21 @@ class ExperimentHandler:
         Returns a boolean whether or not directory already exists.
         if it does, also checks that the experiment_config and the epiconfig are present.
         """
+        # validate that the root of experiments - paths exists
         if not os.path.exists(self.path_exp_root):
             raise PathNotFound(self.path_exp_root)
 
+        # test whether the path of the experiment already exists
         if not os.path.exists(self.path_exp):
             logger.debug("Experiment path %s doesn't exist.", self.path_exp)
             return False
 
+        # if the experiment-path already exists, an expcfg and an epicfg NEED TO BE present
         files_to_check = [self.expcfg_filename, self.epicfg_filename]
         for ff in files_to_check:
             if ff not in os.listdir(self.path_exp):
                 raise ExperimentDirectoryInvalidError(f'directory {self.experiment} already exists, but {ff} was not found.')        
+            
         logger.debug("Valid experiment path %s found.", self.path_exp)        
         return True  
 

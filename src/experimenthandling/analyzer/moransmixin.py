@@ -3,6 +3,14 @@ import numpy as np
 import pandas as pd
 
 class MoransAnalysisMixin:
+    """"
+    Mixinclass to ExperimentAnalyzer that deals with Moran's analysis. 
+
+    Methods
+    -------
+    - `global_morans_i_timeseries()`
+    - `local_morans_i_timeseries()` 
+    """
 
     def _morans_i(self, x: np.ndarray, W: np.ndarray) -> float:
         """

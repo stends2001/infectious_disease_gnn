@@ -1,12 +1,15 @@
 from typing import Optional 
 import pandas as pd 
 import os
-from ..issues import MetricsException
+from ..exceptions import MetricsException
 
 import logging
 logger = logging.getLogger(__name__)
 
 class MetricsDFStateMixin:
+    """"
+    Mixinclass to ExperimentAnalyzer that deals with the saving of metrics_df.  
+    """
 
     metrics_df:     Optional[pd.DataFrame]
     path_exp:       str

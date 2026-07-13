@@ -27,6 +27,11 @@ class ExperimentRunner(ExperimentHandler):
         by a range of values, the epiconfig must describe the entire experiment!
     experimentconfig: ExperimentConfig
         The config that covers the experiment.     
+    
+    Examples
+    --------
+    >>> runner = ExperimentRunner(base_cfg, experiment_cfg)
+    >>> runner.run(global_hparams) 
 
     Methods
     -------
@@ -36,9 +41,6 @@ class ExperimentRunner(ExperimentHandler):
     See Also
     --------
     For more information on basic experiment-handling-behaviour see parent class ExperimentHandler.
-
-    Examples
-    --------
     """
     def __init__(self,
                  epiconfig:        EpiConfig,

@@ -2,7 +2,7 @@ from typing import List, Union, Dict, Optional
 import pandas as pd
 from tqdm import tqdm
 
-from ..issues import DataLoaderManagerError
+from ..exceptions import DataLoaderManagerError
 
 from ..loader import ExperimentLoader
 from .metricsdfmixin import MetricsDFStateMixin
@@ -18,10 +18,47 @@ import logging
 logger = logging.getLogger(__name__)
 
 class ExperimentAnalyzer(ExperimentLoader, 
-                           MetricsDFStateMixin,
-                           ResultsMixin,
-                           MoransAnalysisMixin):
+                         MetricsDFStateMixin,
+                         ResultsMixin,
+                         MoransAnalysisMixin):
     """ 
+    Loads experiments and analyzes them too
+    First degree subclass of ExperimentAnalyzer
+    Second degree subclass of ExperimentHandler
+
+    Parameters
+    ----------
+    experiment_name: str
+        name of the experiment. This string should be identical to the directory in which the models and configs are saved.
+        From here, EpiConfig and ExperimentConfig are loaded.
+
+    Examples
+    --------
+    #### Loading and saving an experiment's metrics
+    >>> exp1a = ExperimentAnalyzer('experiment_1a')
+    >>> exp1a.compile_metrics()
+    >>> exp1a.save_metrics()
+
+    #### Loading earlier-used 
+    >>> exp1a = ExperimentAnalyzer('experiment_1a')
+    >>> exp1a.load_metrics()
+
+    Methods
+    -------
+    - `compile_metrics()`
+            
+    See Also
+    --------
+    #### Mixinclasses
+    - MetricsDFStateMixin: deals with saving/loading of metrics_df
+    - ResultsMixin: deals with plotting
+    - MoransAnalysisMixin: deals with Moran's analysis
+
+    #### Parentclass
+    ###### 1st degree 
+    For more information on basic experiment-loading-behaviour, see parent class ExperimentAnalyzer    
+    ###### 2nd degree
+    For more information on basic experiment-handling-behaviour, see parent class ExperimentHandler.      
     """
     evaluators: Dict[Union[int, str, float], Evaluator]
 
