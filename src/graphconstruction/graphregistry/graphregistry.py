@@ -1,10 +1,16 @@
-from typing import Union, List, Dict, Optional
+from typing import Union, List, Dict, Optional, Set
 from pathlib import Path 
 
-from .updates import * 
 from ..graphobjects import GraphObject
 from ...utils import PathNotFound
 
+import logging
+logger = logging.getLogger(__name__)
+
+class InvalidGraphName(Exception):
+    def __init__(self, graphname: str, supported_chars: Set[str]):
+        msg = f"Graphname '{graphname}' invalid. Supported characters are: {supported_chars}"
+        super().__init__(msg)
 
 class GraphRegistry:
     """
@@ -56,28 +62,28 @@ class GraphRegistry:
     def add_entry(self, graphname: str, entry: GraphObject) -> None:
         """adds entry to registry under graphname"""
         if self._check_presence(graphname):
-           print(GraphEntryAlreadyExists(graphname))
+            logger.warning("Graph '%s' already exists in registry; new graph not added.", graphname)           
 
         else:
             self._registry[graphname] = entry
-            print(GraphEntryRegistered(graphname))
+            logger.info("Graph '%s' registered.", graphname)
         
     def get_entry(self, graphname: str) -> Optional[GraphObject]:
         """returns entry from graphname"""
         if not self._check_presence(graphname):
-            print(GraphEntryDoesntExist(graphname, self.entry_names))
+            logger.warning("Graph '%s' could not be found in registry.", graphname)
         
         else:
             return self._registry[graphname]
 
     def rename_entry(self, current_graphname: str, new_graphname: str) -> None:
         """renames entry from current_graphname to new_graphname; current_graphname is removed"""        
-        if self._check_presence(current_graphname):
-            print(GraphEntryDoesntExist(current_graphname, self.entry_names))
+        if not self._check_presence(current_graphname):
+            logger.warning("Graph '%s' could not be found in registry.", current_graphname)
             return
         
         if self._check_presence(new_graphname):
-            print(GraphEntryAlreadyExists(new_graphname))
+            logger.warning("Graph '%s' already exists in registry; new graph not added.", new_graphname)
             return 
 
         self.add_entry(new_graphname, self._registry[current_graphname])
@@ -86,16 +92,18 @@ class GraphRegistry:
     def remove_entry(self, graphname) -> None:
         """removes entry from registry"""
         if not self._check_presence(graphname):
-            print(GraphEntryDoesntExist(graphname, self.entry_names))
+            logger.warning("Graph '%s' could not be found in registry.", graphname)
             return 
         
         del self._registry[graphname]
+        logger.info("Graph '%s' removed.", graphname)
 
     def save_entry(self, graphname: str) -> None:
         """save a graph entry from registry to `self.graph_partition_dir` / `graphname` """
         entry_to_save = self.get_entry(graphname)
         
         if entry_to_save is None:
+            # no need to log, already done in `get_entry()`
             return
 
         self._validate_graphentry_name(graphname)
@@ -103,7 +111,7 @@ class GraphRegistry:
         # save into partition (country / level) / graphname
         entry_to_save.save(self.graph_partition_dir / graphname)
 
-        print(GraphStructureSaved(graphname))
+        logger.info("Graph '%s' saved into path %s.", graphname, self.graph_partition_dir / graphname)
 
     def save_all_entries(self, confirm: bool = False) -> None:
         if not confirm:
@@ -134,7 +142,7 @@ class GraphRegistry:
         characters_allowed =  set("abcdefghijklmnopqrstuvwxyz0123456789_-")
 
         if any(ch not in characters_allowed for ch in graphname):
-            print(InvalidGraphName(graphname, characters_allowed))
+            InvalidGraphName(graphname, characters_allowed)
 
     def __repr__(self) -> str:
         registered_entries = ', '.join(self.entry_names)

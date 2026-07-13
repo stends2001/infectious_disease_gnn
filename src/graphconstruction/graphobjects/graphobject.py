@@ -7,8 +7,10 @@ from pathlib import Path
 from .graphconfig import GraphConfig
 from .graphstructure import GraphStructure
 from ..exceptions import InvalidGraphObject
+from ...utils.helpers import PathNotFound, load_mapping_dict, save_mapping_dict
 
-from ...utils import load_mapping_dict, save_mapping_dict
+import logging
+logger = logging.getLogger(__name__)
 
 @dataclass 
 class GraphObject:
@@ -70,6 +72,7 @@ class GraphObject:
         
         if self.tokenization_map_filename not in os.listdir(str(path.parent)):
             save_mapping_dict(self.tokenization_map, path.parent / self.tokenization_map_filename)
+            logger.info('Tokenization map saved under %s.', path.parent / self.tokenization_map_filename)
 
     @classmethod
     def load(cls, path: Union[str, Path]) -> Self:
@@ -78,11 +81,15 @@ class GraphObject:
         if isinstance(path, str):
             path = Path(path)
 
+        if not path.exists():
+            raise PathNotFound(path)
+
         graphconfig_dict= load_mapping_dict(path / "config.json")
         graphconfig     = GraphConfig.fromdict(graphconfig_dict)        
 
         edge_index      = torch.load(path / "edge_index.pt", weights_only=True)
         edge_weight     = torch.load(path / "edge_weight.pt", weights_only=True)
+        logger.info('Graph %s loaded from file.', path.stem)
 
         graphstructure  = GraphStructure(edge_index, edge_weight, graphconfig.num_nodes)
 

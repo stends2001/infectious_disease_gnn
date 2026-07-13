@@ -11,6 +11,15 @@ from ..graphobjects import GraphObject, GraphStructure, TopKConfig, GraphConfig
 from ...utils.pathmanager import PathManager
 from ...utils.types import GraphType, GraphNormType, Country, Level
 
+import logging
+logger = logging.getLogger(__name__)
+
+class InvalidPreviewInpu(Exception):
+
+    def __init__(self, msg: str):
+        msg = ""
+        super().__init__(msg)
+
 class GraphManager:
     """
     Main class used to construct graphs. The heavy lifting is outsourced to 'delegation classes'.
@@ -69,9 +78,11 @@ class GraphManager:
 
         if not self.dir_graphs_root.exists():
             self.dir_graphs_root.mkdir()
+            logger.info('directory %s created', self.dir_graphs_root)
 
         if not self.dir_graphs_partition.exists():
-            self.dir_graphs_partition.mkdir()            
+            self.dir_graphs_partition.mkdir()        
+            logger.info('directory %s created', self.dir_graphs_partition)                
 
         # ========= DELEGATION CLASSES ============ #
         self.graph_registry = GraphRegistry(self.dir_graphs_partition)
@@ -122,26 +133,32 @@ class GraphManager:
             topk_cfg,
             *args, **kwargs
         )
+        logger.info('Graph construction %s update: graphconfig made', graph_name)    
 
         # step 2: get edge_index and edge_weight as lists
         edge_index, edge_weight = self.builder.build(graph_type, *args, **kwargs)
+        logger.info('Graph construction %s update: raw graph created', graph_name)    
 
         # step 3: get raw graphstructure instance
         graph_structure         = GraphStructure.from_list(edge_index, edge_weight, self.num_nodes)
+        logger.info('Graph construction %s update: GraphStructure class initiated', graph_name)    
 
         # step 4: optionally, top k graph => select top k indices
         if top_k is not None:
             graph_structure     = self.postprocessor.filter_top_k(graph_structure, **top_k)   
+            logger.info('Graph construction %s update: top_k selection done', graph_name)         
 
         # step 5: normalize weights
         graph_structure         = self.postprocessor.normalize(graph_structure, normalization_method)
-        
+        logger.info('Graph construction %s update: edges normalized', graph_name)            
+
         # step 6: create graphobject
         graph_object = GraphObject(
             graph_structure, 
             self.tokenization_map,
             graphcfg
         )
+        logger.info('Graph construction %s update: GraphObject class initiated', graph_name)                
 
         # step 7: store graph in graph_registry
         self.graph_registry.add_entry(graph_name, graph_object)
@@ -215,46 +232,46 @@ class GraphManager:
 
                 # 'network' must use 'map' plot
                 case ('network', _, 'histogram', _, _):
-                    raise ValueError(
+                    raise InvalidPreviewInpu(
                         'Invalid combination of view arguments: '
                         'When variable == "network" plot_type must be "map"'
                     )
                 
                 # 'edge_weights' cannot be global map
                 case ('edge_weights', 'global', 'map', _, _):
-                    raise ValueError(
+                    raise InvalidPreviewInpu(
                         'Invalid combination of view arguments: '
                         'When variable == "edge_weights" and plot_type == "map", locality must be "local".'
                     )
                 
                 # local neighborhood must be provided
                 case (_, 'local', _, None, _):
-                    raise ValueError(
+                    raise InvalidPreviewInpu(
                         'Invalid combination of view arguments: '
                         'When locality == "local", neighborhood must be supplied.'
                     )
             
                 # local neighborhood_type must be provided
                 case (_, 'local', _, _, None):
-                    raise ValueError(
+                    raise InvalidPreviewInpu(
                         'Invalid combination of view arguments: '
                         'When locality == "local", connections_type must be supplied.'
                     )
                 
                 # strength in a local setting doesn't make any sense
                 case ('strength' | 'strength_vs_degree', 'local', _, _, _):
-                    raise ValueError(
+                    raise InvalidPreviewInpu(
                         'Invalid combination of view arguments: '
                         'strength is meaningless with locality == "local"'
                     )      
 
                 case ('degree', 'local', _, _, _):
-                    raise ValueError(
+                    raise InvalidPreviewInpu(
                             "'degree' map is only meaningful with locality='global'. "
                             "Use ('edge_weights', 'map') with locality='local' to inspect a specific neighborhood."
                         )      
                 case ('edge_weights', 'global', _, _, 'in' | 'out'):          
-                        raise ValueError(
+                        raise InvalidPreviewInpu(
                             'Invalid combination of arguments. ' \
                             'Edge-weights-distribution globally of a connection type is meaningless. Globally, in-connections = out-connections.')
                 # anything else is valid
