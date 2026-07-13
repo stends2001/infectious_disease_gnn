@@ -92,27 +92,41 @@ class ExperimentRunner(ExperimentHandler):
                         case 'GraphDataLoaderManager':
                             for graph in graphlist:
                                 modelname = self._get_model_name(ml, value, sd, graph)
-                                if self._model_to_run(modelname):
-                                    model = self._load_model(modelname, childclass, value, ml, graph)
-                                    model.set_model_hparams()
-                                    model.set_global_hparams(**global_hparams)
-                                    model.train()
-                                    model.save_model(dir=Path(self.experiment))
-                                    logger.info("model %s trained and saved in %s", modelname, Path(self.experiment))
+                                self._train_and_save_model(modelname, childclass, value, ml, global_hparams, graph)
 
                         case 'DeepDataLoaderManager':
                             modelname = self._get_model_name(ml, value, sd, None)
-                            if self._model_to_run(modelname):
-                                model = self._load_model(modelname, childclass, value, ml)
-                                model.set_model_hparams()
-                                model.set_global_hparams(**global_hparams)
-                                model.train()
-                                model.save_model(dir=Path(self.experiment))
-                                logger.info("model %s trained and saved in %s", modelname, Path(self.experiment))
+                            self._train_and_save_model(modelname, childclass, value, ml, global_hparams, None)
 
         logger.info("Models done training")
      
     # ======= HIDDEN METHODS ======== #
+    def _train_and_save_model(self, 
+                              modelname: str, 
+                              childclass: Type['DeepModel'], 
+                              value: Union[int, str, float], 
+                              ml: str, 
+                              global_hparams: dict, 
+                              graph: Optional[str]):
+        """
+        loads, trains and saves single model
+        """
+        if not self._model_to_run(modelname):
+            return
+
+        model = self._load_model(modelname, childclass, value, ml, graph)
+
+        model.set_model_hparams()
+        model.set_global_hparams(**global_hparams)
+        model.train()
+        model.save_model(dir=Path(self.experiment))
+
+        logger.info(
+            "Model %s trained and saved in %s",
+            modelname,
+            Path(self.experiment),
+        )
+
     def _update_experiment_cfg(self, new_epiconfig: EpiConfig , new_experimentconfig: ExperimentConfig) -> ExperimentConfig:
         """
         updates ExperimentConfig instance if necessary. Validates compatibility, 
@@ -159,7 +173,7 @@ class ExperimentRunner(ExperimentHandler):
         
         logger.info('Dataloadermanagers set')
     
-    def _load_model(self, modelname: str, childclass: Type['DeepModel'], value: Union[int, str, float], ml: str, graph: Optional[str]=None) -> 'DeepModel':
+    def _load_model(self, modelname: str, childclass: Type['DeepModel'], value: Union[int, str, float], ml: str, graph: Optional[str]) -> 'DeepModel':
         """load instance of model"""
         dlm = self._get_dlm(ml, value, graph)                       # graph=None for DeepDataLoaderManager
         return childclass(name=modelname, dataloadermanager=dlm)    # type: ignore
