@@ -1,6 +1,6 @@
 from dataclasses import dataclass 
 import torch 
-from typing import Dict, Any, Self, Union
+from typing import Dict, Self, Union, ClassVar
 import os 
 from pathlib import Path 
 
@@ -40,13 +40,14 @@ class GraphObject:
     tokenization_map:   Dict[str, int]   
     config:             GraphConfig
 
+    # these are class variables (has to be typed explicitly as ClassVar when in dataclasses)
+    edge_index_filename:            ClassVar[str] = 'edge_index.pt'
+    edge_weight_filename:           ClassVar[str] = 'edge_weight.pt'
+    graphconfig_filename:           ClassVar[str] = 'config.json'
+    tokenization_map_filename:      ClassVar[str] = 'tokenization_map.json'
+
     def __post_init__(self):
         self._validate()
-
-        self.edge_index_filename        = 'edge_index.pt'
-        self.edge_weight_filename       = 'edge_weight.pt'
-        self.graphconfig_filename       = 'config.json'
-        self.tokenization_map_filename  = 'tokenization_map.json'
 
     def save(self, path: Union[str, Path]):
         """ 
@@ -81,19 +82,31 @@ class GraphObject:
         if isinstance(path, str):
             path = Path(path)
 
+        # validate path-existence
         if not path.exists():
             raise PathNotFound(path)
 
-        graphconfig_dict= load_mapping_dict(path / "config.json")
+        # validate Tokenization map's path
+        tokenization_map_path = path.parent / cls.tokenization_map_filename
+        if not tokenization_map_path.exists():
+            raise PathNotFound(tokenization_map_path)            
+
+        # validate specific files' presence
+        for ff in [cls.graphconfig_filename, cls.edge_index_filename, cls.edge_weight_filename]:
+            filepath  = path / ff
+            if not filepath.exists():
+                raise PathNotFound(filepath)                
+
+        graphconfig_dict= load_mapping_dict(path / cls.graphconfig_filename)
         graphconfig     = GraphConfig.fromdict(graphconfig_dict)        
 
-        edge_index      = torch.load(path / "edge_index.pt", weights_only=True)
-        edge_weight     = torch.load(path / "edge_weight.pt", weights_only=True)
+        edge_index      = torch.load(path / cls.edge_index_filename, weights_only=True)
+        edge_weight     = torch.load(path / cls.edge_weight_filename, weights_only=True)
         logger.info('Graph %s loaded from file.', path.stem)
 
         graphstructure  = GraphStructure(edge_index, edge_weight, graphconfig.num_nodes)
 
-        tokenization_map: Dict[str, int]= load_mapping_dict(path.parent / 'tokenization_map.json')
+        tokenization_map: Dict[str, int]= load_mapping_dict(path.parent / cls.tokenization_map_filename)
 
         return cls(graphstructure, tokenization_map, graphconfig)
 
