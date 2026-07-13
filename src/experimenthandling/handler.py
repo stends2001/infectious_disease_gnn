@@ -6,7 +6,11 @@ from .issues import DataLoaderManagerError, ExperimentDirectoryInvalidError
 from .containers import ExperimentDLMs, ExperimentConfig
 from ..dataloading.epiconfig import EpiConfig
 from ..utils.pathmanager import PathManager
+from ..utils.helpers import PathNotFound
 from ..models.deep.deepmodel import DeepModel
+
+import logging
+logger = logging.getLogger(__name__)
 
 class ExperimentHandler:
     """ 
@@ -22,9 +26,7 @@ class ExperimentHandler:
     ----------
     experiment_name: str 
         name of the experiment. This string should be identical to the directory in which the models
-        and configs are saved.
-    verbose: int
-        the level to which output/updates are to be returned.        
+        and configs are saved.     
     
     Methods
     -------
@@ -55,11 +57,9 @@ class ExperimentHandler:
     epicfg_filename:            str = '_epiconfig.yaml'
 
     def __init__(self, 
-                 experiment_name: str,
-                 verbose: int = 1):
+                 experiment_name: str):
         
         self.experiment          = experiment_name
-        self.verbose             = verbose
         
         # paths
         self.pm                  = PathManager()
@@ -74,15 +74,17 @@ class ExperimentHandler:
         if it does, also checks that the experiment_config and the epiconfig are present.
         """
         if not os.path.exists(self.path_exp_root):
-            raise ValueError('Experiment root not found')
+            raise PathNotFound(self.path_exp_root)
 
         if not os.path.exists(self.path_exp):
+            logger.debug("Experiment path %s doesn't exist.", self.path_exp)
             return False
 
         files_to_check = [self.expcfg_filename, self.epicfg_filename]
         for ff in files_to_check:
             if ff not in os.listdir(self.path_exp):
                 raise ExperimentDirectoryInvalidError(f'directory {self.experiment} already exists, but {ff} was not found.')        
+        logger.debug("Valid experiment path %s found.", self.path_exp)        
         return True  
 
     def _get_dlm(self, modelclass: str, varvalue: Union[int, float, str], graphtype: Optional[str] = None):
@@ -106,7 +108,7 @@ class ExperimentHandler:
                 return self.dataloadermanagers[varvalue].graphs[graphtype]
         
             case "BaseLineDataLoaderManager":
-                raise ValueError("Baseline models should not be loaded via experiment runner")
+                raise DataLoaderManagerError("Baseline models should not be loaded via experiment runner")
         
         assert_never(expected_dlm)
 

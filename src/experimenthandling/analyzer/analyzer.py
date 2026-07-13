@@ -2,8 +2,10 @@ from typing import List, Union, Dict, Optional
 import pandas as pd
 from tqdm import tqdm
 
+from ..issues import DataLoaderManagerError
+
 from ..loader import ExperimentLoader
-from .metricxdfmixin import MetricsDFStateMixin
+from .metricsdfmixin import MetricsDFStateMixin
 from .resultsmixin import ResultsMixin
 from .moransmixin import MoransAnalysisMixin
 
@@ -11,6 +13,9 @@ from ...models.base.basemodel import BaseModel
 from ...evaluation import Evaluator
 from ...models import PersistenceModel, ClimateologyModel
 from ...dataloading.epidataorchestration import EpiDataOrchestrator
+
+import logging
+logger = logging.getLogger(__name__)
 
 class ExperimentAnalyzer(ExperimentLoader, 
                            MetricsDFStateMixin,
@@ -20,19 +25,19 @@ class ExperimentAnalyzer(ExperimentLoader,
     """
     evaluators: Dict[Union[int, str, float], Evaluator]
 
+    metrics_df_filename = 'metrics.csv'
 
     def __init__(self, 
-                 experiment_name:   str,
-                 verbose:           int = 1):
+                 experiment_name:   str):
         
-        super().__init__(experiment_name, verbose)            
+        super().__init__(experiment_name)            
         
         self.epidataorchestrators               = self._get_dataorchs() 
         self.metrics_df: Optional[pd.DataFrame] = None
         self.metrics_to_calculate: Optional[List[str]] = None
         self.variable_alias  = self.expcfg.variable_alias    # the alias of this variable
 
-    def compile_metrics(self):
+    def compile_metrics(self, show_progress: bool = False):
         """
         Evaluate all models across horizons and return flat metrics dataframe.
         Adds columns: horizon, seed, model_type, graph, model_color
@@ -48,7 +53,14 @@ class ExperimentAnalyzer(ExperimentLoader,
 
 
         # Get metrics iteratively per varvalue, model-wise
-        iterator = tqdm(self.models.items(), desc = f'compiling evaluators per value of {self.variable_alias}')
+        iterator = self.models.items()
+
+        if show_progress:
+            iterator = tqdm(
+                iterator,
+                desc=f"Compiling evaluators per value of {self.variable_alias}",
+                total=len(self.models),
+            )
 
         for varvalue, models in iterator:
 
@@ -67,23 +79,28 @@ class ExperimentAnalyzer(ExperimentLoader,
         metrics_df['model_color'] = metrics_df['model'].replace(self.model_colors) 
 
         self.metrics_df = metrics_df
+        logger.info('metrics compiled')
 
     # ========= HIDDEN METHODS ========= #
     def _get_dataorchs(self) -> Dict[Union[int, str, float], EpiDataOrchestrator]:
         """extracts the epidataorchestrators from the `dlms`"""
         if self.dataloadermanagers is None:
-            raise ValueError('no dataloadermanagers found')
+            raise DataLoaderManagerError('no dataloadermanagers found')
         
         return {
             varvalue: self.dataloadermanagers[varvalue].baseline.dataorchestrator 
                   for varvalue in self.dataloadermanagers}
 
     def _merge_and_process_metrics(self, all_metrics: List[pd.DataFrame]) -> pd.DataFrame:
+        """merge all varvalue - individual metric dfs and get the right order of columns"""
         mgd_metrics_df          = pd.concat(all_metrics, ignore_index=True)        
         model_name_remapping    = self._map_modelnames(list(mgd_metrics_df['model'].unique()))
         mgd_metrics_df['model'] = mgd_metrics_df['model'].replace(model_name_remapping)
+        
         assert self.metrics_to_calculate is not None
-        return mgd_metrics_df[['model','node', self.variable_alias] + self.metrics_to_calculate]
+        column_order = ['model','node', self.variable_alias] + self.metrics_to_calculate
+        
+        return mgd_metrics_df[column_order]
 
     def _get_varvalue_models(self, models: List[BaseModel], varvalue: int | str | float) -> List[BaseModel]:
         """returns a list of models: not just the experimented one (seediwse) but also baseline ones."""
@@ -114,7 +131,7 @@ class ExperimentAnalyzer(ExperimentLoader,
         Evaluator
             much of the work is done by this class
         """
-        evaluator  = Evaluator(models, verbose = self.verbose)
+        evaluator  = Evaluator(models)
         evaluator.add_evaluation(horizon=0, dataset='test')
         self.evaluators[varvalue] = evaluator     
 

@@ -13,6 +13,9 @@ from ..dataloading.dataloaders import BaseLineDataLoaderManager, DeepDataLoaderM
 from .containers import ExperimentConfig, ModelSpecs
 from ..dataloading.dataloaders import DeepDataLoaderManager, GraphDataLoaderManager
 
+import logging
+logger = logging.getLogger(__name__)
+
 class ExperimentLoader(ExperimentHandler):
     """ 
     Loads experiments
@@ -24,8 +27,6 @@ class ExperimentLoader(ExperimentHandler):
     experiment_name: str
         name of the experiment. This string should be identical to the directory in which the models and configs are saved.
         From here, EpiConfig and ExperimentConfig are loaded.
-    verbose: int
-        the level to which output/updates are to be returned.
 
     Methods
     -------
@@ -38,10 +39,9 @@ class ExperimentLoader(ExperimentHandler):
     For more information on basic experiment-handling-behaviour see parent class ExperimentHandler.    
     """
     def __init__(self, 
-                 experiment_name: str,
-                 verbose:         int = 1):
+                 experiment_name: str):
         
-        super().__init__(experiment_name, verbose)     
+        super().__init__(experiment_name)     
 
         if not self.exp_exists:
             raise ExperimentDirectoryNotFoundError(f'directory for {experiment_name} not found under\n{self.path_exp}')
@@ -52,7 +52,7 @@ class ExperimentLoader(ExperimentHandler):
         self._set_dlms()
 
     # ======= METHODS =========== #
-    def load_models(self) -> None:
+    def load_models(self, show_progress: bool = False) -> None:
         """ 
         returns a dictionary with values of the variable in key, and the list
         of models in value.
@@ -70,10 +70,11 @@ class ExperimentLoader(ExperimentHandler):
 
         results: Dict[Union[int, str, float], List[BaseModel]] = {}
 
-        if self.verbose > 0:
-            print('loading models ...')
+        logger.info('Loading models ...')
 
-        for varvalue in varvalues:
+        iterator = varvalues if not show_progress else tqdm(varvalues, desc="Loading models per varvalue")
+
+        for varvalue in iterator:
 
             files = [
                 f for f in os.listdir(self.path_exp)
@@ -86,29 +87,27 @@ class ExperimentLoader(ExperimentHandler):
                 try:
                     spec    = self._parse_filename(fname)
                     dlm     = self._get_dlm(spec.model, spec.variable_value, spec.graph)
-                    model   = self._load_model(spec, dlm)
+                    model   = self._load_single_model(spec, dlm)
                     model.forecast()
                     models.append(model)
 
                 except Exception as e:
-                    print(f"✗ Couldn't find {fname}: {e}")
+                    logger.warning('Model %s could not be found', fname)
 
             results[varvalue] = models
 
-        if self.verbose > 1:
-            print('models loaded')
+        logger.info('Models loaded')
 
         self.models = results
 
     # ========= HIDDEN METHODS ======== #
     def _set_dlms(self) -> None:
         """Shared dataloader construction — called by Runner and Loader. Sets dlms into `dlms`."""
-        dataloadermanagers: Dict[int | str | float, ExperimentDLMs] = {}
+        dataloadermanagers: Dict[Union[int, str, float], ExperimentDLMs] = {}
         variable  = self.expcfg.variable
         varvalues = self.expcfg.variable_values
 
-        if self.verbose >= 1:
-            print('setting dlms ...')
+        logger.info('Setting dataloadermanagers ...')
 
         for varvalue in varvalues:
             cfg = self.epicfg.copy(**{variable: varvalue})
@@ -132,18 +131,17 @@ class ExperimentLoader(ExperimentHandler):
 
         self.dataloadermanagers = dataloadermanagers   
 
-        if self.verbose >= 1:
-            print('dlms set')        
+        logger.info('Dataloadermanagers set')
 
     def _load_experiment_config(self) -> 'ExperimentConfig':
         """returns ExperimentConfig"""
-        return ExperimentConfig.load(self.path_exp / self.expcfg_filename, self.verbose > 1)
+        return ExperimentConfig.load(self.path_exp / self.expcfg_filename)
     
     def _load_epiconfig(self) -> 'EpiConfig':
         """returns EpiConfig"""
-        return EpiConfig.load_config(self.path_exp / self.epicfg_filename, self.verbose > 1)        
+        return EpiConfig.load_config(self.path_exp / self.epicfg_filename)        
         
-    def _load_model(self, 
+    def _load_single_model(self, 
                     specs: ModelSpecs, 
                     dlm: Union[DeepDataLoaderManager, GraphDataLoaderManager]) -> DeepModel:
         """ 
@@ -151,12 +149,14 @@ class ExperimentLoader(ExperimentHandler):
         """
         modeltype = f"{specs.model}model"
         childclass = DeepModel._childclasses[modeltype]
-
-        return childclass.load_model(
+        loaded_model = childclass.load_model(
             model_name          = specs.name,
             subdir              = str(self.path_exp),
             dataloadermanager   = dlm,
         )
+
+        logger.info("model %s loaded", specs.name)
+        return loaded_model
 
     def _parse_filename(self, filename: str) -> ModelSpecs:
         """ 

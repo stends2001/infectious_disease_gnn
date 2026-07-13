@@ -1,20 +1,18 @@
-from ..issues import Error
+class DataLoaderManagerError(Exception):
+    def __init__(self, message: str):
+        super().__init__(message)       
 
-class DataLoaderManagerError(Error):
-    def __init__(self, message: str, *, code: str | None = None, context: str | None = None):
-        super().__init__(message, code=code, context=context)       
+class ExperimentDirectoryNotFoundError(Exception):
+    def __init__(self, message: str):
+        super().__init__(message)       
 
-class ExperimentDirectoryNotFoundError(Error):
-    def __init__(self, message: str, *, code: str | None = None, context: str | None = None):
-        super().__init__(message, code=code, context=context)       
+class ExperimentDirectoryInvalidError(Exception):
+    def __init__(self, message: str):
+        super().__init__(message)      
 
-class ExperimentDirectoryInvalidError(Error):
-    def __init__(self, message: str, *, code: str | None = None, context: str | None = None):
-        super().__init__(message, code=code, context=context)      
-
-class InvalidModelNameError(Error):
-    def __init__(self, message: str, *, code: str | None = None, context: str | None = None):
-        super().__init__(message, code=code, context=context)      
+class InvalidModelNameError(Exception):
+    def __init__(self, message: str):
+        super().__init__(message)      
 
 class MetricsException(Exception):
     def __init__(self, msg: str):

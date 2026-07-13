@@ -1,6 +1,8 @@
 from pathlib import Path 
 from typing import Optional, Union, Dict, Type
 import os
+from itertools import product
+from tqdm import tqdm
 
 from .handler import ExperimentHandler
 from .containers import ExperimentConfig
@@ -9,6 +11,9 @@ from ..dataloading.epidataorchestration import EpiDataOrchestrator
 from ..models.deep.deepmodel import DeepModel
 from .containers import ExperimentConfig, ExperimentDLMs
 from ..dataloading.dataloaders import BaseLineDataLoaderManager, DeepDataLoaderManager, GraphDataLoaderManager
+
+import logging
+logger = logging.getLogger(__name__)
 
 class ExperimentRunner(ExperimentHandler):
     """ 
@@ -21,9 +26,7 @@ class ExperimentRunner(ExperimentHandler):
         The base-epiconfig for the experiment. With the exception of the variable that is experimented with,
         by a range of values, the epiconfig must describe the entire experiment!
     experimentconfig: ExperimentConfig
-        The config that covers the experiment.
-    verbose: int
-        the level to which output/updates are to be returned.        
+        The config that covers the experiment.     
 
     Methods
     -------
@@ -39,10 +42,9 @@ class ExperimentRunner(ExperimentHandler):
     """
     def __init__(self,
                  epiconfig:        EpiConfig,
-                 experimentconfig: ExperimentConfig,
-                 verbose:          int):
+                 experimentconfig: ExperimentConfig,):
 
-        super().__init__(experimentconfig.experiment_name, verbose)
+        super().__init__(experimentconfig.experiment_name)
 
         self.epicfg         = epiconfig
         self.expcfg         = experimentconfig       
@@ -56,7 +58,7 @@ class ExperimentRunner(ExperimentHandler):
         self._set_dlms()
            
     # ======= METHODS ======= #
-    def run(self, global_hparams: dict):
+    def run(self, global_hparams: dict, show_progress: bool = False):
         """
         Main function; runs the experiment
         Feed in global_hparams for deepmodel instances
@@ -65,11 +67,18 @@ class ExperimentRunner(ExperimentHandler):
         
         graphlist = [None] if self.expcfg.graphs is None else self.expcfg.graphs
 
-        if self.verbose >= 1:
-            print('running models ...')
+        logger.info("Models training ...")
 
-        for value in self.new_variable_values:
-            for ml in self.expcfg.models:
+        iterator = product(self.new_variable_values, self.expcfg.models)
+
+        if show_progress:
+            iterator =  tqdm(
+                iterator,
+                total=len(self.new_variable_values) * len(self.expcfg.models),
+                desc="Training models",
+            )
+
+        for value, ml in iterator:
                 
                 modeltype  = f"{ml}model"
                 childclass = DeepModel._childclasses[modeltype]
@@ -87,8 +96,7 @@ class ExperimentRunner(ExperimentHandler):
                                     model.set_global_hparams(**global_hparams)
                                     model.train()
                                     model.save_model(dir=Path(self.experiment))
-                                    if self.verbose >= 2:
-                                        print(f'{modelname} saved')
+                                    logger.info("model %s trained and saved in %s", modelname, Path(self.experiment))
 
                         case 'DeepDataLoaderManager':
                             modelname = self._get_model_name(ml, value, sd, None)
@@ -98,11 +106,9 @@ class ExperimentRunner(ExperimentHandler):
                                 model.set_global_hparams(**global_hparams)
                                 model.train()
                                 model.save_model(dir=Path(self.experiment))
-                                if self.verbose >= 2:
-                                    print(f'{modelname} saved')
+                                logger.info("model %s trained and saved in %s", modelname, Path(self.experiment))
 
-        if self.verbose >= 1:
-            print('models ran')
+        logger.info("Models done training")
      
     # ======= HIDDEN METHODS ======== #
     def _update_experiment_cfg(self, new_epiconfig: EpiConfig , new_experimentconfig: ExperimentConfig) -> ExperimentConfig:
@@ -124,8 +130,7 @@ class ExperimentRunner(ExperimentHandler):
     def _set_dlms(self) -> None:
         """Only build dataloaders for the new variable values being run."""
 
-        if self.verbose > 0:
-            print('setting dlms ...')
+        logger.info('Setting dataloadermanagers ...')
 
         dataloader_managers_dict: Dict[Union[int, str, float], ExperimentDLMs] = {}
         variable = self.expcfg.variable
@@ -150,8 +155,7 @@ class ExperimentRunner(ExperimentHandler):
 
         self.dataloadermanagers = dataloader_managers_dict
         
-        if self.verbose > 0:
-            print('dlms set')        
+        logger.info('Dataloadermanagers set')
     
     def _load_model(self, modelname: str, childclass: Type['DeepModel'], value: Union[int, str, float], ml: str, graph: Optional[str]=None) -> 'DeepModel':
         """load instance of model"""
@@ -175,12 +179,15 @@ class ExperimentRunner(ExperimentHandler):
         """save experiment config and epi config. If exp path doesnt yet exist, will be created here."""
         if not self.exp_exists:
             os.mkdir(self.path_exp)    
+            logger.info("Experiment path made at %s", self.path_exp)
             self.exp_exists          = True
 
-        log = self.verbose > 1
 
-        self.epicfg.save_config(self.path_exp / self.epicfg_filename, log) 
-        self.expcfg_to_save.save_config(self.path_exp / self.expcfg_filename, log)         
+        self.epicfg.save_config(self.path_exp / self.epicfg_filename) 
+        logger.info("EpiConfig saved into %s", self.path_exp / self.epicfg_filename)
+
+        self.expcfg_to_save.save_config(self.path_exp / self.expcfg_filename)        
+        logger.info("ExperimentConfig saved into %s", self.path_exp / self.epicfg_filename)
         
     def _model_to_run(self, modelname: str) -> bool:
         """boolean on whether the modelname already exists or not."""
