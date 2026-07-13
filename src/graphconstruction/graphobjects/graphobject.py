@@ -78,6 +78,15 @@ class GraphObject:
     @classmethod
     def load(cls, path: Union[str, Path]) -> Self:
         """
+        Loads an instance of itself based on supplied path.
+        That is, the graph-folder name containing the files:
+        - `config.json`
+        - `edge_index.pt`
+        - `edge_weight.pt`
+
+        Returns
+        -------
+        An instance of GraphObject
         """
         if isinstance(path, str):
             path = Path(path)
