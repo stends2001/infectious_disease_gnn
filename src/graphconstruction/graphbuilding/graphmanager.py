@@ -14,10 +14,9 @@ from ...utils.types import GraphType, GraphNormType, Country, Level
 import logging
 logger = logging.getLogger(__name__)
 
-class InvalidPreviewInpu(Exception):
+class InvalidPreviewInput(Exception):
 
     def __init__(self, msg: str):
-        msg = ""
         super().__init__(msg)
 
 class GraphManager:
@@ -232,46 +231,46 @@ class GraphManager:
 
                 # 'network' must use 'map' plot
                 case ('network', _, 'histogram', _, _):
-                    raise InvalidPreviewInpu(
+                    raise InvalidPreviewInput(
                         'Invalid combination of view arguments: '
                         'When variable == "network" plot_type must be "map"'
                     )
                 
                 # 'edge_weights' cannot be global map
                 case ('edge_weights', 'global', 'map', _, _):
-                    raise InvalidPreviewInpu(
+                    raise InvalidPreviewInput(
                         'Invalid combination of view arguments: '
                         'When variable == "edge_weights" and plot_type == "map", locality must be "local".'
                     )
                 
                 # local neighborhood must be provided
                 case (_, 'local', _, None, _):
-                    raise InvalidPreviewInpu(
+                    raise InvalidPreviewInput(
                         'Invalid combination of view arguments: '
                         'When locality == "local", neighborhood must be supplied.'
                     )
             
                 # local neighborhood_type must be provided
                 case (_, 'local', _, _, None):
-                    raise InvalidPreviewInpu(
+                    raise InvalidPreviewInput(
                         'Invalid combination of view arguments: '
                         'When locality == "local", connections_type must be supplied.'
                     )
                 
                 # strength in a local setting doesn't make any sense
                 case ('strength' | 'strength_vs_degree', 'local', _, _, _):
-                    raise InvalidPreviewInpu(
+                    raise InvalidPreviewInput(
                         'Invalid combination of view arguments: '
                         'strength is meaningless with locality == "local"'
                     )      
 
                 case ('degree', 'local', _, _, _):
-                    raise InvalidPreviewInpu(
+                    raise InvalidPreviewInput(
                             "'degree' map is only meaningful with locality='global'. "
                             "Use ('edge_weights', 'map') with locality='local' to inspect a specific neighborhood."
                         )      
                 case ('edge_weights', 'global', _, _, 'in' | 'out'):          
-                        raise InvalidPreviewInpu(
+                        raise InvalidPreviewInput(
                             'Invalid combination of arguments. ' \
                             'Edge-weights-distribution globally of a connection type is meaningless. Globally, in-connections = out-connections.')
                 # anything else is valid

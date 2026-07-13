@@ -142,7 +142,7 @@ class GraphRegistry:
         characters_allowed =  set("abcdefghijklmnopqrstuvwxyz0123456789_-")
 
         if any(ch not in characters_allowed for ch in graphname):
-            InvalidGraphName(graphname, characters_allowed)
+            raise InvalidGraphName(graphname, characters_allowed)
 
     def __repr__(self) -> str:
         registered_entries = ', '.join(self.entry_names)
