@@ -132,24 +132,24 @@ class GraphManager:
             topk_cfg,
             *args, **kwargs
         )
-        logger.info('Graph construction %s update: graphconfig made', graph_name)    
+        logger.debug('Graph construction %s update: graphconfig made', graph_name)    
 
         # step 2: get edge_index and edge_weight as lists
         edge_index, edge_weight = self.builder.build(graph_type, *args, **kwargs)
-        logger.info('Graph construction %s update: raw graph created', graph_name)    
+        logger.debug('Graph construction %s update: raw graph created', graph_name)    
 
         # step 3: get raw graphstructure instance
         graph_structure         = GraphStructure.from_list(edge_index, edge_weight, self.num_nodes)
-        logger.info('Graph construction %s update: GraphStructure class initiated', graph_name)    
+        logger.debug('Graph construction %s update: GraphStructure class initiated', graph_name)    
 
         # step 4: optionally, top k graph => select top k indices
         if top_k is not None:
             graph_structure     = self.postprocessor.filter_top_k(graph_structure, **top_k)   
-            logger.info('Graph construction %s update: top_k selection done', graph_name)         
+            logger.debug('Graph construction %s update: top_k selection done', graph_name)         
 
         # step 5: normalize weights
         graph_structure         = self.postprocessor.normalize(graph_structure, normalization_method)
-        logger.info('Graph construction %s update: edges normalized', graph_name)            
+        logger.debug('Graph construction %s update: edges normalized', graph_name)            
 
         # step 6: create graphobject
         graph_object = GraphObject(
@@ -157,7 +157,8 @@ class GraphManager:
             self.tokenization_map,
             graphcfg
         )
-        logger.info('Graph construction %s update: GraphObject class initiated', graph_name)                
+        logger.debug('Graph construction %s update: GraphObject class initiated', graph_name)        
+        logger.info('Graph %s successfully created', graph_name)            
 
         # step 7: store graph in graph_registry
         self.graph_registry.add_entry(graph_name, graph_object)
