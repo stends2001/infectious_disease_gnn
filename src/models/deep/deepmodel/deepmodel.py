@@ -218,11 +218,20 @@ class DeepModel(
 
         return instance
 
-    def calibrate(self) -> 'DeepModel':
+    def calibrate(self, window: int = 3) -> 'DeepModel':
         """
         Post-hoc quantile calibration on val data (conformal-style).
         Call after train() when using a point loss (mse/mae/huber) with epiconfig.quantiles set.
-        Fits per-seasonal-timepoint residual quantiles, identical in spirit to the baseline models.
+
+        Fits per-seasonal-timepoint residual quantiles using a rolling window of ±window weeks
+        around each week-of-year, pooling across all nodes. This stabilises quantile estimates
+        when validation spans only a single season.
+
+        Parameters
+        ----------
+        window : int
+            Number of weeks either side of each week-of-year to include in quantile estimation.
+            Default 2 gives a ±2 week window (5 weeks × N nodes values per estimate).
         """
         self._check_status(['trained'])
 
@@ -231,28 +240,28 @@ class DeepModel(
             raise ValueError('calibrate() called but epiconfig.quantiles is None.')
 
         if self.loss.loss_name in ['pinball', 'pinchpinball']:
-            raise ValueError('calibrate() is for point-loss models. You are using pinball — no calibration needed.')
+            raise ValueError(
+                'calibrate() is for point-loss models. '
+                'You are using pinball — no calibration needed.'
+            )
 
         import numpy as np
 
         self.model.eval()
         val_loader  = self.dataloadermanager.dataloader_val
-        time_splits = self.dataloadermanager.time_splits  # DataFrame with temporal_column + split bools
+        time_splits = self.dataloadermanager.time_splits
 
         all_preds   = []
         all_targets = []
-        all_t_idx   = []
 
         with torch.no_grad():
-            for idx, snapshot in enumerate(val_loader):
+            for snapshot in val_loader:
                 snapshot    = snapshot.to(self.device)
                 y_hat, _    = self.strategy.forecast_step(
-                    model   = self.model,
-                    snapshot= snapshot,
-                    loss_fn = self.loss
+                    model    = self.model,
+                    snapshot = snapshot,
+                    loss_fn  = self.loss
                 )
-                # y_hat: [num_nodes, horizon_size, 1]  (point forecast)
-                # snapshot.y: [num_nodes, horizon_size]
                 all_preds.append(y_hat.squeeze(-1).cpu())   # [num_nodes, horizon_size]
                 all_targets.append(snapshot.y.cpu())         # [num_nodes, horizon_size]
 
@@ -263,11 +272,11 @@ class DeepModel(
         # residuals: [num_val_timesteps, num_nodes, horizon_size]
         residuals = targets - preds
 
-        # get the seasonal index for each val timestep
-        val_times = time_splits[time_splits['val']][self.epiconfig.temporal_column].values
-        freq      = self.dataloadermanager.dataorchestrator.config.temporal_frequency
-
+        # get seasonal index for each val timestep
+        val_times      = time_splits[time_splits['val']][self.epiconfig.temporal_column].values
+        freq           = self.dataloadermanager.dataorchestrator.config.temporal_frequency
         val_timestamps = pd.to_datetime(val_times)
+
         if freq == 'w':
             t_idx = val_timestamps.isocalendar().week.astype(int).values
         elif freq == 'm':
@@ -277,21 +286,65 @@ class DeepModel(
         else:
             raise ValueError(f'Unknown temporal frequency: {freq}')
 
-        # fit residual quantiles per (seasonal_idx, horizon, quantile)
-        # store as dict: {(hh, q_idx): {t_idx_val: offset}}
-        residual_quantiles: Dict[Tuple[int, int], Dict[int, float]] = {}
-
+        unique_t_vals = np.unique(t_idx)
         num_timesteps, num_nodes, horizon_size = residuals.shape
+
+        # ── fit residual quantiles per (horizon, quantile, seasonal_idx) ──
+        # rolling window pools residuals from weeks within ±window of each week
+        # giving (2*window+1) × num_nodes values per estimate
+
+        residual_quantiles: Dict[Tuple[int, int], Dict[int, float]] = {}
 
         for hh in range(horizon_size):
             for q_idx, q in enumerate(quantiles):
-                seasonal_quantiles: dict = {}
-                for unique_t in np.unique(t_idx):
-                    mask        = t_idx == unique_t
-                    res_slice   = residuals[mask, :, hh].ravel()  # all nodes, this season, this horizon
+                seasonal_quantiles: Dict[int, float] = {}
+
+                for unique_t in unique_t_vals:
+
+                    # build circular window around unique_t
+                    # handle year wrap-around (e.g. week 51, 52, 1, 2, 3)
+                    max_t   = unique_t_vals.max()
+                    min_t   = unique_t_vals.min()
+                    range_t = max_t - min_t + 1
+
+                    window_weeks = set()
+                    for delta in range(-window, window + 1):
+                        w = unique_t + delta
+                        # wrap around
+                        if w > max_t:
+                            w = min_t + (w - max_t - 1)
+                        elif w < min_t:
+                            w = max_t - (min_t - w - 1)
+                        window_weeks.add(w)
+
+                    # mask: all timesteps whose week-of-year falls in the window
+                    mask      = np.isin(t_idx, list(window_weeks))
+                    res_slice = residuals[mask, :, hh].ravel()  # [(2w+1) timesteps × nodes]
+
+                    if len(res_slice) == 0:
+                        seasonal_quantiles[unique_t] = 0.0
+                        continue
+
                     seasonal_quantiles[unique_t] = float(np.quantile(res_slice, q))
+
                 residual_quantiles[(hh, q_idx)] = seasonal_quantiles
-        self._residual_quantiles = residual_quantiles
+
+        self._residual_quantiles  = residual_quantiles
+        self._calibration_window  = window
+        self._calibration_t_idx   = t_idx
+        self._calibration_unique_t = unique_t_vals
+        self._calibration_freq    = freq
+
+        if self.verbose >= 0:
+            n_per_estimate = (2 * window + 1) * num_nodes
+            print(
+                f'✓ calibrate() complete | '
+                f'window=±{window} weeks | '
+                f'~{n_per_estimate} residuals per quantile estimate | '
+                f'{len(quantiles)} quantiles × {horizon_size} horizons × '
+                f'{len(unique_t_vals)} seasonal indices'
+            )
+
         return self
 
     def set_model_hparams(self):
