@@ -1,7 +1,7 @@
 from typing import TYPE_CHECKING, List, assert_never
 import pandas as pd
 
-from .issues import InvalidCovariatePath, EpiConfigLimitationError, EpiConfigValidationError, EpiConfigWarning
+from .exceptions import InvalidCovariatePath, EpiConfigLimitationError, EpiConfigValidationError, EpiConfigWarning
 from ...issues.issuereport import IssueReport, IssueBase
 
 if TYPE_CHECKING:

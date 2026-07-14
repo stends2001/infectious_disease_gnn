@@ -6,9 +6,9 @@ import dataclasses
 
 from .pathmanager import EpiPathsManagerGermany, EpiPathsManagerNetherlands, EpiPathsManagerHungary
 from .validator import EpiConfigValidator
+from .exceptions import EpiConfigValidationError, IncompatibleEpiConfigs
 
-from .issues import EpiConfigValidationError
-
+from ...utils.exceptions import InvalidExtension
 from ...utils.textformatting import align, return_header_line
 
 @dataclass
@@ -100,7 +100,7 @@ class EpiConfig:
         diff = {k: (self_summary[k], other_summary.get(k))
                 for k in self_summary if self_summary[k] != other_summary.get(k)}
         if diff:
-            raise ValueError(f"EpiConfig mismatch at level {level}:\n" + 
+            raise IncompatibleEpiConfigs(f"EpiConfig mismatch at level {level}:\n" + 
                             "\n".join(f"  {k}: {v[0]} vs {v[1]}" for k, v in diff.items()))
 
     # ============ CONFIG LOADING/SAVING ==============
@@ -108,9 +108,9 @@ class EpiConfig:
         """ 
         saves EpiConfig to a .yaml
         """
-        if not str(path).endswith('.yaml'):
-            raise ValueError('path must end with .yaml')
-
+        if path.suffix != '.yaml':
+            raise InvalidExtension('.yaml',path.suffix)
+        
         config_dict = dataclasses.asdict(self)
         
         with open(path, 'w') as f:
