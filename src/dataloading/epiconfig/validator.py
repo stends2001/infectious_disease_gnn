@@ -1,11 +1,14 @@
 from typing import TYPE_CHECKING, List, assert_never
 import pandas as pd
 
-from .exceptions import InvalidCovariatePath, EpiConfigLimitationError, EpiConfigValidationError, EpiConfigWarning
-from ...issues.issuereport import IssueReport, IssueBase
+from .exceptions import InvalidCovariatePath, EpiConfigLimitationError, EpiConfigValidationError
+from ...utils.exceptionreport import ExceptionReport
 
 if TYPE_CHECKING:
     from .epiconfig import EpiConfig
+
+import logging
+logger = logging.getLogger(__name__)
 
 class EpiConfigValidator:
     """
@@ -20,7 +23,7 @@ class EpiConfigValidator:
         self.epiconfig = epiconfig 
 
     def validate(self):
-        exceptions: List[IssueBase] = []
+        exceptions: List[Exception] = []
         exceptions = self._datapaths(exceptions)
         exceptions = self._current_limitations(exceptions)      
         exceptions = self._input(exceptions)  
@@ -28,19 +31,20 @@ class EpiConfigValidator:
         self._warnings()
 
         if len(exceptions) > 0:
-            raise IssueReport(exceptions, context = "EpiConfig could not be created")                    
+            raise ExceptionReport(exceptions, context = "EpiConfig could not be created")                    
 
-    def _datapaths(self, exceptions: List[IssueBase]):
+    def _datapaths(self, exceptions: List[Exception]) -> List[Exception]:
 
         for property in self.epiconfig.path_manager.properties:
+
             path_attr = self.epiconfig.path_manager.get(property)
 
             if not path_attr.exists():
-                exceptions.append(InvalidCovariatePath(f"path {property} not found: {path_attr}"))    
+                exceptions.append(InvalidCovariatePath(property, str(path_attr))) 
 
         return exceptions        
     
-    def _current_limitations(self, exceptions: List[IssueBase]) -> List[IssueBase]:
+    def _current_limitations(self, exceptions: List[Exception]) -> List[Exception]:
         """
         Validates any issues in the initialization of an EpiConfig instance. 
         These represent CURRENT limitations, which are also things for me to develop further.
@@ -80,7 +84,7 @@ class EpiConfigValidator:
 
         return exceptions
     
-    def _input(self, exceptions: List[IssueBase]) -> List[IssueBase]:
+    def _input(self, exceptions: List[Exception]) -> List[Exception]:
         """
         Validates discrepancies in the initialization of an EpiConfig instance. These represent
         actual issues or errors, so an EpiConfigError is thrown suggesting to adjust the input.
@@ -132,18 +136,6 @@ class EpiConfigValidator:
         # country-related
         match (self.epiconfig.country, self.epiconfig.level):
 
-            case ('netherlands', 'nuts3'):
-                exceptions.append(EpiConfigValidationError(f'Invalid input for (country, level). nuts3 is unavailable for the Netherlands'))            
-
-            case ('netherlands', 'nuts1' | 'nuts2' | 'ggd' | 'lau'):
-                pass 
-
-            case ('germany', 'ggd' | 'lau'):
-                exceptions.append(EpiConfigValidationError(f'Invalid input for (country, level). {self.epiconfig.level} is unavailable for Germany'))            
-
-            case ('hungary', 'ggd' | 'lau'):
-                exceptions.append(EpiConfigValidationError(f'Invalid input for (country, level). {self.epiconfig.level} is unavailable for Hungary'))  
-
             case ('germany', 'nuts1' | 'nuts2' | 'nuts3'):
                 pass
 
@@ -178,34 +170,21 @@ class EpiConfigValidator:
         A EpiConfigWarning is thrown, not an exception
         """
         if self.epiconfig.prediction_mode != 'regression' and self.epiconfig.incidence_scalar != 10_000:
-            w = EpiConfigWarning('incidence_scalar will not be taken into account when using prediction_mode != "regression"')
-            print(w)
+            logger.warning('incidence_scalar will not be taken into account when using prediction_mode != "regression"')
 
         if self.epiconfig.quantiles is not None and self.epiconfig.prediction_mode != 'regression':
-            w = EpiConfigWarning('quantiles will not be taken into account when using prediction_mode != "regression"')                
-            print(w)
-            
+            logger.warning('quantiles will not be taken into account when using prediction_mode != "regression"')                
+
         match (self.epiconfig.country, self.epiconfig.level):
 
-            case ('netherlands', 'nuts1'):
-                w = EpiConfigWarning('Netherlands - nuts1 units are very large (n = 4). Predictions may not be particulary informative.')
-                print(w)
-
-            case ('netherlands', 'nuts2'):
-                w = EpiConfigWarning('Netherlands - nuts2 units are very large (n = 12). Predictions may not be particulary informative.')
-                print(w)
-
             case ('hungary', 'nuts1'):
-                w = EpiConfigWarning('Hungary - nuts1 units are very large (n = ?). Predictions may not be particulary informative.')
-                print(w)
+                logger.warning('Hungary - nuts1 units are very large (n = 3). Predictions may not be particulary informative.')
 
             case ('hungary', 'nuts2'):
-                w = EpiConfigWarning('Hungary - nuts2 units are very large (n = ?). Predictions may not be particulary informative.')
-                print(w)                
+                logger.warning('Hungary - nuts2 units are very large (n = 8). Predictions may not be particulary informative.')             
 
             case ('germany', 'nuts1'):
-                w = EpiConfigWarning('Germany - nuts1 units are very large (n = 16). Predictions may not be particulary informative.')
-                print(w)    
+                logger.warning('Germany - nuts1 units are very large (n = 16). Predictions may not be particulary informative.')   
     
     def __repr__(self) -> str:
         representation = f"<{self.__class__.__name__}>"

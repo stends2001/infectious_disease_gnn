@@ -16,7 +16,8 @@ class EpiConfigLimitationError(Exception):
 class InvalidCovariatePath(Exception):
     """
     """    
-    def __init__(self, msg: str):
+    def __init__(self, covariate: str, path: str):
+        msg = f"Coviariate {covariate} was not found at {path}."
         super().__init__(msg)      
 
 class IncompatibleEpiConfigs(Exception):

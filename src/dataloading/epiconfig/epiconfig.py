@@ -4,7 +4,7 @@ from pathlib import Path
 import yaml
 import dataclasses
 
-from .pathmanager import EpiPathsManagerGermany, EpiPathsManagerNetherlands, EpiPathsManagerHungary
+from .pathmanager import EpiPathsManagerGermany, EpiPathsManagerHungary
 from .validator import EpiConfigValidator
 from .exceptions import EpiConfigValidationError, IncompatibleEpiConfigs
 
@@ -74,9 +74,6 @@ class EpiConfig:
         
             case 'germany':
                 self.path_manager = EpiPathsManagerGermany(self.disease, self.level)
-        
-            case 'netherlands':
-                self.path_manager = EpiPathsManagerNetherlands(self.disease, self.level)
 
             case 'hungary':
                 self.path_manager = EpiPathsManagerHungary(self.disease, self.level)                

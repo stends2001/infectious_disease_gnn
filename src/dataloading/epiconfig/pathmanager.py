@@ -142,32 +142,6 @@ class EpiPathsManagerGermany(EpiPathsManager):
         """Path to population density CSV file."""
         return self.data_env / f'{self.country}/sociodemography/population_density.csv'         
 
-class EpiPathsManagerNetherlands(EpiPathsManager):
-    """ 
-    EpiPathsManger for Netherlands specifically
-    """
-
-    def __init__(self,
-                 disease: str,
-                 level: Level):
-        
-        self.disease = disease
-
-        # set registry of paths in parent class
-        super().__init__(country = 'netherlands', level = level)
-
-    @property
-    @registered_property   
-    def cases(self) -> Path:
-        """Path to disease CSV file."""
-        return self.data_env / f'netherlands/epidemiology/{self.disease}.csv'
-    
-    @property
-    @registered_property     
-    def population_density(self) -> Path:
-        """Path to population density CSV file."""
-        return self.data_env / f'{self.country}/sociodemography/population_density.csv'         
-
 class EpiPathsManagerHungary(EpiPathsManager):
     """ 
     EpiPathsManger for Hungary specifically
