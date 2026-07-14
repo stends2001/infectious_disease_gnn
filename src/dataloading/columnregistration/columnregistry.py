@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Optional, List, Dict, Literal, Union
+from typing import Optional, List, Dict, Union
 
 from .colentry import ColEntry
 from .exceptions import MissingColEntry, MissingTransformationReferral, TransformationParamsAlreadySet 
@@ -7,6 +7,9 @@ from .transformation_params import TransformationParams, LogParams, ZScoreParams
 
 from ...utils.textformatting import align
 from ...utils.types import ColumnType
+
+import logging
+logger = logging.getLogger(__name__)
 
 @dataclass
 class ColumnRegistry:
@@ -72,6 +75,7 @@ class ColumnRegistry:
         
         # Append to the registry
         self._entries.append(entry)
+        logger.debug("ColEntry '%s' added.", column_name)                  
     
     def update_transformation(self, 
                               column_name: str, 
@@ -116,6 +120,7 @@ class ColumnRegistry:
 
             case _:
                 raise ValueError(f"Unsupported params type: {type(params)}")
+        logger.debug("ColEntry '%s' _transformation_params transform_params updated.", column_name)                  
         
     # ========= INTERACTING ======= #        
     def get_entries_names_by_type(self, column_type: str) -> List[str]:
