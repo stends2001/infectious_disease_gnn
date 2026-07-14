@@ -7,16 +7,12 @@ from typing import Optional
 from pathlib import Path
 import yaml
 
+from ..utils.exceptions import InvalidExtension
 from ..utils.helpers import PathNotFound
 from ..utils.textformatting import align
 
 import logging
 logger = logging.getLogger(__name__)
-
-class InvalidExtension(Exception):
-    def __init__(self, extension_expected: str, extension_got: str):
-        msg = f"Expected' {extension_expected}', got '{extension_got}'."
-        super().__init__(msg)
 
 class IncompatibleAttributeFound(Exception):
     def __init__(self, msg: str):
