@@ -1,8 +1,9 @@
 from dataclasses import dataclass
-from typing import Optional, Literal
+from typing import Optional
 
 from .transformation_params import TransformationParams
 from .exceptions import InvalidColEntry, ColEntryMissingAttribute
+from ...utils.types import ColumnType
 
 @dataclass
 class ColEntry:
@@ -13,7 +14,7 @@ class ColEntry:
     ----------
     column_name: str
         name of column, as appearing in the final df of the EpiDataOrchestrator
-    column_type: Literal['context','feature','target','pred','split']
+    column_type: ColumnType
         type of column
     transformation: bool
         whether or not column requires a transformation
@@ -24,7 +25,7 @@ class ColEntry:
         - transformation_group == None      => only possible when self.transformation == False
     """
     column_name:            str
-    column_type:            Literal['context','feature','target','pred','split']
+    column_type:            ColumnType
     transformation:         bool 
     _transformation_group:  Optional[str]                   = None
     _transformation_params: Optional[TransformationParams]  = None    

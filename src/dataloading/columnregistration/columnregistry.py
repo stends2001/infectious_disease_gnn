@@ -6,6 +6,7 @@ from .exceptions import MissingColEntry, MissingTransformationReferral, Transfor
 from .transformation_params import TransformationParams, LogParams, ZScoreParams, MinMaxParams
 
 from ...utils.textformatting import align
+from ...utils.types import ColumnType
 
 @dataclass
 class ColumnRegistry:
@@ -47,7 +48,7 @@ class ColumnRegistry:
     # ========= ADJUSTING / UPDATING COLUMNREGISTRATION ======= #
     def add_column(self, 
                    column_name:             str, 
-                   column_type:             Literal['context','feature','target','pred','split'], 
+                   column_type:             ColumnType, 
                    needs_normalization:     bool                            = False,                   
                    transformation_group:    Optional[str]                   = None, 
                    transformation_params:   Optional[TransformationParams]  = None):
