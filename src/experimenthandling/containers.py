@@ -7,7 +7,7 @@ from typing import Optional
 from pathlib import Path
 import yaml
 
-from ..utils.exceptions import InvalidExtension
+from ..utils.exceptions import InvalidExtension, AttributeNotFound
 from ..utils.helpers import PathNotFound
 from ..utils.textformatting import align
 
@@ -17,12 +17,6 @@ logger = logging.getLogger(__name__)
 class IncompatibleAttributeFound(Exception):
     def __init__(self, msg: str):
         super().__init__(msg)
-
-class AttributeNotFound(Exception):
-    def __init__(self, missing_attr: str, class_name: str):
-        msg = f"no attribute {missing_attr} in {class_name}"
-        super().__init__(msg)
-
 
 @dataclass 
 class ExperimentConfig:
