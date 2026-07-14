@@ -13,6 +13,8 @@ from ..dataloading.epiconfig import EpiConfig
 
 from .evaluationplotter import EvaluationPlotter 
 
+from ..utils.types import DataSetSplit
+
 import re
 from matplotlib.colors import to_rgb, to_hex
 import colorsys
@@ -65,7 +67,7 @@ class Evaluator:
     @check_dataset()
     def add_evaluation(self, 
                        horizon: int  = 0,
-                       dataset: Literal['train', 'val', 'test'] = 'test') -> Self:
+                       dataset: DataSetSplit = 'test') -> Self:
         """
         Add evaluation entry for specified horizon.
         

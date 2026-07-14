@@ -1,6 +1,8 @@
 from typing import Dict, List, Literal
 import pandas as pd
 
+from ..utils.types import DataSetSplit
+
 class EvaluationPredictionsCompilation:
     """ 
     Stores all predictions and metrics within the evaluator. The main attribute is
@@ -47,7 +49,7 @@ class EvaluationPredictionsCompilation:
         self._data:                     Dict[str, Dict[str, Dict[str, pd.DataFrame]]] = {}
 
     # ======== DATA WORKING ====== #
-    def add_data(self, predictions: pd.DataFrame, metrics: pd.DataFrame, horizon: int, dataset: Literal['train','val','test']):
+    def add_data(self, predictions: pd.DataFrame, metrics: pd.DataFrame, horizon: int, dataset: DataSetSplit):
         """
         Adds data to self._data to [dataset][horizon]
 

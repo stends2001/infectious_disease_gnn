@@ -20,6 +20,8 @@ from ..plotting import ManagedFigure, calculate_subplot_layout
 if TYPE_CHECKING:
     from .evaluator import Evaluator
 
+from ..utils.types import DataSetSplit
+
 class EvaluationPlotter:
     """
     Plotting extension for Evaluator
@@ -46,7 +48,7 @@ class EvaluationPlotter:
 
     def plot_metric(self, 
                     horizon:        int,
-                    dataset:        Literal['train','val','test'],
+                    dataset:        DataSetSplit,
                     metric:         str, 
                     plot_type:      Literal['box', 'violin', 'kde', 'map','best_map'] = 'box', 
                     highlight_node: Optional[int] = None,
