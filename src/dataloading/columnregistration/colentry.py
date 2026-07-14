@@ -1,15 +1,8 @@
 from dataclasses import dataclass
 from typing import Optional, Literal
+
 from .transformation_params import TransformationParams
-
-class ColEntryMissingAttribute(Exception):
-    def __init__(self, entry_name: str, attribute_name: str):
-        msg = f"Accession attempt was made on ColEntry {entry_name} for attribute {attribute_name} which is unavailable."
-        super().__init__(msg)
-
-class InvalidColEntry(Exception):
-    def __init__(self, msg: str):
-        super().__init__(msg)    
+from .exceptions import InvalidColEntry, ColEntryMissingAttribute
 
 @dataclass
 class ColEntry:
