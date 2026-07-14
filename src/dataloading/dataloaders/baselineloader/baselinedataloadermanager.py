@@ -26,7 +26,7 @@ class BaseLineDataLoaderManager:
         """writes the dataloader. main functionality of this class"""
         main_data           = self.dataorchestrator.data_final.data_denorm.copy()
         
-        split_colnames      = self.dataorchestrator.column_registration.get_by_type('split')
+        split_colnames      = self.dataorchestrator.column_registration.get_entries_names_by_type('split')
         time_colname        = self.dataorchestrator.config.temporal_column
         id_colname          = self.dataorchestrator.config.id_column
 

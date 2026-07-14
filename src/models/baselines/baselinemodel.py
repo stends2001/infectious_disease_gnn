@@ -67,7 +67,7 @@ class BaseLineModel(BaseModel[BaseLineDataLoaderManager]):
         if self.dataloadermanager.dataorchestrator.config.target_column != 'incidence':
             return df.copy()
 
-        col_entry = self.column_registration.get_by_name('target')
+        col_entry = self.column_registration.get_entry_by_name('target')
         params    = col_entry._transformation_params
 
         if params is None:

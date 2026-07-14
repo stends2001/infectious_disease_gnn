@@ -69,7 +69,7 @@ class EpiDataTransformer:
         """Apply log to every column whose TransformationParams has log set."""
         out = df.copy()
 
-        for col_entry in self.column_registration.columns:
+        for col_entry in self.column_registration._entries:
             if not col_entry.transformation:
                 continue
 
@@ -99,7 +99,7 @@ class EpiDataTransformer:
             )
 
         # first pass: columns that normalise independently ('self')
-        for col_entry in self.column_registration.columns:
+        for col_entry in self.column_registration._entries:
             if not col_entry.transformation:
                 continue
             if col_entry._transformation_group != 'self':
@@ -115,13 +115,13 @@ class EpiDataTransformer:
             )
 
         # second pass: columns that follow a reference column
-        for col_entry in self.column_registration.columns:
+        for col_entry in self.column_registration._entries:
             if not col_entry.transformation:
                 continue
             if col_entry._transformation_group in (None, 'self'):
                 continue
 
-            ref = self.column_registration.get_by_name(col_entry._transformation_group)
+            ref = self.column_registration.get_entry_by_name(col_entry._transformation_group)
             p   = ref._transformation_params
 
             if p is None:
@@ -144,7 +144,7 @@ class EpiDataTransformer:
         """Apply stored zscore/minmax params to all columns that need it."""
         out = df.copy()
 
-        for col_entry in self.column_registration.columns:
+        for col_entry in self.column_registration._entries:
             if not col_entry.transformation:
                 continue
 
@@ -178,7 +178,7 @@ class EpiDataTransformer:
                 return col_entry._transformation_params
 
             case (True, str()):
-                ref = self.column_registration.get_by_name(
+                ref = self.column_registration.get_entry_by_name(
                     col_entry._transformation_group
                 )
                 return ref._transformation_params

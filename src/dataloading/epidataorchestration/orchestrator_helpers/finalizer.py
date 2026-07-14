@@ -110,7 +110,7 @@ class EpiDataFinalizer:
         if not self.epiconfig.normalization_method:
             return dfc
 
-        for col_entry in self.column_registration.columns:
+        for col_entry in self.column_registration._entries:
             if not col_entry.transformation:
                 continue
 
@@ -120,7 +120,7 @@ class EpiDataFinalizer:
             if col_entry._transformation_group == 'self':
                 params = col_entry._transformation_params
             else:
-                ref    = self.column_registration.get_by_name(col_entry._transformation_group)
+                ref    = self.column_registration.get_entry_by_name(col_entry._transformation_group)
                 params = ref._transformation_params
 
             if params is None:

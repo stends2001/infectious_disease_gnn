@@ -69,9 +69,9 @@ class DeepBaseDataLoaderManager(ABC):
         """
         
         # Get column groups
-        feature_cols    = self.column_registration.get_by_type('feature')
-        split_cols      = self.column_registration.get_by_type('split')
-        target_cols     = self.column_registration.get_by_type('target')
+        feature_cols    = self.column_registration.get_entries_names_by_type('feature')
+        split_cols      = self.column_registration.get_entries_names_by_type('split')
+        target_cols     = self.column_registration.get_entries_names_by_type('target')
         
         temporal_col    = self.dataorchestrator.config.temporal_column
         id_col          = self.dataorchestrator.config.id_column

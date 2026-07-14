@@ -214,7 +214,7 @@ class PredictionManager:
             df_denorm = self._get_anchor_for_merge(df_denorm)
 
         if self.epiconfig.normalization_method:
-            col_entry = self.column_registration.get_by_name('target')
+            col_entry = self.column_registration.get_entry_by_name('target')
 
             if col_entry.transformation and col_entry._transformation_params is not None:
                 params = col_entry._transformation_params

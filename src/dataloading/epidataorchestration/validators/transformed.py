@@ -33,7 +33,7 @@ class TransformedValidator(EpiDataContainerValidator):
 
         self.normalizedepidata= normalizedepidata
         self.column_registry  = column_registry
-        self.cols             = [c.column_name for c in column_registry.columns]
+        self.cols             = [c.column_name for c in column_registry._entries]
 
     def validate(self):
         """
@@ -68,7 +68,7 @@ class TransformedValidator(EpiDataContainerValidator):
         tolerance = 1e-6
         train_df  = stored_attribute[stored_attribute['train']]
 
-        for col_entry in self.column_registry.columns:
+        for col_entry in self.column_registry._entries:
 
             match (col_entry.transformation, col_entry._transformation_group):
 
