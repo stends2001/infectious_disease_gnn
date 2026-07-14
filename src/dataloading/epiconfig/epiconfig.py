@@ -9,6 +9,7 @@ from .validator import EpiConfigValidator
 from .exceptions import EpiConfigValidationError, IncompatibleEpiConfigs
 
 from ...utils.exceptions import InvalidExtension
+from ...utils.types import Country, Level
 from ...utils.textformatting import align, return_header_line
 
 @dataclass
@@ -24,8 +25,8 @@ class EpiConfig:
     split_valtest:          str = '2019-06-01'
     
     # ============= GEOGRAPHY =============
-    country:                Literal['germany','netherlands','hungary']  = 'germany'
-    level:                  Literal['nuts1','nuts2','nuts3','ggd','lau']= 'nuts3'
+    country:                Country = 'germany'
+    level:                  Level   = 'nuts3'
     
     # ============= TASK =============
     horizon_size:           int = 1
@@ -104,7 +105,7 @@ class EpiConfig:
                             "\n".join(f"  {k}: {v[0]} vs {v[1]}" for k, v in diff.items()))
 
     # ============ CONFIG LOADING/SAVING ==============
-    def save_config(self, path: Path, log: bool = True):
+    def save_config(self, path: Path):
         """ 
         saves EpiConfig to a .yaml
         """
@@ -115,9 +116,6 @@ class EpiConfig:
         
         with open(path, 'w') as f:
             yaml.dump(config_dict, f, default_flow_style=False, sort_keys=False)    
-
-        if log:
-            print(f'EpiConfig saved to {path.name} saved in {path.parent.name}')
 
     def copy(self, **overrides) -> 'EpiConfig':
         """
@@ -132,7 +130,7 @@ class EpiConfig:
         return EpiConfig(**fields)
 
     @classmethod
-    def load_config(cls, path: Path, log: bool = True) -> 'EpiConfig':
+    def load_config(cls, path: Path) -> 'EpiConfig':
         """ 
         Loads a .yaml of name `config_name` into an EpiConfig
         the directory returned by `get_config_path()`.
@@ -141,10 +139,7 @@ class EpiConfig:
             raise ValueError('path must end with .yaml')
 
         with open(path) as f:
-            d = yaml.safe_load(f)
-
-        if log:
-            print(f'EpiConfig loaded from {path.name} from {path.parent.name}')           
+            d = yaml.safe_load(f)        
         return cls(**d)      
 
     # ============= ATTRIBUTE ORGANIZATION ==============

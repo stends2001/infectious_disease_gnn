@@ -4,10 +4,7 @@ import inspect
 from abc import ABC
 
 from ...utils.pathmanager import PathManager
-
-
-Country = Literal['germany', 'netherlands','hungary']
-Level   = Literal['nuts1', 'nuts2', 'ggd', 'nuts3', 'lau']
+from ...utils.types import Country, Level
 
 def registered_property(func: Callable) -> Callable:
     """
