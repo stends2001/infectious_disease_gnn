@@ -12,6 +12,9 @@ from ...utils.exceptions import InvalidExtension
 from ...utils.types import Country, Level
 from ...utils.textformatting import align, return_header_line
 
+import logging
+logger = logging.getLogger(__name__)
+
 @dataclass
 class EpiConfig:
     # ============= MAIN =============
@@ -86,6 +89,8 @@ class EpiConfig:
 
         self._set_hidden_attributes()
         self._classify_attributes()
+
+        logger.debug('EpiConfig has been created')           
 
     # ============ Methods =========== #
     def assert_equals(self, other: Union['EpiConfig', Dict[str,str]], level: Literal[0,1,2,3,4] = 1) -> None:

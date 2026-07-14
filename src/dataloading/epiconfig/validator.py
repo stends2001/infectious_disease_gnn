@@ -31,7 +31,9 @@ class EpiConfigValidator:
         self._warnings()
 
         if len(exceptions) > 0:
-            raise ExceptionReport(exceptions, context = "EpiConfig could not be created")                    
+            raise ExceptionReport(exceptions, context = "EpiConfig could not be created")        
+
+        logger.debug('EpiConfig has been validated')            
 
     def _datapaths(self, exceptions: List[Exception]) -> List[Exception]:
 
@@ -143,7 +145,7 @@ class EpiConfigValidator:
                 pass            
 
             case _:
-                assert_never(self.epiconfig.country, self.epiconfig.level)                
+                assert_never((self.epiconfig.country, self.epiconfig.level))                
 
         if self.epiconfig.country in ['netherlands','hungary']:
 
