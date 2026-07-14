@@ -113,8 +113,6 @@ class QuantileRegressionMetricsCalculator(MetricsCalculatorBase):
         # WIS = mean over components, then mean over timestamps
         return float(np.mean(np.stack(components, axis=1)))
 
-  
-
     def coverage_score(self, y: np.ndarray, yhats: np.ndarray) -> float:
         """
         Coverage score: fraction of timestamps where y falls within any predicted interval.
@@ -242,6 +240,62 @@ class QuantileRegressionMetricsCalculator(MetricsCalculatorBase):
         final_score = score * coverage   # high only if WIS is low AND coverage is good
 
         return float(final_score)
+
+    def cis(self, y: np.ndarray, yhats: np.ndarray) -> float:
+        """
+        Concordance Interval Score (CIS) — probabilistic analogue of CCC.
+
+        CIS = CCC x coverage_score
+            = rho x C_b x coverage_score
+
+        where coverage_score = 1 - mean |empirical_coverage - nominal_coverage|
+        across all interval levels.
+
+        Parameters
+        ----------
+        y     : np.ndarray — targets, shape [N]
+        yhats : np.ndarray — predictions, shape [N, Q]
+                            quantiles must be ordered (same as wis)
+                            middle index is the point/median prediction
+        """
+        assert self.quantiles is not None
+
+        n_intervals = len(self.quantiles) // 2
+        mid         = n_intervals
+
+        # ── point prediction: middle quantile ─────────────────────────────
+        y_pred = yhats[:, mid]
+
+        # ── CCC decomposition ─────────────────────────────────────────────
+        mu_true  = y.mean()
+        mu_pred  = y_pred.mean()
+        sd_true  = y.std()
+        sd_pred  = y_pred.std()
+
+        if sd_true == 0 or sd_pred == 0:
+            return float('nan')
+
+        pearson  = float(np.corrcoef(y, y_pred)[0, 1])
+        nu       = sd_pred / sd_true                                # variance ratio
+        u        = (mu_pred - mu_true) / np.sqrt(sd_pred * sd_true)  # normalised mean bias
+        cb       = 2.0 / (nu + 1.0 / nu + u ** 2)                  # bias correction factor
+        ccc      = pearson * cb
+
+        # ── coverage score ─────────────────────────────────────────────────
+        coverage_errors = []
+
+        for i in range(n_intervals):
+            lower            = yhats[:, i]
+            upper            = yhats[:, len(self.quantiles) - 1 - i]
+            nominal_coverage = 1.0 - self.quantiles[i] * 2   # e.g. q=0.1 → 80% interval
+            empirical_coverage = float(np.mean((y >= lower) & (y <= upper)))
+            coverage_errors.append(abs(empirical_coverage - nominal_coverage))
+
+        coverage_score = max(0.0, 1.0 - float(np.mean(coverage_errors)))
+
+        # ── CIS ────────────────────────────────────────────────────────────
+        return float(ccc * coverage_score)
+
 
     @property
     def _requires_quantiles(self) -> bool:
