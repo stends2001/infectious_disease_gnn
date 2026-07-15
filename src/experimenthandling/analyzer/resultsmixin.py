@@ -76,7 +76,7 @@ class ResultsMixin:
 
         return summarisation, graph_advantage
 
-    def plot_graph_advantage(self, metric: str, stats: bool = True, higher_is_better: bool = True):
+    def plot_graph_advantage(self, metric: str, stats: bool = True, higher_is_better: bool = True, titles: bool = True):
         self._set_modelcolors()
 
         df1, df2        = self.summarize_graph_advantage(metric)
@@ -159,8 +159,9 @@ class ResultsMixin:
                 )
 
         ax.legend(title = 'graph')
-        ax.set_title('Mean ± SEM across nodes', loc = 'left', fontsize = 10)
-        fig.suptitle(f'{metric} improvement over Identity Graph across horizons:  {self.expcfg.experiment_name}', fontweight = 'bold', x = 0.375, fontsize = 12)
+        if titles:
+            ax.set_title('Mean ± SEM across nodes', loc = 'left', fontsize = 10)
+            fig.suptitle(f'{metric} improvement over Identity Graph across horizons:  {self.expcfg.experiment_name}', fontweight = 'bold', x = 0.375, fontsize = 12)
         ax.set_ylabel(metric)
         ax.set_xlabel('')     
 
