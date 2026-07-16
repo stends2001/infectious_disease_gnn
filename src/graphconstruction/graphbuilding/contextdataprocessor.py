@@ -6,6 +6,9 @@ from pathlib import Path
 from ...utils import compare_sets
 from ..exceptions import MissingColumnError
 
+import logging
+logger = logging.getLogger(__name__)
+
 class GraphContextDataProcessor:
     """
     Delegation - class to GraphManager, responsible for the loading/preprocessing of data:
@@ -55,6 +58,7 @@ class GraphContextDataProcessor:
         shp_f, pop_f = self._filter(self.shp_raw, self.pop_raw)
         shp_t, pop_t, map_t = self._tokenize(shp_f, pop_f)
 
+        logging.debug('data processed')
         return shp_t, pop_t, map_t
 
     # ============= HIDDEN METHODS ============ #
@@ -62,6 +66,7 @@ class GraphContextDataProcessor:
         """loads and returns shapedata and population data"""
         shp = gpd.read_file(self.country_data_path / 'geospatial' / 'level_shapes.shp')
         pop = pd.read_csv(self.country_data_path  / 'sociodemography' / 'population_size.csv', dtype = {'key': 'str'})        
+        logging.debug('data loaded')
         return shp, pop
 
     def _validate(self):
@@ -71,6 +76,8 @@ class GraphContextDataProcessor:
         
         if self.id_col not in self.pop_raw.columns:
             raise MissingColumnError(self.id_col, 'population data')
+        
+        logging.debug('data validated')        
 
     def _filter(self,
                  shape_data: gpd.GeoDataFrame, 
@@ -79,7 +86,8 @@ class GraphContextDataProcessor:
         shp_f = shape_data[shape_data['level'] == self.level].reset_index(drop=True)
         pop_f = population_data[population_data['level'] == self.level].reset_index(drop=True)
         pop_f = pop_f[pop_f['year'] == 2020].reset_index(drop = True)
-            
+        
+        logging.debug('data filtered')            
         return shp_f, pop_f
 
     def _tokenize(self, 
@@ -119,6 +127,8 @@ class GraphContextDataProcessor:
             raise ValueError(f'Unmapped keys found in shape data:  {shape_data[self.id_col][shape_data[self.token_col].isna()].tolist()}')            
 
         shape_data.drop(columns = self.id_col, inplace = True)            
+
+        logging.debug('data tokenized')        
 
         return shape_data, population_data, tokenization_map
     

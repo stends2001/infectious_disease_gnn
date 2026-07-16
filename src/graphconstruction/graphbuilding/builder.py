@@ -9,6 +9,9 @@ import numpy as np
 from ...utils import registry_method, get_registered_methods, MethodNotInRegistry, CRS_GERMANY_METRES
 from ...utils.types import GraphType
 
+import logging
+logger = logging.getLogger(__name__)
+
 class GraphBuilder:
     """ 
     Delegation - class to GraphManager, responsible for the buidling the raw graph
@@ -77,6 +80,9 @@ class GraphBuilder:
         node_ids    = list(self.shp_data[self.token_col].unique())
         edges       = [(int(nid), int(nid)) for nid in node_ids]
         weights     = [float(1) for i in range(len(edges))]
+
+        logging.debug('identity graph built')
+
         return edges, weights
 
     @registry_method
@@ -91,6 +97,8 @@ class GraphBuilder:
         edges      += [(t, s) for s, t in edges]
         edges       = list(set(edges))
         weights     = [float(1) for i in range(len(edges))]
+
+        logging.debug('geographical_contiguity graph built')        
         return edges, weights
 
     @registry_method
@@ -143,6 +151,7 @@ class GraphBuilder:
         edges_list                      = list(zip(node_ids[src].astype(int).tolist(), node_ids[dst].astype(int).tolist()))
         weights_list: List[float]       = weights.tolist()
 
+        logging.debug('gravity-model graph built')
         return edges_list, weights_list
  
     @registry_method
@@ -176,6 +185,7 @@ class GraphBuilder:
                     edges.append((int(j), int(i)))
                     weights.extend([1.0, 1.0])
 
+        logging.debug('random graph built')
         return edges, weights
     
     @registry_method    
@@ -194,6 +204,7 @@ class GraphBuilder:
         ]
         weights = [1.0] * len(edges)
 
+        logging.debug('fully connected graph built')
         return edges, weights    
 
     def __repr__(self) -> str:

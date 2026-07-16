@@ -5,6 +5,9 @@ from ..graphobjects import GraphStructure
 from ...utils import registry_method, get_registered_methods, MethodNotInRegistry
 from ...utils.types import GraphNormType
 
+import logging
+logger = logging.getLogger(__name__)
+
 class GraphPostProcessor:
     """
     Delegation - class to GraphManager, responsible for the processing of Graphs through:
@@ -79,7 +82,7 @@ class GraphPostProcessor:
             edge_weight_f,
             graph_structure.num_nodes,
         )
-
+        logging.debug('topk filtered')
         return filtered_graphstructure
 
     def normalize(self, graph_structure: GraphStructure, method: GraphNormType, *args, **kwargs) -> GraphStructure:
@@ -118,6 +121,7 @@ class GraphPostProcessor:
         """ 
         does not normalize edge weights. returns the tensor of the input weights.
         """
+        logging.debug('not normalized')
         return graph_structure.edge_weight 
 
     @registry_method
@@ -141,7 +145,7 @@ class GraphPostProcessor:
             edge_weights = (epsilon + raw_weights - min_w) / (max_w - min_w)
         else:
             edge_weights = torch.zeros_like(raw_weights)    
-
+        logging.debug('minmax-normalized')
         return edge_weights       
 
     @registry_method
@@ -181,6 +185,7 @@ class GraphPostProcessor:
         deg_inv_sqrt[deg_inv_sqrt == float('inf')] = 0
 
         edge_weight = raw_weights * deg_inv_sqrt[row] * deg_inv_sqrt[col]
+        logging.debug('symmetrically-normalized')        
         return edge_weight
 
     @registry_method
@@ -200,6 +205,7 @@ class GraphPostProcessor:
         deg_inv[deg_inv == float('inf')] = 0
 
         edge_weight = raw_weights * deg_inv[row]
+        logging.debug('rowwise-normalized')        
         return edge_weight
     
     def __repr__(self) -> str:
