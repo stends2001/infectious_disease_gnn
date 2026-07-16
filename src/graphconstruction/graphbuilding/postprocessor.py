@@ -113,6 +113,14 @@ class GraphPostProcessor:
         return normalized_graph_structure
 
     @registry_method
+    def none(self,
+             graph_structure: GraphStructure) -> torch.Tensor:
+        """ 
+        does not normalize edge weights. returns the tensor of the input weights.
+        """
+        return graph_structure.edge_weight 
+
+    @registry_method
     def minmax(self, 
                graph_structure: GraphStructure, 
                epsilon: float = 1e-3) -> torch.Tensor:
