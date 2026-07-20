@@ -109,6 +109,14 @@ class GraphStructure:
 
         return cls(edge_index_tensor, edge_weight_tensor, num_nodes)    
     
+    def to(self, device: torch.device) -> "GraphStructure":
+        """Move all tensors to the specified device (GPU)"""
+        return GraphStructure(
+            edge_index = self.edge_index.to(device),
+            edge_weight= self.edge_weight.to(device),
+            num_nodes  = self.num_nodes
+        )        
+
     def __repr__(self) -> str:
         representation = f'<{self.__class__.__name__}(num_nodes = {self.num_nodes}, num_edges = {self.num_edges})>'
         return representation 
