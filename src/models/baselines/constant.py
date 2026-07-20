@@ -1,6 +1,6 @@
 from typing import Literal, Self
 
-from ...dataloading.dataloaders import BaseLineDataLoaderManager
+from ...dataloading.databuilders import BaseLineDataBuilder
 from ...utils import check_dataset
 from .baselinemodel import BaseLineModel 
 
@@ -9,7 +9,7 @@ class ConstantModel(BaseLineModel):
     # TODO
     """
     def __init__(self, 
-                 dataloadermanager: BaseLineDataLoaderManager, 
+                 dataloadermanager: BaseLineDataBuilder, 
                  name:              str = "constant_model",
                  verbose:           Literal[-1, 0, 1, 2] = -1):
         

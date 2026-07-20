@@ -5,7 +5,7 @@ from typing import Optional
 
 from ..strategies.gcn import StandardGNNStrategy
 from ..deepmodel import DeepModel
-from ....dataloading.dataloaders.deepdataloaders.graphdataloader import GraphDataLoaderManager
+from ....dataloading import GraphDataBuilder
 
 class GCNModule(nn.Module):
     """
@@ -151,9 +151,9 @@ class GCNModule(nn.Module):
 class GCNModel(DeepModel):
     """
     """
-    _expected_dataloadermanager = 'GraphDataLoaderManager'
+    _expected_dataloadermanager = 'GraphDataBuilder'
     def __init__(self,
-                 dataloadermanager: GraphDataLoaderManager,
+                 dataloadermanager: GraphDataBuilder,
                  name:              str           = 'gcnmodel',
                  num_quantiles:     int = 1):
 

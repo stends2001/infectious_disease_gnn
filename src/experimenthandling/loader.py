@@ -9,9 +9,8 @@ from ..dataloading.epiconfig import EpiConfig
 from ..models.deep.deepmodel import DeepModel
 from ..models.base.basemodel import BaseModel
 from ..dataloading.epidataorchestration import EpiDataOrchestrator
-from ..dataloading.dataloaders import BaseLineDataLoaderManager, DeepDataLoaderManager, GraphDataLoaderManager
+from ..dataloading.databuilders import BaseLineDataBuilder, GraphDataBuilder
 from .containers import ExperimentConfig, ModelSpecs
-from ..dataloading.dataloaders import DeepDataLoaderManager, GraphDataLoaderManager
 
 import logging
 logger = logging.getLogger(__name__)
@@ -117,10 +116,9 @@ class ExperimentLoader(ExperimentHandler):
             graphs_list = [] if self.expcfg.graphs is None else self.expcfg.graphs
     
             hl_dlms = ExperimentDLMs(
-                baseline = BaseLineDataLoaderManager(epo),
-                deep     = DeepDataLoaderManager(epo).build(),
+                baseline = BaseLineDataBuilder(epo),
                 graphs   = {
-                    graph: GraphDataLoaderManager(epo)
+                    graph: GraphDataBuilder(epo)
                                .retrieve_static_graph(graph)
                                .build()
                     for graph in graphs_list
@@ -143,7 +141,7 @@ class ExperimentLoader(ExperimentHandler):
         
     def _load_single_model(self, 
                     specs: ModelSpecs, 
-                    dlm: Union[DeepDataLoaderManager, GraphDataLoaderManager]) -> DeepModel:
+                    dlm: GraphDataBuilder) -> DeepModel:
         """ 
         based on ModelSpecs, and using the dlm, instantiate a model.
         """

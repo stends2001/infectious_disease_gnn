@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 
 from ..issues import ModelError
-from ...dataloading.dataloaders import BaseLineDataLoaderManager 
+from ...dataloading.databuilders import BaseLineDataBuilder 
 from ...utils import check_dataset
 
 from .baselinemodel import BaseLineModel 
@@ -13,7 +13,7 @@ class ClimateologyModel(BaseLineModel):
     # TODO
     """
     def __init__(self, 
-                 dataloadermanager: BaseLineDataLoaderManager,                 
+                 dataloadermanager: BaseLineDataBuilder,                 
                  name:              str = 'climateolog_ymodel',
                  verbose:           Literal[-1, 0, 1, 2] = -1):
         

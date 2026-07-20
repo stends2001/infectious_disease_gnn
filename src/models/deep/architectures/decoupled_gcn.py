@@ -8,7 +8,7 @@ from typing import Optional, Tuple, Literal
 from ..strategies.gcn import StandardGNNStrategy
 from ..debugging import ModelDebuggingReport, DebuggingLine
 from ..deepmodel import DeepModel
-from ....dataloading.dataloaders.deepdataloaders.graphdataloader import GraphDataLoaderManager
+from ....dataloading.databuilders.deepdataloaders.graphdataloader import GraphDataLoaderManager
 
 
 class DecoupledGCNLayer(nn.Module):
@@ -22,7 +22,8 @@ class DecoupledGCNLayer(nn.Module):
     nonlinearity. This layer instead computes:
         h_self_i  = W_s * h_i                                    (own representation)
         h_neigh_i = GCNConv_no_loops * h_i                       (neighbour aggregation)
-        alpha_i   = sigmoid(gate([h_self_i; h_neigh_i; emb_i]))  (per-node gate)
+        alpha_i   = sigmoi
+        d(gate([h_self_i; h_neigh_i; emb_i]))  (per-node gate)
         h_i       = alpha_i * h_self_i + (1 - alpha_i) * h_neigh_i
 
     The node embedding emb_i is critical: without it, the gate sees nearly

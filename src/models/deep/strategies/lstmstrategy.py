@@ -1,6 +1,6 @@
 from .basestrategy import Strategy
 from torch.optim.optimizer import Optimizer
-from ....dataloading.dataloaders.deepdataloaders.datacontainers import DeepData, GraphData
+from ....dataloading.databuilders.graphdatabuilder.datacontainers import Data
 from ...utils.loss.losshandler import LossHandler
 
 from abc import ABC, abstractmethod
@@ -13,7 +13,7 @@ from torch import Tensor
 if TYPE_CHECKING:
     from ..debugging import ModelDebuggingReport
     
-class StatelessLSTMStrategy(Strategy[DeepData]):
+class StatelessLSTMStrategy(Strategy):
     """
     LSTM models with which hidden states are resetted each epoch
 
@@ -31,14 +31,14 @@ class StatelessLSTMStrategy(Strategy[DeepData]):
             return None
         return state.detach().to(device)
 
-    def training_step(self, model: torch.nn.Module, snapshot: DeepData | GraphData, optimizer: Optimizer, loss_fn: LossHandler) -> float:
+    def training_step(self, model: torch.nn.Module, snapshot: Data, optimizer: Optimizer, loss_fn: LossHandler) -> float:
         y_hat:  Tensor
         h:      Tensor
         c:      Tensor
         loss:   Tensor        
         
         optimizer.zero_grad()
-        
+        assert snapshot.graph is None
         hidden      = (self.hidden_state, self.cell_state) if self.hidden_state is not None else None
         y_hat, h, c = model(snapshot.x, hidden)
         
@@ -50,12 +50,12 @@ class StatelessLSTMStrategy(Strategy[DeepData]):
         optimizer.step()
         return loss.item()
     
-    def validation_step(self, model: torch.nn.Module, snapshot: DeepData | GraphData, loss_fn: LossHandler) -> float:
+    def validation_step(self, model: torch.nn.Module, snapshot: Data, loss_fn: LossHandler) -> float:
         y_hat:  Tensor
         h:      Tensor
         c:      Tensor
         loss:   Tensor      
-
+        assert snapshot.graph is None
         hidden      = (self.hidden_state, self.cell_state) if self.hidden_state is not None else None
         y_hat, h, c = model(snapshot.x, hidden)        
 
@@ -65,12 +65,12 @@ class StatelessLSTMStrategy(Strategy[DeepData]):
         loss = loss_fn(y_hat, snapshot.y)
         return loss.item()
 
-    def forecast_step(self, model: torch.nn.Module, snapshot: DeepData | GraphData, loss_fn: LossHandler) -> Tuple[torch.Tensor, float]:
+    def forecast_step(self, model: torch.nn.Module, snapshot: Data, loss_fn: LossHandler) -> Tuple[torch.Tensor, float]:
         y_hat:  Tensor
         h:      Tensor
         c:      Tensor
         loss:   Tensor  
-
+        assert snapshot.graph is None
         hidden = (self.hidden_state, self.cell_state) if self.hidden_state is not None else None
         y_hat, h, c = model(snapshot.x, hidden)     
 
@@ -85,17 +85,17 @@ class StatelessLSTMStrategy(Strategy[DeepData]):
         self.hidden_state = None
         self.cell_state   = None
 
-    def debug(self, model: torch.nn.Module, snapshot: DeepData | GraphData) -> Tuple[Tensor, 'ModelDebuggingReport']:
+    def debug(self, model: torch.nn.Module, snapshot: Data) -> Tuple[Tensor, 'ModelDebuggingReport']:
         y_hat:  Tensor     
         rep:    'ModelDebuggingReport'  
-
+        assert snapshot.graph is None
         y_hat, rep = model.debug(snapshot.x) 
         return y_hat, rep
 
     def __repr__(self) -> str:
         return "<StatelessLSTMStrategy(reset_state_epoch)>" 
     
-class StatefullLSTMStrategy(Strategy[DeepData]):
+class StatefullLSTMStrategy(Strategy):
     """
     LSTM models with which hidden states are resetted each dataset
 
@@ -113,12 +113,12 @@ class StatefullLSTMStrategy(Strategy[DeepData]):
             return None
         return state.detach().to(device)
 
-    def training_step(self, model: torch.nn.Module, snapshot: DeepData | GraphData, optimizer: Optimizer, loss_fn: LossHandler) -> float:
+    def training_step(self, model: torch.nn.Module, snapshot: Data, optimizer: Optimizer, loss_fn: LossHandler) -> float:
         y_hat:  Tensor
         h:      Tensor
         c:      Tensor
         loss:   Tensor        
-        
+        assert snapshot.graph is None        
         optimizer.zero_grad()
         
         hidden      = (self.hidden_state, self.cell_state) if self.hidden_state is not None else None
@@ -132,12 +132,12 @@ class StatefullLSTMStrategy(Strategy[DeepData]):
         optimizer.step()
         return loss.item()
     
-    def validation_step(self, model: torch.nn.Module, snapshot: DeepData | GraphData, loss_fn: LossHandler) -> float:
+    def validation_step(self, model: torch.nn.Module, snapshot: Data, loss_fn: LossHandler) -> float:
         y_hat:  Tensor
         h:      Tensor
         c:      Tensor
         loss:   Tensor      
-
+        assert snapshot.graph is None     
         hidden      = (self.hidden_state, self.cell_state) if self.hidden_state is not None else None
         y_hat, h, c = model(snapshot.x, hidden)        
 
@@ -147,12 +147,12 @@ class StatefullLSTMStrategy(Strategy[DeepData]):
         loss = loss_fn(y_hat, snapshot.y)
         return loss.item()
 
-    def forecast_step(self, model: torch.nn.Module, snapshot: DeepData | GraphData, loss_fn: LossHandler) -> Tuple[torch.Tensor, float]:
+    def forecast_step(self, model: torch.nn.Module, snapshot: Data, loss_fn: LossHandler) -> Tuple[torch.Tensor, float]:
         y_hat:  Tensor
         h:      Tensor
         c:      Tensor
         loss:   Tensor  
-
+        assert snapshot.graph is None     
         hidden = (self.hidden_state, self.cell_state) if self.hidden_state is not None else None
         y_hat, h, c = model(snapshot.x, hidden)     
 
@@ -162,10 +162,10 @@ class StatefullLSTMStrategy(Strategy[DeepData]):
         loss = loss_fn(y_hat, snapshot.y)
         return y_hat, loss.item()
     
-    def debug(self, model: torch.nn.Module, snapshot: DeepData | GraphData) -> Tuple[Tensor, 'ModelDebuggingReport']:
+    def debug(self, model: torch.nn.Module, snapshot: Data) -> Tuple[Tensor, 'ModelDebuggingReport']:
         y_hat:  Tensor     
         rep:    'ModelDebuggingReport'  
-
+        assert snapshot.graph is None     
         y_hat, rep = model.debug(snapshot.x) 
         return y_hat, rep
 

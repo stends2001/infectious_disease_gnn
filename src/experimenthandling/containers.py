@@ -1,5 +1,5 @@
-from src.dataloading.dataloaders import (
-    BaseLineDataLoaderManager, DeepDataLoaderManager, GraphDataLoaderManager
+from src.dataloading.databuilders import (
+    DataBuilder, GraphDataBuilder, BaseLineDataBuilder
 )
 from typing import Dict, Union, List
 from dataclasses import dataclass, asdict, fields
@@ -214,9 +214,8 @@ class ExperimentDLMs:
     For a single run (i.e. single value of a variable), this dataclass
     stores the dataloadermanagers
     """
-    baseline:   BaseLineDataLoaderManager
-    deep:       DeepDataLoaderManager
-    graphs:     Dict[str, GraphDataLoaderManager]
+    baseline:   BaseLineDataBuilder
+    graphs:     Dict[str, GraphDataBuilder]
 
 @dataclass(frozen= True)
 class ModelSpecs:

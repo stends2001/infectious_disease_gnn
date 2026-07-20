@@ -13,8 +13,7 @@ from .forecasting import DeepModelForecastMixin
 from .globalhparams import DeepModelGlobalhParamsMixin
 from .checkpoint import DeepModelCheckpointMixin
 
-from ....utils.helpers import get_project_utilities_env
-from ....dataloading.dataloaders import DeepDataLoaderManager, GraphDataLoaderManager
+from ....dataloading.databuilders import GraphDataBuilder
 from ..strategies.basestrategy import Strategy
 from ...base.basemodel import BaseModel
     
@@ -25,7 +24,7 @@ class DeepModel(
     DeepModelForecastMixin,
     DeepModelGlobalhParamsMixin,
     DeepModelCheckpointMixin,
-    BaseModel[Union[GraphDataLoaderManager, DeepDataLoaderManager]] # BaseModel comes last for hierarchy of methods-imported
+    BaseModel[GraphDataBuilder] # BaseModel comes last for hierarchy of methods-imported
     ):
     """ 
     Parent class of Deep models (LSTM, GNNs, etc.).
@@ -108,7 +107,7 @@ class DeepModel(
     scheduler:      _LRScheduler
 
     def __init__(self, 
-                 dataloadermanager:     Union[GraphDataLoaderManager, DeepDataLoaderManager], 
+                 dataloadermanager:     GraphDataBuilder, 
                  strategy:              Strategy,
                  name:                  str,          
                  verbose:               int = -1):
@@ -138,7 +137,7 @@ class DeepModel(
     @classmethod
     def load_model(cls,
                    model_name:        str,
-                   dataloadermanager: Union[GraphDataLoaderManager, DeepDataLoaderManager],
+                   dataloadermanager: GraphDataBuilder,
                    subdir:            str,
                    ) -> 'DeepModel':
         """

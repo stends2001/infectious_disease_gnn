@@ -3,8 +3,8 @@ import torch.nn as nn
 from torch import Tensor
 from typing import Optional, Tuple, Literal, Union
 
-from ....dataloading.dataloaders.deepdataloaders.deepdataloader import DeepDataLoaderManager
-from ....dataloading.dataloaders.deepdataloaders.graphdataloader import GraphDataLoaderManager
+from ....dataloading.databuilders.deepdataloaders.deepdataloader import DeepDataLoaderManager
+from ....dataloading.databuilders.deepdataloaders.graphdataloader import GraphDataLoaderManager
 
 from ..deepmodel import DeepModel
 

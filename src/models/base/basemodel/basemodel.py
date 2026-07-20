@@ -1,4 +1,4 @@
-from typing import Generic, Dict, Any, Literal
+from typing import Generic, Dict, Any, Literal, Union
 
 from ..predictions import PredictionManager
 from .forecastdisplaymixin import ForecastDisplayMixin
@@ -7,9 +7,9 @@ from .presentationmixin import PresentationMixin
 from .statusmixin import ModelStatusMixin
 
 from ...issues import ModelInitError
-from ....dataloading.dataloaders import DLM
+from ....dataloading.databuilders import DataBuilder, BaseLineDataBuilder, GraphDataBuilder
 
-class BaseModel(Generic[DLM], ModelStatusMixin, PresentationMixin, ModelAppearanceMixin, ForecastDisplayMixin[DLM]):
+class BaseModel(Generic[DataBuilder], ModelStatusMixin, PresentationMixin, ModelAppearanceMixin, ForecastDisplayMixin[DataBuilder]):
     """ 
     Parent class of ALL models.
     Upon init, all models must supply the following
@@ -76,11 +76,11 @@ class BaseModel(Generic[DLM], ModelStatusMixin, PresentationMixin, ModelAppearan
 
     Additionally, the PredictionManager is of importance. This is where predictions are stored and interacted with.
     """
-    _expected_dataloadermanager:    Literal['BaseLineDataLoaderManager', 'DeepDataLoaderManager', 'GraphDataLoaderManager'] 
+    _expected_dataloadermanager:    Literal['BaseLineDataBuilder', 'GraphDataBuilder'] 
     config_info:                    Dict[str, Any]
 
     def __init__(self, 
-                 dataloadermanager: DLM, 
+                 dataloadermanager: Union[BaseLineDataBuilder, GraphDataBuilder], 
                  name:              str,
                  verbose:           int  = -1):
 
@@ -114,7 +114,7 @@ class BaseModel(Generic[DLM], ModelStatusMixin, PresentationMixin, ModelAppearan
         self._print_status_update('model_initialized')
 
     # ======== HIDDEN METHODS ========= #
-    def _set_dataloader_attributes(self, dataloadermanager: DLM):
+    def _set_dataloader_attributes(self, dataloadermanager: Union[BaseLineDataBuilder, GraphDataBuilder]):
         """An extention upon init: sets a range of easy to access attributes related to dataloadermanager"""
         self.dataloadermanager          = dataloadermanager
         self.epiconfig                  = self.dataloadermanager.dataorchestrator.config

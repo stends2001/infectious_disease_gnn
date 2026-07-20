@@ -10,7 +10,7 @@ from ..strategies.gatv2lstm import StatelessGATv2LSTMStrategy, StatefullGATv2LST
 
 from ..debugging import ModelDebuggingReport, DebuggingLine
 from ..deepmodel import DeepModel
-from ....dataloading.dataloaders.deepdataloaders.graphdataloader import GraphDataLoaderManager
+from ....dataloading.databuilders.deepdataloaders.graphdataloader import GraphDataLoaderManager
 
 
 class GATv2LSTMArchitecture(nn.Module):

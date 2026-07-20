@@ -10,7 +10,7 @@ from ..strategies.gcn import StandardGNNStrategy
 
 from ..debugging import ModelDebuggingReport, DebuggingLine
 from ..deepmodel import DeepModel
-from ....dataloading.dataloaders.deepdataloaders.graphdataloader import GraphDataLoaderManager
+from ....dataloading.databuilders.deepdataloaders.graphdataloader import GraphDataLoaderManager
 
 class SimpleGCNModule(nn.Module):
     """

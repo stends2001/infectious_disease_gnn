@@ -20,6 +20,6 @@ model_colors = {
     'nodegrumodel'      : '#D1E5F9',
     #   gnn
     'gcnmodel'         : '#B77914',
-    'gatmodel'          : "#14B78676"
+    'gatmodel'          : "#14B78632"
     
 }

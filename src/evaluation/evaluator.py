@@ -8,7 +8,7 @@ from .peakevaluator import PeakEvaluator
 
 from ..utils import check_dataset, warning_emoji
 from ..models.base.basemodel import BaseModel
-from ..dataloading.dataloaders import DLM
+from ..dataloading.databuilders import DataBuilder
 from ..dataloading.epiconfig import EpiConfig
 
 from .evaluationplotter import EvaluationPlotter 
@@ -40,7 +40,7 @@ class Evaluator:
     data_compilation    -> EvaluationPredictionsCompilation class
     """
 
-    def __init__(self, models: List[BaseModel[DLM]], verbose: int = 1, aggregate_seeds: bool = True):
+    def __init__(self, models: List[BaseModel[DataBuilder]], verbose: int = 1, aggregate_seeds: bool = True):
         self.verbose            = verbose
 
         models_list             = models if isinstance(models, list) else [models]

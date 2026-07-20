@@ -4,11 +4,11 @@ import pandas as pd
 from abc import abstractmethod
 
 from ..base import BaseModel
-from ...dataloading.dataloaders import BaseLineDataLoaderManager 
+from ...dataloading.databuilders import BaseLineDataBuilder 
 from ...dataloading.epidataorchestration.utils.normalization import apply_log, apply_zscore, apply_minmax
 from ...utils.textformatting import warning_emoji
 
-class BaseLineModel(BaseModel[BaseLineDataLoaderManager]):
+class BaseLineModel(BaseModel[BaseLineDataBuilder]):
     """
     Parent class for all BaseLineModels, as well as a subclass of BaseModel.
 
@@ -33,11 +33,11 @@ class BaseLineModel(BaseModel[BaseLineDataLoaderManager]):
     BaseModel
     """
     def __init__(self, 
-                 dataloadermanager: BaseLineDataLoaderManager,                     
+                 dataloadermanager: BaseLineDataBuilder,                     
                  name:              str,
                  verbose:           Literal[-1, 0, 1, 2] = -1):
         
-        self._expected_dataloadermanager = 'BaseLineDataLoaderManager'
+        self._expected_dataloadermanager = 'BaseLineDataBuilder'
         
         super().__init__(dataloadermanager = dataloadermanager, name = name, verbose = verbose)
 

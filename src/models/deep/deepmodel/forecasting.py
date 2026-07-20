@@ -8,7 +8,7 @@ import numpy as np
 from ....types import DataSetSplit
 from ..issues import UnexpectedDataShape
 from ...base.basemodel.statusmixin import ModelStatus
-from ....dataloading.dataloaders import DeepDataLoaderManager, GraphDataLoaderManager
+from ....dataloading.databuilders import GraphDataBuilder
 
 if TYPE_CHECKING:
     from ...base.predictions import PredictionManager
@@ -27,7 +27,7 @@ class DeepModelForecastMixin:
     Main method is `forecast()` with its helper method `_format_forecast_results()`.
     """  
     model:              torch.nn.Module
-    dataloadermanager:  Union[DeepDataLoaderManager, GraphDataLoaderManager]
+    dataloadermanager:  GraphDataBuilder
     strategy:           'Strategy'
     verbose:            int
     epiconfig:          'EpiConfig'

@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 
 from ..issues import ModelError
-from ...dataloading.dataloaders import BaseLineDataLoaderManager 
+from ...dataloading.databuilders import BaseLineDataBuilder 
 from .baselinemodel import BaseLineModel 
 
 from ...utils import check_dataset
@@ -13,7 +13,7 @@ class PersistenceModel(BaseLineModel):
     # TODO
     """
     def __init__(self, 
-                 dataloadermanager: BaseLineDataLoaderManager,                 
+                 dataloadermanager: BaseLineDataBuilder,                 
                  name:              str = 'persistence_model',
                  verbose:           Literal[-1, 0, 1, 2] = -1):
         

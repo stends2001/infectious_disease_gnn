@@ -11,7 +11,7 @@ from matplotlib.figure import Figure
 
 from ...utils.loss.losshandler import LossHandler
 from ...base.basemodel.statusmixin import ModelStatus
-from ....dataloading.dataloaders import DeepDataLoaderManager, GraphDataLoaderManager
+from ....dataloading.databuilders import GraphDataBuilder
 from ....utils.colors import traincolor, valcolor
 
 if TYPE_CHECKING:
@@ -38,7 +38,7 @@ class DeepModelTrainMixin:
     epiconfig:          'EpiConfig'
     config_info:        Dict[str, Any]    
     model:              torch.nn.Module
-    dataloadermanager:  Union[DeepDataLoaderManager, GraphDataLoaderManager]
+    dataloadermanager:  GraphDataBuilder
     strategy:           'Strategy'
     device:             torch.device
     optimizer:          Optimizer

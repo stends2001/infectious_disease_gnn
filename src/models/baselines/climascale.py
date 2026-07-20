@@ -5,14 +5,14 @@ import numpy as np
 from .baselinemodel import BaseLineModel 
 from ..issues import ModelError
 from ...utils import check_dataset
-from ...dataloading.dataloaders import BaseLineDataLoaderManager 
+from ...dataloading.databuilders import BaseLineDataBuilder 
 
 class ClimaScaleModel(BaseLineModel):
     """ 
     # TODO
     """
     def __init__(self, 
-                 dataloadermanager: BaseLineDataLoaderManager,                 
+                 dataloadermanager: BaseLineDataBuilder,                 
                  name:              str = 'climascale_model',
                  verbose:           Literal[-1, 0, 1, 2] = -1):
         

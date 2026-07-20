@@ -5,7 +5,7 @@ from typing import Optional
 
 from ..strategies.gcn import StandardGNNStrategy
 from ..deepmodel import DeepModel
-from ....dataloading.dataloaders.deepdataloaders.graphdataloader import GraphDataLoaderManager
+from ....dataloading import GraphDataBuilder
 
 class GATModule(nn.Module):
     """
@@ -158,9 +158,9 @@ class GATModule(nn.Module):
 class GATModel(DeepModel):
     """
     """
-    _expected_dataloadermanager = 'GraphDataLoaderManager'
+    _expected_dataloadermanager = 'GraphDataBuilder'
     def __init__(self,
-                 dataloadermanager: GraphDataLoaderManager,
+                 dataloadermanager: GraphDataBuilder,
                  name:              str           = 'gatmodel',
                  num_quantiles:     int = 1):
 

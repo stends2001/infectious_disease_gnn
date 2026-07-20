@@ -4,18 +4,16 @@ import torch
 from torch import Tensor
 from torch.optim.optimizer import Optimizer
 
-from ....dataloading.dataloaders.deepdataloaders.datacontainers import DeepData, GraphData
+from ....dataloading.databuilders.graphdatabuilder.datacontainers import Data
 from ...utils.loss.losshandler import LossHandler
 
 from typing import List
-
-Type_snapshot = TypeVar('Type_snapshot', DeepData, GraphData)
 
 if TYPE_CHECKING:
     from ..debugging import ModelDebuggingReport
 
 
-class Strategy(ABC, Generic[Type_snapshot]):
+class Strategy(ABC):
     """
     Base class for model strategies that handle training and forecasting
     All child classes inherit the abstractmethods: must implement all of these:
@@ -25,7 +23,7 @@ class Strategy(ABC, Generic[Type_snapshot]):
     - reset_state
     """
     @abstractmethod
-    def training_step(self, model: torch.nn.Module, snapshot: Type_snapshot, optimizer: Optimizer, loss_fn: LossHandler) -> float:
+    def training_step(self, model: torch.nn.Module, snapshot: Data, optimizer: Optimizer, loss_fn: LossHandler) -> float:
         """
         Execute one training step
 
@@ -43,7 +41,7 @@ class Strategy(ABC, Generic[Type_snapshot]):
         pass
     
     @abstractmethod    
-    def validation_step(self, model: torch.nn.Module, snapshot: Type_snapshot, loss_fn: LossHandler) -> float:
+    def validation_step(self, model: torch.nn.Module, snapshot: Data, loss_fn: LossHandler) -> float:
         """
         Execute one validation step
 
@@ -60,7 +58,7 @@ class Strategy(ABC, Generic[Type_snapshot]):
         pass
     
     @abstractmethod
-    def forecast_step(self, model: torch.nn.Module, snapshot: Type_snapshot, loss_fn: LossHandler) -> Tuple[Tensor, float]:
+    def forecast_step(self, model: torch.nn.Module, snapshot: Data, loss_fn: LossHandler) -> Tuple[Tensor, float]:
         """
         Execute one validation step
 
@@ -77,7 +75,7 @@ class Strategy(ABC, Generic[Type_snapshot]):
         pass
 
     @abstractmethod
-    def debug(self, model: torch.nn.Module, snapshot: Type_snapshot) -> Tuple[Tensor, 'ModelDebuggingReport']:
+    def debug(self, model: torch.nn.Module, snapshot: Data) -> Tuple[Tensor, 'ModelDebuggingReport']:
         pass
 
     def reset_state_epoch(self) -> None:

@@ -9,7 +9,7 @@ SingleNodeType  = Union[int,Literal['national']]
 
 from ...issues import FutureUpdateError
 
-from ....dataloading.dataloaders import DLM
+from ....dataloading.databuilders import DataBuilder, GraphDataBuilder, BaseLineDataBuilder
 from ....types import DataSetSplit
 from ....plotting import ManagedFigure
 from ....utils import testcolor, color_is_light
@@ -22,14 +22,14 @@ if TYPE_CHECKING:
     from ....dataloading.epidataorchestration.utils.temporal_summary import EpiDataTemporalSummary
 
 
-class ForecastDisplayMixin(Generic[DLM]):
+class ForecastDisplayMixin(Generic[DataBuilder]):
     """ 
     Mixin class that deals with the model's forecasts-display.
     Contains a single public method, `show_forecats()` with
     supportive hidden methods.
     """
     predictions:            'PredictionManager'
-    dataloadermanager:      DLM
+    dataloadermanager:      Union[GraphDataBuilder, BaseLineDataBuilder]
     epiconfig:             'EpiConfig'               
     column_registration:   'ColumnRegistry'
     context_data:          'ContextEpiData'

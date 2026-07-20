@@ -10,7 +10,7 @@ from ..dataloading.epiconfig import EpiConfig
 from ..dataloading.epidataorchestration import EpiDataOrchestrator
 from ..models.deep.deepmodel import DeepModel
 from .containers import ExperimentConfig, ExperimentDLMs
-from ..dataloading.dataloaders import BaseLineDataLoaderManager, DeepDataLoaderManager, GraphDataLoaderManager
+from ..dataloading.databuilders import BaseLineDataBuilder, GraphDataBuilder
 
 import logging
 logger = logging.getLogger(__name__)
@@ -158,10 +158,9 @@ class ExperimentRunner(ExperimentHandler):
             graphs_list = [] if self.expcfg.graphs is None else self.expcfg.graphs
 
             hl_dlms = ExperimentDLMs(
-                baseline = BaseLineDataLoaderManager(epidata_orchestrator),
-                deep     = DeepDataLoaderManager(epidata_orchestrator).build(),
+                baseline = BaseLineDataBuilder(epidata_orchestrator),
                 graphs   = {
-                    graph: GraphDataLoaderManager(epidata_orchestrator)
+                    graph: GraphDataBuilder(epidata_orchestrator)
                             .retrieve_static_graph(graph)
                             .build()
                     for graph in graphs_list

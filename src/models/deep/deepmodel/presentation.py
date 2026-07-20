@@ -3,7 +3,7 @@ from tqdm import tqdm
 import numpy as np
 
 from ...base.basemodel.statusmixin import ModelStatus
-from ....dataloading.dataloaders import DeepDataLoaderManager, GraphDataLoaderManager
+from ....dataloading.databuilders import GraphDataBuilder
 from ....utils.textformatting import section, align
 
 if TYPE_CHECKING:
@@ -26,7 +26,7 @@ class DeepModelPresentationMixin:
     predictions:        'PredictionManager'
     verbose:            int
     n_epochs:           int
-    dataloadermanager:  Union[DeepDataLoaderManager, GraphDataLoaderManager]
+    dataloadermanager:  GraphDataBuilder
 
     def _return_verbose_iter(self) -> Tuple[list, Union[range, tqdm]]:
         # print dataloader snapshot
