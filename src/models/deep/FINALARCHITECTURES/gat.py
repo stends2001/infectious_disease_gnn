@@ -17,6 +17,8 @@ class GATModule(nn.Module):
         hidden_size of the linear layer
     num_layers: int
         number of GCN-layers
+    num_heads: int
+        number of attention heads
     dropout_p: float
         dropout rate
     self_loops: bool
@@ -58,6 +60,7 @@ class GATModule(nn.Module):
     def __init__(self,
                  hidden_size:   int,
                  num_layers:    int,
+                 num_heads:     int,
                  dropout_p:     float,
                  self_loops:    bool,
                  norm_edges:    bool,
@@ -73,6 +76,7 @@ class GATModule(nn.Module):
         ### set model - params ###
         self.hidden_size    = hidden_size 
         self.num_layers     = num_layers 
+        self.num_heads      = num_heads
         self.dropout_p      = dropout_p 
         self.self_loops     = self_loops
         self.norm_edges     = norm_edges
@@ -94,14 +98,17 @@ class GATModule(nn.Module):
 
         # Deep spatial stack with residual connections.
         # Each layer: GATv2Conv → LayerNorm → ReLU → Dropout + residual
+
         convs       = []
         norms       = []
         for layer in range(num_layers):
-            convs.append(GATv2Conv(in_channels    = hidden_size, 
-                                 out_channels   = hidden_size,
-                                 add_self_loops = self_loops, 
-                                 normalize      = norm_edges))
-            
+            convs.append(GATv2Conv(
+                in_channels = hidden_size,
+                out_channels = hidden_size,
+                heads    =num_heads,
+                concat=False,
+                add_self_loops=self_loops
+))
             norms.append(nn.LayerNorm(hidden_size))
 
         self.convs  = nn.ModuleList(convs)
@@ -131,7 +138,7 @@ class GATModule(nn.Module):
         # Deep spatial convolution with residual connections
         for layer_idx, (conv, norm) in enumerate(zip(self.convs, self.norms)):
             h_res   = h                                     # store for residual
-            h       = conv(h, edge_index, edge_weight)      # spatial aggregation
+            h       = conv(h, edge_index)                   # spatial aggregation
             h       = norm(h) 
             h       = self.activation(h)
             h       = self.dropout(h)
@@ -168,6 +175,7 @@ class GATModel(DeepModel):
     def set_model_hparams(self,
                           hidden_size:  int   = 64,
                           num_layers:   int   = 3,
+                          num_heads:    int   = 4,
                           dropout:      float = 0.2,
                           self_loops:   bool  = False,
                           norm_edges:   bool  = True,
@@ -183,6 +191,7 @@ class GATModel(DeepModel):
         self.model = GATModule(
             hidden_size     = hidden_size,
             num_layers      = num_layers,
+            num_heads       = num_heads,
             dropout_p       = dropout,
             self_loops      = self_loops,
             norm_edges      = norm_edges,
@@ -198,7 +207,8 @@ class GATModel(DeepModel):
         self.config_info['model_hparams'] = {
             'hidden_size':  hidden_size,
             'num_layers':   num_layers,
-            'dropout':      dropout,
+            'num_heads' :   num_heads,
+            'dropout'   :   dropout,
             'self_loops':   self_loops,
             'norm_edges':   norm_edges,
             'residuals' :   residuals
