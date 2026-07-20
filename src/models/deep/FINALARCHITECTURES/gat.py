@@ -167,7 +167,7 @@ class GATModel(DeepModel):
         super().__init__(
             dataloadermanager   = dataloadermanager,
             name                = name,
-            verbose             = 1,
+            verbose             = 2,
             strategy            = StandardGNNStrategy()
         )
         self.num_quantiles = num_quantiles

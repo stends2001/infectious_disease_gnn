@@ -19,12 +19,7 @@ model_colors = {
     'nodebilstmmodel'   : '#84BCF1',
     'nodegrumodel'      : '#D1E5F9',
     #   gnn
-    'simplegcnmodel'    : '#B77914',
-    'gcn2model'         : "#FF9E01",
-    'gatv2model'        : '#F1C884',
-    'gatv2lstmmodel'    : '#14B787',
-    'gcntcnmodel'       : "#14B78676",
-    'gcnlstmmodel'      : "#14B78676",
-    'decoupledgcnmodel' : "#B214B7D8",
+    'gcnmodel'         : '#B77914',
+    'gatmodel'          : "#14B78676"
     
 }
