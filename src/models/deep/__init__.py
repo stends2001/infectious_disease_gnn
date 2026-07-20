@@ -4,3 +4,5 @@ from .architectures.lstm import LSTMModel
 from .architectures.gcnlstm import GCNLSTMModel
 from .architectures.gcn2 import GCN2Model
 from .architectures.decoupled_gcn import DecoupledGCNModel
+
+from .FINALARCHITECTURES import GATModel, GCNModel

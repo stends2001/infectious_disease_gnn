@@ -4,12 +4,6 @@ MODELSREGISTRY = {
         'ZeroModel'             : 14,
         'PersistenceModel'      : 0,
         'ClimateologyModel'     : 1,        
-        'NodeRFModel'           : 2,
-        'SpatialGNNModel'       : 5,
-        'GATv2Model'            : 2,
-        'NodeLSTMModel'         : 8,
-        'LSTMModel'             : 8,
-        'NodeBiLSTMModel'       : 9,
-        'NodeGRUModel'          : 10,
-        'GCNLSTMModel'          : 10
+        'GATModel'              : 8,
+        'GCNModel'              : 10,
     }    
