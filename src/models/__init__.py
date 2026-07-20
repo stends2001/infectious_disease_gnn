@@ -1,14 +1,11 @@
 """
-Three types of models:
-- baseline models
-- shallow models
-- deep models
+Models
+
+The models that make the spatiotemporal epidemiological predictions. Divided into:
+- Base (relevant to all models: BaseModel, Predictions)
+- BaseLine (Climatology and Persistence)
+- Deep (GNNs and other Neural Networks)
 """
+
 from .baselines import PersistenceModel, ClimateologyModel, ConstantModel, ClimaScaleModel
 from .deep import GCNModel, GATModel
-
-# from .shallow.noderf import NodeRFModel
-
-# from .deep import SimpleGCNModel, GATv2LSTMModel, LSTMModel, GCNLSTMModel, GCN2Model, DecoupledGCNModel, GCNModel, GATModel
-
-# from .deep import SimpleGCNModel, GATv2LSTMModel, NodeLSTMModel, NodeBiLSTMModel, NodeGRUModel, SeqNodeLSTMModel,GATv2Model

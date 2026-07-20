@@ -1,3 +1,9 @@
+"""
+EpiDataOrchestration - containers
+
+One container holding data relevant for a specific stage in the orchestration process.
+"""
+
 from .raw import RawEpiData
 from .harmonized import HarmonizedEpiData
 from .context import ContextEpiData

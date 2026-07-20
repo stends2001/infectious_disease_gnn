@@ -1,3 +1,9 @@
+"""
+DataBuilders
+
+Provides model-ready classes contianing data based on EpiDataOrchestrator.
+"""
+
 from typing import Union, TypeVar
 
 from .baselinedatabuilder import BaseLineDataBuilder
