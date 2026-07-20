@@ -11,9 +11,17 @@ class BaseLineDataLoaderManager:
 
     runs by itself from __init__, no need to call any method
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     dataorchestrator: 'EpiDataOrchestrator'
+
+    See Also
+    --------
+    For more info, please check EpiDataOrchestrator.
+
+    Downstream
+    ----------
+    This is the dataloader - meant for BaseLineModels
     """
     def __init__(self, 
                  dataorchestrator: 'EpiDataOrchestrator'):
@@ -29,9 +37,6 @@ class BaseLineDataLoaderManager:
         split_colnames      = self.dataorchestrator.column_registration.get_entries_names_by_type('split')
         time_colname        = self.dataorchestrator.config.temporal_column
         id_colname          = self.dataorchestrator.config.id_column
-
-        if self.dataorchestrator.config.horizon_size > 1:
-            raise NotImplementedError('BaseLineDataLoaderManager currently only works with horizon size == 1')
         
         # Get target from the first horizon
         base_lead           = self.dataorchestrator.config.horizon_leadtime
@@ -45,10 +50,7 @@ class BaseLineDataLoaderManager:
         main_data_selection = main_data_selection.rename(columns={target_colname: 'target'})
         
         # Merge with splits
-        main_data_selection = pd.merge(main_data_selection, timesplits, on='timestamp')
-
-        if self.dataorchestrator.config.prediction_mode == 'classification':
-            main_data_selection.loc[main_data_selection['target'] > 0, 'target'] = 1       
+        main_data_selection = pd.merge(main_data_selection, timesplits, on=time_colname)
 
         self.dataloader_main = main_data_selection
 
