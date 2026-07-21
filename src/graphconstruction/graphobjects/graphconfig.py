@@ -1,6 +1,6 @@
 from dataclasses import dataclass 
 from typing import Optional , Any, Dict, Literal, Union
-from ...utils.types import GraphType, GraphNormType
+from ..utils import GraphType, GraphNormType
 
 class InvalidTopKConfig(Exception):
     

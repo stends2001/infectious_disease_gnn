@@ -8,8 +8,8 @@ from .graphpreviewer import GraphViewer
 from ..graphregistry import GraphRegistry
 from ..graphobjects import GraphObject, GraphStructure, TopKConfig, GraphConfig
 
-from ...utils.pathmanager import PathManager
-from ...utils.types import GraphType, GraphNormType, Country, Level
+from ..utils import GraphType, GraphNormType
+from ...utils import PathManager, Country, Level
 
 import logging
 logger = logging.getLogger(__name__)

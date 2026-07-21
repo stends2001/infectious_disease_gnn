@@ -3,8 +3,7 @@ import pandas as pd
 from typing import Dict, Tuple
 from pathlib import Path
 
-from ...utils import compare_sets
-from ..exceptions import MissingColumnError
+from ...utils import compare_sets, MissingColumnError
 
 import logging
 logger = logging.getLogger(__name__)

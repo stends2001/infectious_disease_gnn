@@ -6,8 +6,8 @@ import pandas as pd
 from numpy.typing import NDArray
 import numpy as np
 
-from ...utils import registry_method, get_registered_methods, MethodNotInRegistry, CRS_GERMANY_METRES
-from ...utils.types import GraphType
+from ..utils import GraphType, CRS_METRES
+from ...utils import registry_method, get_registered_methods, MethodNotInRegistry
 
 import logging
 logger = logging.getLogger(__name__)
@@ -127,7 +127,7 @@ class GraphBuilder:
         gdfc             = self.shp_data[[self.token_col, "geometry"]].sort_values(self.token_col).reset_index(drop=True)
         population_data  = self.pop_data.sort_values(self.token_col).reset_index(drop=True)
 
-        dfc_projected               = gdfc.to_crs(CRS_GERMANY_METRES)
+        dfc_projected               = gdfc.to_crs(CRS_METRES)
         dfc_projected['geometry']   = dfc_projected.geometry.centroid
         coords                      = np.column_stack([dfc_projected.geometry.x, dfc_projected.geometry.y])
 

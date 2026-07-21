@@ -3,7 +3,7 @@ from typing import Literal, assert_never
 
 from ..graphobjects import GraphStructure
 from ...utils import registry_method, get_registered_methods, MethodNotInRegistry
-from ...utils.types import GraphNormType
+from ..utils import GraphNormType
 
 import logging
 logger = logging.getLogger(__name__)
