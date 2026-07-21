@@ -8,6 +8,9 @@ from ....utils import PathNotFound
 if TYPE_CHECKING:
     from ....dataloading.epiconfig import EpiConfig
 
+import logging
+logger = logging.getLogger(__name__)
+
 class DeepModelCheckpointMixin:
     """ 
     Mixin class that deals with the saving of DeepModels.
@@ -45,5 +48,4 @@ class DeepModelCheckpointMixin:
         }    
 
         torch.save(save_dict, filepath)
-        
-        print(f"✓ Model saved: {filepath}")
+        logger.info("Model %s saved to %s", self.clean_name, dir)

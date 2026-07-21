@@ -17,6 +17,9 @@ from ....dataloading.databuilders import GraphDataBuilder
 from ..strategies.basestrategy import Strategy
 from ...base.basemodel import BaseModel
     
+import logging
+logger = logging.getLogger(__name__)
+
 class DeepModel(
     DeepModelInternalsMixin,
     DeepModelPresentationMixin,
@@ -213,6 +216,8 @@ class DeepModel(
         instance.config_info['model_hparams'] = save_dict['model_hparams']
         instance.config_info['global_hparams']= save_dict['global_hparams']
         instance._update_status('trained')
+
+        logger.info("Model %s loaded from %s", model_name, dir)
 
         return instance
 

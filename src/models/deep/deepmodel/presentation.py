@@ -29,27 +29,8 @@ class DeepModelPresentationMixin:
     dataloadermanager:  GraphDataBuilder
 
     def _return_verbose_iter(self) -> Tuple[list, Union[range, tqdm]]:
-        # print dataloader snapshot
-        if self.verbose >= 2:
-            print('Dataloader:' + str(self.dataloadermanager.dataloader_train))        
-
-        # determine verbose - loops (which loops to return evaluation metric)
-        if self.verbose >= 2:
-            verbose_loops   = list(np.arange(1, self.n_epochs + 1))
-            epoch_iter      = range(self.n_epochs)
-
-        elif self.verbose >= 1:
-            verbose_loops   = list(np.arange(1, self.n_epochs + 1, step=10))
-            epoch_iter      = range(self.n_epochs)
-
-        elif self.verbose < 0:
-            verbose_loops   = []
-            epoch_iter      = range(self.n_epochs)
-
-        else:
-            verbose_loops   = []
-            epoch_iter      = tqdm(range(self.n_epochs), desc="Training epochs") # if no verbose, just a tqdm     
-
+        verbose_loops   = list(np.arange(1, self.n_epochs + 1))
+        epoch_iter      = range(self.n_epochs)
         return verbose_loops, epoch_iter   
 
     def _return_verbose_line(self, 

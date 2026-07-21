@@ -17,6 +17,10 @@ if TYPE_CHECKING:
     from .loss.losshandler import LossHandler  
     from ....dataloading.epidataorchestration.containers import ContextEpiData
 
+    
+import logging
+logger = logging.getLogger(__name__)
+
 class DeepModelForecastMixin:
     """ 
     Mixin class that deals with the forecasting of DeepModels.
@@ -61,7 +65,7 @@ class DeepModelForecastMixin:
         self.strategy.reset_state_dataset()
 
         # define iterator: whether or not to use tqdm
-        iterator            = tqdm(dataloader, desc=f"Forecasting {dataset}") if self.verbose >= 0 else dataloader
+        iterator            = dataloader
         total_loss          = 0
         
         # setup expected predictions-shape [num_nodes, horizon_size, num_quantiles]
@@ -74,7 +78,8 @@ class DeepModelForecastMixin:
 
         # turn off gradient tracking
         with torch.no_grad():
-
+                
+            logger.debug("Forecasting ...")
             # for each snapshot, forecast
             for idx, snapshot in enumerate(iterator):
                 snapshot = snapshot.to(self.device)
@@ -92,7 +97,8 @@ class DeepModelForecastMixin:
 
                 raw_predictions.append(y_hat.detach().cpu())
                 raw_targets.append(snapshot.y.detach().cpu())
-
+        
+        logger.debug("Model predictions being reshaped ...")
         avg_loss = total_loss / len(dataloader)
         setattr(self, f'{dataset}_loss', avg_loss)
 
@@ -166,10 +172,8 @@ class DeepModelForecastMixin:
             )
 
             self.predictions.add_horizon_predictions(dataset, horizon_data, hh)
-
-        if self.verbose > 1:
-            print(f"{dataset.capitalize()} loss: {avg_loss:.4f}")
-
+        
+        logger.info("dataset %s: loss = %s", dataset.capitalize(), round(avg_loss,4))
         self._update_status('forecasted')
 
     def _format_forecast_results(

@@ -20,6 +20,9 @@ if TYPE_CHECKING:
 
 Metric = Literal['train_loss', 'val_loss', 'learning_rate']
 
+   
+import logging
+logger = logging.getLogger(__name__)
 
 
 class DeepModelTrainMixin:
@@ -76,8 +79,8 @@ class DeepModelTrainMixin:
         L_train             = len(train_loader)
         L_val               = len(val_loader)
 
-        if len(verbose_loops) > 0:
-            self._return_verbose_line()
+        logger.debug("Data snapshot: %s", train_loader.data_list[0])
+        self._return_verbose_line()
 
         # Each epoch is divided into:
         #   1. training phase
@@ -156,19 +159,19 @@ class DeepModelTrainMixin:
                 list_patience.append(True)
 
             if patience_counter >= self.patience:
-            
-                if self.verbose>=0:
-                    print(f"Early stopping: Validation loss hasn't improved for {self.patience} epochs")
+        
+                logger.info("Early stopping: Validation loss hasn't improved for %s epochs", self.patience)
 
-                    if best_model_state is not None:
-                        self.model.load_state_dict(best_model_state)
-                        print(f"Restored model from best validation loss: {best_val_loss:.4f}")
+                if best_model_state is not None:
+                    self.model.load_state_dict(best_model_state)
+                    logger.info("Restored model from best validation loss: %s", round(best_val_loss,4))
 
-                if epoch < 2*self.patience:
-                    print(f'training was stopped before epoch could reach 2*patience. Inspect monitoring metrics.')                    
+                if epoch < 2*self.patience:      
+                    logger.warning("training was stopped before epoch could reach 2*patience. Inspect monitoring metrics.")
+
 
                 elif epoch < self.n_epochs/10:
-                    print(f'training was stopped before 10% of the set epochs. Inspect monitoring metrics.')
+                    logger.warning('training was stopped before 10% of the set epochs. Inspect monitoring metrics.')                    
 
                 break              
 
@@ -180,14 +183,14 @@ class DeepModelTrainMixin:
                 self.scheduler.step()
 
             new_lr = self.optimizer.param_groups[0]['lr']
-
-            if repr_epoch in verbose_loops:
-                self._return_verbose_line(repr_epoch, train_loss, val_loss,
+            
+            line = self._return_verbose_line(repr_epoch, train_loss, val_loss,
                                           "v" if val_improved else None,
                                           None if val_improved else f"{patience_counter}/{self.patience}",
                                           True if current_lr != new_lr else None
-                                          )     
-            
+                                          )  
+            logger.info("%s", line)
+                   
         self.monitoring_metrics = pd.DataFrame({'train_loss'    : list_train_loss,
                                                 'val_loss'      : list_val_loss,
                                                 'patience'      : list_patience,
