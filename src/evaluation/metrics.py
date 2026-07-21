@@ -296,7 +296,6 @@ class QuantileRegressionMetricsCalculator(MetricsCalculatorBase):
         # ── CIS ────────────────────────────────────────────────────────────
         return float(ccc * coverage_score)
 
-
     @property
     def _requires_quantiles(self) -> bool:
         return True 

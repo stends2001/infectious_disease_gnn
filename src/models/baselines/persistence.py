@@ -6,7 +6,7 @@ from ..issues import ModelError
 from ...dataloading.databuilders import BaseLineDataBuilder 
 from .baselinemodel import BaseLineModel 
 
-from ...utils import check_dataset
+from ...utils import DataSetSplit
 
 class PersistenceModel(BaseLineModel):
     """ 
@@ -52,8 +52,7 @@ class PersistenceModel(BaseLineModel):
                     .unstack()
         )
 
-    @check_dataset()
-    def forecast(self, dataset: Literal['train','val','test'] = 'test') -> None:
+    def forecast(self, dataset: DataSetSplit = 'test') -> None:
         """
         Forecast for set dataset
         """

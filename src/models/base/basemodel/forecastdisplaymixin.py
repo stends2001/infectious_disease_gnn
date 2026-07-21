@@ -11,8 +11,8 @@ SingleNodeType  = Union[int,Literal['national']]
 from ...issues import FutureUpdateError
 
 from ....dataloading.databuilders import DataBuilder, GraphDataBuilder, BaseLineDataBuilder
-from ....utils.types import DataSetSplit
-from ....utils import testcolor, color_is_light
+from ....utils import DataSetSplit, testcolor
+from ...utils import color_is_light
 
 if TYPE_CHECKING:
     from ..predictions import PredictionManager

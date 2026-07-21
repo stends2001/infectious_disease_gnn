@@ -4,7 +4,7 @@ import numpy as np
 
 from ..issues import ModelError
 from ...dataloading.databuilders import BaseLineDataBuilder 
-from ...utils import check_dataset
+from ...utils import DataSetSplit
 
 from .baselinemodel import BaseLineModel 
 
@@ -51,8 +51,7 @@ class ClimateologyModel(BaseLineModel):
                     .unstack()
         )
 
-    @check_dataset()
-    def forecast(self, dataset: Literal['train','val','test'] = 'test') -> None:
+    def forecast(self, dataset: DataSetSplit = 'test') -> None:
         """
         Forecast for set dataset
         """

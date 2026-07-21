@@ -23,3 +23,9 @@ model_colors = {
     'gatmodel'          : "#14B78632"
     
 }
+from matplotlib.colors import to_rgb
+def color_is_light(color: str, threshold=0.6):
+    # perceived luminance (human-vision–weighted)
+    r, g, b = to_rgb(color)
+    luminance = 0.2126*r + 0.7152*g + 0.0722*b
+    return luminance > threshold

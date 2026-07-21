@@ -7,7 +7,7 @@ from pathlib import Path
 from .graphconfig import GraphConfig
 from .graphstructure import GraphStructure
 from ..exceptions import InvalidGraphObject
-from ...utils.helpers import PathNotFound, load_mapping_dict, save_mapping_dict
+from ...utils import PathNotFound, load_mapping_dict, save_mapping_dict
 
 import logging
 logger = logging.getLogger(__name__)

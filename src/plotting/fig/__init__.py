@@ -1,2 +1,0 @@
-from .managedfigure import ManagedFigure, convert_managedfigure
-from .managedfigure_grid import ManagedFigureGrid

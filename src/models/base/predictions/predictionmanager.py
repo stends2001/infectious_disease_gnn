@@ -10,7 +10,7 @@ from ....dataloading.epidataorchestration.utils.normalization import reverse_log
 from ....dataloading.epidataorchestration.orchestrator import EpiDataOrchestrator
 from ....dataloading.columnregistration import ColumnRegistry
 from ....dataloading.epidataorchestration.utils.temporal_summary import EpiDataTemporalSummary, TemporalError
-from ....utils import check_dataset
+from ....utils import DataSetSplit
 
 
 class PredictionManager:
@@ -133,14 +133,13 @@ class PredictionManager:
                                   is_original           = True, 
                                   spatially_aggregated  = True)
 
-    def get_preds(self, dataset: Literal['train','val','test']) -> 'PredictionCollection':
+    def get_preds(self, dataset: DataSetSplit) -> 'PredictionCollection':
         """
         get predictions from any of the datasets
         """
         return self._return_dataset(dataset)
 
-    @check_dataset()
-    def _return_dataset(self, dataset: Literal['train','val','test']) -> 'PredictionCollection':
+    def _return_dataset(self, dataset: DataSetSplit) -> 'PredictionCollection':
         """
         Returns the PredictionCollection at attribute train/val/test
         if invalid dataset, error is raised from decorator
@@ -265,8 +264,7 @@ class PredictionManager:
         
         return df.merge(source_df, on=merge_keys, how='left')
 
-    @check_dataset()
-    def _filter_by_dataset_timerange(self, df: pd.DataFrame, dataset: Literal['train','val','test']) -> pd.DataFrame:
+    def _filter_by_dataset_timerange(self, df: pd.DataFrame, dataset: DataSetSplit) -> pd.DataFrame:
         """
         Filters out data from outside the expected period,
         using the dates specified in TemporalSummary
@@ -286,8 +284,7 @@ class PredictionManager:
         filtered= dfc[mask].reset_index(drop=True)        
         return filtered
 
-    @check_dataset()
-    def _validate_predictions_temporally(self, df: pd.DataFrame, dataset: Literal['train','val','test']):
+    def _validate_predictions_temporally(self, df: pd.DataFrame, dataset: DataSetSplit):
         dt_index = pd.DatetimeIndex(
             pd.to_datetime(df[self.epiconfig.temporal_column])
         ).drop_duplicates().sort_values()

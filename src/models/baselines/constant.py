@@ -1,7 +1,7 @@
 from typing import Literal, Self
 
 from ...dataloading.databuilders import BaseLineDataBuilder
-from ...utils import check_dataset
+from ...utils import DataSetSplit
 from .baselinemodel import BaseLineModel 
 
 class ConstantModel(BaseLineModel):
@@ -27,8 +27,7 @@ class ConstantModel(BaseLineModel):
         self.constant_value = constant_value
         self._update_status('model_hparams_set')
     
-    @check_dataset()
-    def forecast(self, dataset: Literal['train','val','test'] = 'test') -> None:
+    def forecast(self, dataset: DataSetSplit) -> None:
         """
         Forecast for set dataset
         """

@@ -4,7 +4,7 @@ import numpy as np
 
 from .baselinemodel import BaseLineModel 
 from ..issues import ModelError
-from ...utils import check_dataset
+from ...utils import DataSetSplit
 from ...dataloading.databuilders import BaseLineDataBuilder 
 
 class ClimaScaleModel(BaseLineModel):
@@ -52,8 +52,7 @@ class ClimaScaleModel(BaseLineModel):
 
         self._update_status('trained')
 
-    @check_dataset()
-    def forecast(self, dataset: Literal['train','val','test'] = 'test') -> None:
+    def forecast(self, dataset: DataSetSplit = 'test') -> None:
         """
         Forecast for set dataset
         """
