@@ -136,9 +136,9 @@ class DeepModel(
     # ======= MAIN METHODS =========== #
     @classmethod
     def load_model(cls,
-                   model_name:        str,
-                   dataloadermanager: GraphDataBuilder,
-                   subdir:            str,
+                   model_name:          str,
+                   dataloadermanager:   GraphDataBuilder,
+                   dir:                 Union[str, Path],
                    ) -> 'DeepModel':
         """
         Loads a saved model, and sets model hyper-parameters, global-hyperparameters
@@ -159,15 +159,14 @@ class DeepModel(
         This is the only method that returns the instance of the model.
         """
 
-        # build path — use class-level helper, not instance attribute
-        # base_dir = Path(os.path.join(get_project_utilities_env(), 'models'))
-        base     = Path('data/experiment_outcomes') / Path(subdir)
+        if isinstance(dir, str):
+            dir = Path(dir)
         
         # construct model path
         if model_name.endswith('.pt'):
-            filepath = base / model_name
+            filepath = dir / model_name
         else:
-            filepath = base / f"{model_name}.pt"
+            filepath = dir / f"{model_name}.pt"
 
         # validate model path's existence
         if not filepath.exists():

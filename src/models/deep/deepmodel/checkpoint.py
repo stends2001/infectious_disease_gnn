@@ -3,6 +3,8 @@ import torch
 from torch import Tensor as Tensor
 from pathlib import Path
 
+from ....utils import PathNotFound
+
 if TYPE_CHECKING:
     from ....dataloading.epiconfig import EpiConfig
 
@@ -18,29 +20,19 @@ class DeepModelCheckpointMixin:
     verbose:            int
     epiconfig:          'EpiConfig'
 
-    def save_model(self, dir: Optional[Path] = None):
+    def save_model(self, dir: Path):
         """
         save current model in subdirectory (optionally).
         could be named after an experiment.
         """
         if not hasattr(self, 'model'):
             raise ValueError('No model found!')
+        
+        # if parent of dir doesn't exist, error
+        if not dir.parent.exists():
+            raise PathNotFound(f"parent of dir {dir} does not exist")
 
-        base_dir    = self.models_dir 
-
-        # if base dir doesn't exist, error
-        if not base_dir.exists():
-            raise FileNotFoundError(f".base_dir {base_dir} does not exist")
-
-        if dir is not None:
-            full_sub_dir = base_dir / dir
-            # if subdir doesn't exist, make it
-            full_sub_dir.mkdir(exist_ok=True)
-            filepath = full_sub_dir / f"{self.clean_name}.pt"
-            print(filepath)
-
-        else:
-            filepath = base_dir / f"{self.clean_name}.pt"
+        filepath = dir / f"{self.clean_name}.pt"
 
         save_dict: Dict[str, Any] = {
             'name':               self.clean_name,            
@@ -54,6 +46,4 @@ class DeepModelCheckpointMixin:
 
         torch.save(save_dict, filepath)
         
-        if self.verbose >= 0:
-            local_path = str(filepath).split("/wissdaten/")[1]
-            print(f"✓ Model saved: Wissdaten/{local_path}")
+        print(f"✓ Model saved: {filepath}")

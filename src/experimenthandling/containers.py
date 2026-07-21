@@ -7,8 +7,7 @@ from typing import Optional
 from pathlib import Path
 import yaml
 
-from ..utils.exceptions import InvalidExtension, AttributeNotFound
-from ..utils.helpers import PathNotFound
+from ..utils import InvalidExtension, AttributeNotFound, PathNotFound
 from ..utils.textformatting import align
 
 import logging
@@ -81,9 +80,9 @@ class ExperimentConfig:
     def save_config(self, path: Path) -> None: 
         """save ExperimentConfig to dedicated path (must include .yaml)"""
 
-        if not path.exists():
-            path.mkdir()
-            logger.info("path %s made", path)            
+        if not path.parent.exists():
+            path.parent.mkdir()
+            logger.info("path %s made", path.parent)            
 
         if path.suffix != '.yaml':
             raise InvalidExtension('.yaml',path.suffix)

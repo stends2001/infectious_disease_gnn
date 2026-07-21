@@ -149,7 +149,7 @@ class ExperimentLoader(ExperimentHandler):
         childclass = DeepModel._childclasses[modeltype]
         loaded_model = childclass.load_model(
             model_name          = specs.name,
-            subdir              = str(self.path_exp),
+            dir                 = str(self.path_exp),
             dataloadermanager   = dlm,
         )
 

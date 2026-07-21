@@ -1,5 +1,5 @@
 from pathlib import Path 
-from typing import Optional, Union, Dict, Type
+from typing import Optional, Union, Dict, Type, assert_never
 import os
 from itertools import product
 from tqdm import tqdm
@@ -14,6 +14,7 @@ from ..dataloading.databuilders import BaseLineDataBuilder, GraphDataBuilder
 
 import logging
 logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 
 class ExperimentRunner(ExperimentHandler):
     """ 
@@ -69,9 +70,9 @@ class ExperimentRunner(ExperimentHandler):
         
         graphlist = [None] if self.expcfg.graphs is None else self.expcfg.graphs
 
-        logger.info("Models training ...")
+        logger.info("Models %s training on %s", self.expcfg.models, self.new_variable_values)
 
-        iterator = product(self.new_variable_values, self.expcfg.models)
+        iterator = product(self.new_variable_values, self.expcfg.models)      
 
         if show_progress:
             iterator =  tqdm(
@@ -81,22 +82,25 @@ class ExperimentRunner(ExperimentHandler):
             )
 
         for value, ml in iterator:
-                
+
                 modeltype  = f"{ml}model"
                 childclass = DeepModel._childclasses[modeltype]
-
+                logger.info("Training model %s on value %s", childclass.__name__, value)
                 for sd in self.expcfg.seeds:
 
                     match childclass._expected_dataloadermanager:
 
-                        case 'GraphDataLoaderManager':
+                        case 'GraphDataBuilder':
                             for graph in graphlist:
                                 modelname = self._get_model_name(ml, value, sd, graph)
                                 self._train_and_save_model(modelname, childclass, value, ml, global_hparams, graph)
 
-                        case 'DeepDataLoaderManager':
-                            modelname = self._get_model_name(ml, value, sd, None)
-                            self._train_and_save_model(modelname, childclass, value, ml, global_hparams, None)
+                        case 'BaseLineDataBuilder':
+                            raise ValueError("got required databuilder as BaseLineDataBuilder: Baseline Models arent supposed to be run here.")
+
+                        case _:
+                            assert_never(childclass._expected_dataloadermanager)
+
 
         logger.info("Models done training")
      
@@ -119,7 +123,7 @@ class ExperimentRunner(ExperimentHandler):
         model.set_model_hparams()
         model.set_global_hparams(**global_hparams)
         model.train()
-        model.save_model(dir=Path(self.experiment))
+        model.save_model(dir=self.path_exp)
 
         logger.info(
             "Model %s trained and saved in %s",

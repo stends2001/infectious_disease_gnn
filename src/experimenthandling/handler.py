@@ -4,12 +4,12 @@ import os
 from .exceptions import DataLoaderManagerError, ExperimentDirectoryInvalidError
 from .containers import ExperimentDLMs, ExperimentConfig
 from ..dataloading.epiconfig import EpiConfig
-from ..utils.pathmanager import PathManager
-from ..utils.helpers import PathNotFound
+from ..utils import PathManager, PathNotFound
 from ..models.deep.deepmodel import DeepModel
 
 import logging
 logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 
 class ExperimentHandler:
     """ 
@@ -101,11 +101,8 @@ class ExperimentHandler:
         expected_dlm= childclass._expected_dataloadermanager
 
         match expected_dlm:
-
-            case "DeepDataLoaderManager":
-                return self.dataloadermanagers[varvalue].deep
         
-            case "GraphDataLoaderManager":
+            case "GraphDataBuilder":
                 if graphtype is None:
                     raise DataLoaderManagerError(f"Graph required for {modelclass} but got none")
                 
