@@ -6,7 +6,7 @@ import geopandas as gpd
 from ...epiconfig import EpiConfig
 
 from ....utils.textformatting import checkmark
-from ....utils.constants import berlin_district_ids, berlin_id
+from ..utils import berlin_district_ids, berlin_id
 from ..utils.issues import EpiDataOrchestrationError
 from ..utils.temporal_summary import EpiDataTemporalSummary
 

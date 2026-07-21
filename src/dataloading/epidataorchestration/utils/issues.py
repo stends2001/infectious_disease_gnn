@@ -1,23 +1,23 @@
 from typing import List, Type
-from ....issues import Warning, Error
-
 # ======== EPIDATAORCHESTRATION =========== #
 
-class EpiDataOrchestrationError(Error):
-    def __init__(self, message: str):
-        statement = f"Data Orchestration couldn't be run; {message}"
-        super().__init__(statement)    
+class EpiDataOrchestrationError(Exception):
+    def __init__(self, msg: str):
+        msg = f"Data Orchestration couldn't be run; {msg}"
+        super().__init__(msg)    
 
-class MissingEpiDataContainer(Error):
+class MissingEpiDataContainer(Exception):
     def __init__(self, datastage: str, previous_method: str):
-        super().__init__(f"No {datastage} attribute found for DataOrchestrator. Run {previous_method}() first")     
+        msg = f"No {datastage} attribute found for DataOrchestrator. Run {previous_method}() first"
+        super().__init__(msg)     
 
-class NonExistentAttributeEpiDataContainer(Error):
+class NonExistentAttributeEpiDataContainer(Exception):
     def __init__(self, class_name: str, attribute_name: str):
-        message= f"Attribute {attribute_name} does not exist in {class_name}"
-        super().__init__(message, code=None, context=None)               
+        msg= f"Attribute {attribute_name} does not exist in {class_name}"
+        super().__init__(msg)               
 
 # ======= TEMPORAL SUMMARY ==== #
-class TemporalError(Error):
+class TemporalError(Exception):
     def __init__(self, message: str):
-        super().__init__(f'Invalid EpiDataTemporalSummary: {message}')
+        msg = f'Invalid EpiDataTemporalSummary: {message}'
+        super().__init__(msg)
