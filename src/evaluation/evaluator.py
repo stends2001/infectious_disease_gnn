@@ -5,7 +5,7 @@ from tqdm import tqdm
 from .containers import EvaluationPredictionsCompilation
 from .metrics import QuantileRegressionMetricsCalculator, PointRegressionMetricsCalculator
 
-from ..utils import check_dataset, warning_emoji
+from ..utils import DataSetSplit, warning_emoji
 from ..models.base.basemodel import BaseModel
 from ..dataloading.databuilders import DataBuilder
 from ..dataloading.epiconfig import EpiConfig
@@ -62,7 +62,6 @@ class Evaluator:
         self.data_compilation       = EvaluationPredictionsCompilation(self.model_names)
         self.metric_calculator      = self._return_metric_calculator()            
 
-    @check_dataset()
     def add_evaluation(self, 
                        horizon: int  = 0,
                        dataset: DataSetSplit = 'test') -> Self:
