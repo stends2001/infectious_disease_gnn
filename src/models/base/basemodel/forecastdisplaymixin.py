@@ -1,6 +1,7 @@
 from typing import Union, Optional, Literal, List, Tuple, Generic, assert_never, TYPE_CHECKING
 import pandas as pd
 from matplotlib.axes import Axes
+from matplotlib.figure import Figure
 import matplotlib.pyplot as plt 
 import seaborn as sns
 from datetime import datetime
@@ -10,8 +11,7 @@ SingleNodeType  = Union[int,Literal['national']]
 from ...issues import FutureUpdateError
 
 from ....dataloading.databuilders import DataBuilder, GraphDataBuilder, BaseLineDataBuilder
-from ....types import DataSetSplit
-from ....plotting import ManagedFigure
+from ....utils.types import DataSetSplit
 from ....utils import testcolor, color_is_light
 
 if TYPE_CHECKING:
@@ -45,7 +45,7 @@ class ForecastDisplayMixin(Generic[DataBuilder]):
                        plot_type:   Literal['line']                 = 'line',
                        horizon:     int                             = 0,
                        is_original: bool                            = True,
-                       ) -> ManagedFigure:
+                       ) -> Tuple[Figure, List[Axes]]:
         """
         Plot lineplots of predicted timeseries.
         NOTE Metrics cannot be plotted by a model, instead use Evaluator for that.
@@ -120,12 +120,9 @@ class ForecastDisplayMixin(Generic[DataBuilder]):
         suptitle = self._return_suptitle(dataset, timesteps_ahead, is_original)
     
         plt.close()
-
-        managed_figure = (ManagedFigure(fig)
-            .labels.change_suptitle(suptitle,'bold',14)
-        )       
-
-        return managed_figure
+            
+        fig.suptitle(suptitle, fontweight = 'bold', fontsize = 14)
+        return fig, axes
 
     # ======== HIDDEN METHODS ========= #
     def _get_forecast_dfs(self, 

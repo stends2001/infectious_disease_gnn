@@ -5,7 +5,7 @@ from tqdm import tqdm
 from torch import Tensor as Tensor
 import numpy as np
 
-from ....types import DataSetSplit
+from ....utils.types import DataSetSplit
 from ..issues import UnexpectedDataShape
 from ...base.basemodel.statusmixin import ModelStatus
 from ....dataloading.databuilders import GraphDataBuilder
