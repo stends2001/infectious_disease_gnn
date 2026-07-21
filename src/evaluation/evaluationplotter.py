@@ -1,4 +1,4 @@
-from typing import Literal, Optional, List, Union, TYPE_CHECKING, assert_never
+from typing import Literal, Optional, List, Union, Tuple, TYPE_CHECKING, assert_never
 import pandas as pd
 import geopandas as gpd
 import numpy as np
@@ -14,8 +14,6 @@ from matplotlib.cm import ScalarMappable
 from matplotlib.colors import Normalize
 
 from .issues import MetricError
-
-from ..plotting import ManagedFigure, calculate_subplot_layout
 
 if TYPE_CHECKING:
     from .evaluator import Evaluator
@@ -58,7 +56,7 @@ class EvaluationPlotter:
                     vmin:           Optional[float] = None,
                     vmax:           Optional[float] = None,
                     margin_fraction:Optional[float] = None
-                    ) -> ManagedFigure:
+                    ) -> Tuple[Figure, Axes]:
         """
         Plot specified metric across models.
         
@@ -158,7 +156,7 @@ class EvaluationPlotter:
                 assert_never(plot_type)
 
         plt.close()                
-        return ManagedFigure(fig)
+        return fig, ax
 
     def _plot_distribution_on_ax(self, 
                                  ax: Axes, 
@@ -316,9 +314,16 @@ class EvaluationPlotter:
         models = list(self.evaluator.evaluated_models.values())
 
         # Calculate layout
-        n_models                = len(self.evaluator.evaluated_models)
-        nrows, ncols, figsize   = calculate_subplot_layout(n_models+1, target_width=8, target_height=6)
+        n_models                = len(self.evaluator.evaluated_models)        
+        n_plots                 = n_models + 1
+        target_width            = 8
+        target_height           = 6
+        ncols                   = int(np.ceil(np.sqrt(n_plots)))
+        nrows                   = int(np.ceil(n_plots / ncols))
         
+        # Calculate total figure size
+        figsize = (ncols * target_width, nrows * target_height)
+
         # reference data
         ctx     = models[0].dataloadermanager.dataorchestrator.data_context
         gdf     = ctx.local_shapedata
