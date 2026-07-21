@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 
-from ...utils.loss.losshandler import LossHandler
+from .loss.losshandler import LossHandler
 from ...base.basemodel.statusmixin import ModelStatus
 from ....dataloading.databuilders import GraphDataBuilder
 from ....utils.colors import traincolor, valcolor

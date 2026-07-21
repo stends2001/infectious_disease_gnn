@@ -1,18 +1,12 @@
 from .basestrategy import Strategy
 from torch.optim.optimizer import Optimizer
 from ....dataloading.databuilders.graphdatabuilder.datacontainers import Data
-from ...utils.loss.losshandler import LossHandler
+from ..deepmodel.loss.losshandler import LossHandler
 
-from abc import ABC, abstractmethod
-from typing import Tuple, Optional, Any, TYPE_CHECKING
+from typing import Tuple, Optional
 import torch
-from src.utils.textformatting import warning_emoji
 
 from torch import Tensor
-
-if TYPE_CHECKING:
-    from ..debugging import ModelDebuggingReport
-
 class StandardGNNStrategy(Strategy):
     """Standard (non-recurrent) strategy - no hidden state management"""
     
@@ -52,14 +46,7 @@ class StandardGNNStrategy(Strategy):
         y_hat = model(snapshot.x, snapshot.graph.edge_index, snapshot.graph.edge_weight)
         loss = loss_fn(y_hat, snapshot.y)
         return y_hat, loss.item()
-    
-    def debug(self, model: torch.nn.Module, snapshot: Data) -> Tuple[Tensor, 'ModelDebuggingReport']:
-        y_hat:  Tensor     
-        rep:    'ModelDebuggingReport'  
 
-        assert snapshot.graph is not None
-        y_hat, rep = model.debug(snapshot.x, snapshot.graph.edge_index, snapshot.graph.edge_weight)
-        return y_hat, rep
 
     def reset_state(self):
         """No state to reset"""

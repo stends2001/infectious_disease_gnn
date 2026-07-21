@@ -2,7 +2,6 @@ from typing import Literal
 import pandas as pd 
 import numpy as np
 
-from ..issues import ModelError
 from ...dataloading.databuilders import BaseLineDataBuilder 
 from ...utils import DataSetSplit
 
@@ -14,7 +13,7 @@ class ClimateologyModel(BaseLineModel):
     """
     def __init__(self, 
                  dataloadermanager: BaseLineDataBuilder,                 
-                 name:              str = 'climateolog_ymodel',
+                 name:              str = 'climatology_model',
                  verbose:           Literal[-1, 0, 1, 2] = -1):
         
         super().__init__(dataloadermanager=dataloadermanager, name=name, verbose=verbose)
@@ -93,7 +92,7 @@ class ClimateologyModel(BaseLineModel):
         elif freq == 'm':
             dfc['t_idx'] = timestamp.dt.month
         else:
-            raise ModelError(f'Invalid temporal frequency found for ClimaScale model: {freq}')
+            raise ValueError(f'Invalid temporal frequency found for ClimaScale model: {freq}')
         
         return dfc
     

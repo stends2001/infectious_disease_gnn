@@ -6,13 +6,11 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from datetime import datetime
 
-SingleNodeType  = Union[int,Literal['national']]
+from ....dataloading import DataBuilder, GraphDataBuilder, BaseLineDataBuilder
+from ...utils import color_is_light, SingleNodeType
 
-from ...issues import FutureUpdateError
-
-from ....dataloading.databuilders import DataBuilder, GraphDataBuilder, BaseLineDataBuilder
 from ....utils import DataSetSplit, testcolor
-from ...utils import color_is_light
+
 
 if TYPE_CHECKING:
     from ..predictions import PredictionManager
@@ -173,10 +171,10 @@ class ForecastDisplayMixin(Generic[DataBuilder]):
     def _validate_current_limitations(self, plot_type: str, prediction_mode: Literal['classification','regression']):
         """simple safeguard that raises informative errors based on plotting-function's input."""
         if plot_type != 'line':
-            raise FutureUpdateError(f"Currently only plot_type == 'line' supported, got {plot_type}")
+            raise ValueError(f"Currently only plot_type == 'line' supported, got {plot_type}")
         
         if prediction_mode == 'classification':        
-            raise FutureUpdateError('currently no forecast for classifications supported')           
+            raise ValueError('currently no forecast for classifications supported')           
 
     def _draw_preds_on_ax(self, df_node: pd.DataFrame, ax: Axes):
         """plots predictions (single line for point preds, band for uncertainty intervals) on given ax."""

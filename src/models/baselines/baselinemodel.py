@@ -1,12 +1,11 @@
-from typing import Optional, Literal, List, Self
-import numpy as np
+from typing import Literal
 import pandas as pd
 from abc import abstractmethod
 
 from ..base import BaseModel
 from ...dataloading.databuilders import BaseLineDataBuilder 
 from ...dataloading.epidataorchestration.utils.normalization import apply_log, apply_zscore, apply_minmax
-from ...utils.textformatting import warning_emoji
+from ...utils import crossmark
 
 class BaseLineModel(BaseModel[BaseLineDataBuilder]):
     """
@@ -56,7 +55,7 @@ class BaseLineModel(BaseModel[BaseLineDataBuilder]):
         print("This BaseLineModel doesn't have model hyper parameters") 
 
     def save_model(self, *args, **kwargs) -> None:
-        print(f'{warning_emoji} Baseline models cant be saved.')
+        print(f'{crossmark} Baseline models cant be saved.')
     
     # ======= HIDDEN METHODS ======= 
     def _normalize(self, df: pd.DataFrame) -> pd.DataFrame:

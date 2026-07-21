@@ -1,7 +1,7 @@
 import pandas as pd 
 from dataclasses import dataclass, field
 
-from ...issues import MissingPredictionsError
+from .exceptions import MissingPredictionsError
 
 @dataclass
 class PredictionCollection:

@@ -1,7 +1,7 @@
 from typing import Dict
 
-from .statusmixin import ModelStatus
-from ....utils import checkmark, section
+from ...utils import ModelStatus
+from ....utils import checkmark, crossmark, section
 
 class PresentationMixin:
     """ 
@@ -62,7 +62,7 @@ class PresentationMixin:
         lines.append('')
         
         # Status section
-        status_items = {k: "✓" if v else "✗" for k, v in self.status_dict.items()}
+        status_items = {k: f"{checkmark}" if v else f"{crossmark}" for k, v in self.status_dict.items()}
         lines.extend(section('status', status_items, width))
         lines.append('')
         

@@ -10,4 +10,4 @@ from .exceptions import (
     ExceptionReport
     )
 
-from .textformatting import align, section, return_header_line, warning_emoji, error_emoji, checkmark
+from .textformatting import align, section, return_header_line, checkmark, crossmark

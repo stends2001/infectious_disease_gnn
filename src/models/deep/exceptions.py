@@ -1,7 +1,4 @@
 from torch import Tensor as Tensor
-from typing import List
-
-# ========== DATA SHAPE ISSUES =========== #
 
 class UnexpectedDataShape(Exception):
     """

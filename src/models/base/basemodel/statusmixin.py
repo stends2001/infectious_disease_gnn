@@ -1,8 +1,6 @@
 from typing import Union, Literal, List, Dict
 
-from ...issues import ModelStatusError
-
-ModelStatus     = Literal['model_initialized', 'model_hparams_set', 'global_hparams_set','trained','forecasted']
+from ...utils import ModelStatusError, ModelStatus
 
 class ModelStatusMixin:
     """ 

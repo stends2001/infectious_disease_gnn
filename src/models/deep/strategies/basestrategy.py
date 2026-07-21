@@ -1,17 +1,13 @@
 from abc import ABC, abstractmethod
-from typing import Tuple, TYPE_CHECKING, Generic, TypeVar
+from typing import Tuple, TYPE_CHECKING
 import torch
 from torch import Tensor
 from torch.optim.optimizer import Optimizer
 
 from ....dataloading.databuilders.graphdatabuilder.datacontainers import Data
-from ...utils.loss.losshandler import LossHandler
-
-from typing import List
 
 if TYPE_CHECKING:
-    from ..debugging import ModelDebuggingReport
-
+    from ..deepmodel.loss.losshandler import LossHandler
 
 class Strategy(ABC):
     """
@@ -23,7 +19,7 @@ class Strategy(ABC):
     - reset_state
     """
     @abstractmethod
-    def training_step(self, model: torch.nn.Module, snapshot: Data, optimizer: Optimizer, loss_fn: LossHandler) -> float:
+    def training_step(self, model: torch.nn.Module, snapshot: Data, optimizer: Optimizer, loss_fn: 'LossHandler') -> float:
         """
         Execute one training step
 
@@ -41,7 +37,7 @@ class Strategy(ABC):
         pass
     
     @abstractmethod    
-    def validation_step(self, model: torch.nn.Module, snapshot: Data, loss_fn: LossHandler) -> float:
+    def validation_step(self, model: torch.nn.Module, snapshot: Data, loss_fn: 'LossHandler') -> float:
         """
         Execute one validation step
 
@@ -58,7 +54,7 @@ class Strategy(ABC):
         pass
     
     @abstractmethod
-    def forecast_step(self, model: torch.nn.Module, snapshot: Data, loss_fn: LossHandler) -> Tuple[Tensor, float]:
+    def forecast_step(self, model: torch.nn.Module, snapshot: Data, loss_fn: 'LossHandler') -> Tuple[Tensor, float]:
         """
         Execute one validation step
 
@@ -72,10 +68,6 @@ class Strategy(ABC):
         -------
         (predictions, loss_value)
         """        
-        pass
-
-    @abstractmethod
-    def debug(self, model: torch.nn.Module, snapshot: Data) -> Tuple[Tensor, 'ModelDebuggingReport']:
         pass
 
     def reset_state_epoch(self) -> None:

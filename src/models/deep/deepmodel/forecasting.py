@@ -6,7 +6,7 @@ from torch import Tensor as Tensor
 import numpy as np
 
 from ....utils.types import DataSetSplit
-from ..issues import UnexpectedDataShape
+from ..exceptions import UnexpectedDataShape
 from ...base.basemodel.statusmixin import ModelStatus
 from ....dataloading.databuilders import GraphDataBuilder
 
@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from ...base.predictions import PredictionManager
     from ....dataloading.epiconfig import EpiConfig
     from ..strategies.basestrategy import Strategy 
-    from ...utils.loss.losshandler import LossHandler  
+    from .loss.losshandler import LossHandler  
     from ....dataloading.epidataorchestration.containers import ContextEpiData
 
 class DeepModelForecastMixin:

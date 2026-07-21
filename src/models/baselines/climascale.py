@@ -1,9 +1,8 @@
-from typing import Literal, Self
+from typing import Literal
 import pandas as pd 
 import numpy as np
 
 from .baselinemodel import BaseLineModel 
-from ..issues import ModelError
 from ...utils import DataSetSplit
 from ...dataloading.databuilders import BaseLineDataBuilder 
 
@@ -107,7 +106,7 @@ class ClimaScaleModel(BaseLineModel):
         elif freq == 'm':
             dfc['t_idx'] = timestamp.dt.month
         else:
-            raise ModelError(f'Invalid temporal frequency found for ClimaScale model: {freq}')
+            raise ValueError(f'Invalid temporal frequency found for ClimaScale model: {freq}')
         
         return dfc
 

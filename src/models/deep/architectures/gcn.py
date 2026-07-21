@@ -1,168 +1,207 @@
 import torch
-from torch import Tensor
 import torch.nn as nn
-import torch.nn.functional as F
-from torch_geometric.nn import GATv2Conv
-from typing import Optional, Tuple, Literal
-from torch_geometric.utils import add_self_loops
 from torch_geometric.nn import GCNConv
-from ..strategies.gcn import StandardGNNStrategy
+from typing import Optional
 
-from ..debugging import ModelDebuggingReport, DebuggingLine
+from ..strategies import StandardGNNStrategy
 from ..deepmodel import DeepModel
-from ....dataloading.databuilders.deepdataloaders.graphdataloader import GraphDataLoaderManager
+from ....dataloading import GraphDataBuilder
 
-class SimpleGCNModule(nn.Module):
+class GCNModule(nn.Module):
     """
-    Pure spatial GCN.
-    Uses only the last timestep of sequential input.
-    """
+    GCN - Module
 
+    Parameters
+    ----------
+    hidden_size: int
+        hidden_size of the linear layer
+    num_layers: int
+        number of GCN-layers
+    dropout_p: float
+        dropout rate
+    self_loops: bool
+        whether to include self loops in MPNN
+    norm_edges: bool
+        whether to normalize edge weights    
+    residuals: bool
+        whether to keep skip connections
+
+    num_features: int
+        number of features in dataloader-snapshot
+    num_nodes: int
+        number of nodes in graph structure
+    seq_length: int
+        number of sequences in dataloader-snapshot
+    horizon_size: int
+        number of steps to predict
+    num_quantiles: int
+        number of quantiles to predict
+
+    Forward
+    -------
+
+    The forward pass is divided into the following parts:
+    - input projection
+        - temporal-flattening
+        - linear-layer
+        - layer-norm
+        - relu-activation
+    - convolutional-layers
+        - GCNConv
+        - layer-norm
+        - relu-activation
+        - dropout
+        - optional residual connection
+    - output projection
+        - linear-layer
+    """
     def __init__(self,
+                 hidden_size:   int,
+                 num_layers:    int,
+                 dropout_p:     float,
+                 self_loops:    bool,
+                 norm_edges:    bool,
+                 residuals:     bool,
                  num_features:  int,
                  num_nodes:     int,
-                 hidden_size:   int,
-                 emb_size:      int,
-                 num_layers:    int,
-                 dropout:       float,
-                 horizon_size:  int,
                  seq_length:    int,
-                 num_quantiles :int,
-                 self_loops:    bool,
-                 norm_edges:    bool):
+                 horizon_size:  int,
+                 num_quantiles: int):
 
         super().__init__()
 
-        self.num_features   = num_features
-        self.num_nodes      = num_nodes
-        self.hidden_size    = hidden_size
-        self.num_layers     = num_layers
-        self.horizon_size   = horizon_size
-        self.seq_length     = seq_length
-        self.emb_size       = emb_size
-        self.num_quantiles  = num_quantiles
-
+        ### set model - params ###
+        self.hidden_size    = hidden_size 
+        self.num_layers     = num_layers 
+        self.dropout_p      = dropout_p 
         self.self_loops     = self_loops
         self.norm_edges     = norm_edges
+        self.residuals      = residuals
 
-        self.convs = nn.ModuleList()
-        self.convs.append(GCNConv(num_features + emb_size, hidden_size, add_self_loops = self_loops, normalize=norm_edges))
+        ### get data - params ###
+        self.num_features   = num_features
+        self.num_nodes      = num_nodes
+        self.seq_length     = seq_length
+        self.horizon_size   = horizon_size
+        self.num_quantiles  = num_quantiles
 
-        self.node_emb = nn.Embedding(num_nodes, emb_size)
+        flat_features = num_features * seq_length
 
-        for _ in range(num_layers - 1):
-            self.convs.append(GCNConv(hidden_size, hidden_size, add_self_loops = self_loops, normalize=norm_edges))
+        # input projection: [] -> []
+        self.input_proj     = nn.Linear(flat_features, hidden_size)
+        self.input_norm     = nn.LayerNorm(hidden_size)
+        self.activation     = nn.ReLU()
 
-        self.dropout = nn.Dropout(dropout)
+        # Deep spatial stack with residual connections.
+        # Each layer: GCNConv → LayerNorm → ReLU → Dropout + residual
+        convs       = []
+        norms       = []
+        for layer in range(num_layers):
+            convs.append(GCNConv(in_channels    = hidden_size, 
+                                 out_channels   = hidden_size,
+                                 add_self_loops = self_loops, 
+                                 normalize      = norm_edges))
+            
+            norms.append(nn.LayerNorm(hidden_size))
 
-        self.output_proj = nn.Sequential(
-            nn.Linear(hidden_size, hidden_size // 2),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(hidden_size // 2, horizon_size * num_quantiles)
-        )
+        self.convs  = nn.ModuleList(convs)
+        self.norms  = nn.ModuleList(norms)
+        self.dropout= nn.Dropout(self.dropout_p)
+
+        # Output projection: linear layer [hidden_size] → [horizon * quantiles]
+        self.output_proj = nn.Linear(hidden_size, horizon_size * num_quantiles)
 
     def forward(self,
-                x: torch.Tensor,
-                edge_index: torch.Tensor,
-                edge_weight: Optional[torch.Tensor] = None):
+                x:              torch.Tensor,
+                edge_index:     torch.Tensor,
+                edge_weight:    Optional[torch.Tensor] = None) -> torch.Tensor:
+        
+        h:      torch.Tensor
+        output: torch.Tensor
 
-        # x: [num_nodes, num_features, seq_len]
+        # Flatten all timesteps into a single feature vector per node
+        # [num_nodes, num_features, seq_len] → [num_nodes, num_features * seq_len]
+        h = x.reshape(self.num_nodes, -1)
 
-        # --- collapse time ---
-        x = x[:, :, -1]  # use last timestep
-        # alternative: x = x.mean(dim=2)
+        # Project to hidden dim
+        h = self.input_proj(h)              # [num_nodes, hidden_size]
+        h = self.input_norm(h)
+        h = self.activation(h)
 
-        node_ids = torch.arange(self.num_nodes, device=x.device)
-        emb = self.node_emb(node_ids)
-        h = torch.cat([x, emb], dim=-1)
+        # Deep spatial convolution with residual connections
+        for layer_idx, (conv, norm) in enumerate(zip(self.convs, self.norms)):
+            h_res   = h                                     # store for residual
+            h       = conv(h, edge_index, edge_weight)      # spatial aggregation
+            h       = norm(h) 
+            h       = self.activation(h)
+            h       = self.dropout(h)
 
-        for conv in self.convs:
-            h = conv(h, edge_index, edge_weight)
-            h = F.relu(h)
-            h = self.dropout(h)
+            # residual: preserves node-specific signal
+            if self.residuals:
+                h       = h + h_res                 
 
-        output = self.output_proj(h)
+        h_out = h
 
-
-        output = output.view(self.num_nodes, self.horizon_size, self.num_quantiles)
+        # Project to forecasts
+        output = self.output_proj(h_out)                                                # [num_nodes, horizon_size * num_quantiles]
+        output = output.view(self.num_nodes, self.horizon_size, self.num_quantiles)     # [num_nodes, horizon_size,  num_quantiles] 
 
         return output
-    
-    def debug(self, x: Tensor, edge_index: torch.Tensor, edge_weight: Optional[torch.Tensor] = None) ->  Tuple[Tensor, 'ModelDebuggingReport']:
-        output:   Tensor
 
-        if self.seq_length > 1:
-            print('Please note that spatial GCN only takes the final sequence of data. Input [num_nodes, num_features, seq_len] will be used as [num_nodes, num_features, -1]')
-
-        x_t = x[:, :, -1] 
-        
-        dbl1 = DebuggingLine(list(x_t.shape),       [self.num_nodes, self.num_features])  
-
-        h = x_t      
-        
-        debugging_report = ModelDebuggingReport([dbl1])
-
-
-        for conv in self.convs:
-            h = conv(h, edge_index, edge_weight)
-            h = F.relu(h)
-            h = self.dropout(h)
-
-        output = self.output_proj(h)        
-
-        return output, debugging_report
-
-class SimpleGCNModel(DeepModel):
+class GCNModel(DeepModel):
     """
-    Simple spatial GCN model without temporal components.
     """
-    _expected_dataloadermanager = 'GraphDataLoaderManager'    
-    def __init__(self, 
-                 dataloadermanager: GraphDataLoaderManager, 
-                 name:              str = 'simplegcn_model',
-                 verbose:           Literal[-1, 0, 1, 2] = -1):
-    
+    _expected_dataloadermanager = 'GraphDataBuilder'
+    def __init__(self,
+                 dataloadermanager: GraphDataBuilder,
+                 name:              str           = 'gcnmodel',
+                 num_quantiles:     int = 1):
 
-        
+        super().__init__(
+            dataloadermanager   = dataloadermanager,
+            name                = name,
+            verbose             = 2,
+            strategy            = StandardGNNStrategy()
+        )
+        self.num_quantiles = num_quantiles
 
-        super().__init__(dataloadermanager, name=name , verbose=verbose, strategy=StandardGNNStrategy())                 
-
-    def set_model_hparams(self, 
-                          hidden_size:  int = 64, 
-                          num_layers:   int = 2,
-                          emb_size:     int = 4,
+    def set_model_hparams(self,
+                          hidden_size:  int   = 64,
+                          num_layers:   int   = 3,
                           dropout:      float = 0.2,
-                          self_loops:   bool = False,
-                          norm_edges:   bool = False):
-        self.model_hparams_set = True
-
-        _num_features   = len(self.column_registration.get_by_type('feature'))
-        _num_nodes      = self.dataloadermanager.dataorchestrator.data_context.num_nodes
+                          self_loops:   bool  = False,
+                          norm_edges:   bool  = True,
+                          residuals:    bool  = True):
+        """
+        """
+        _num_features   = len(self.column_registration.get_entries_names_by_type('feature'))
+        _num_nodes      = len(self.dataloadermanager.dataorchestrator.data_context.local_shapedata)
         _horizon_size   = self.dataloadermanager.dataorchestrator.config.horizon_size
         _seq_length     = self.dataloadermanager.dataorchestrator.config.sequence_length
-        _num_quantiles  = max(self.dataloadermanager.dataorchestrator.config._num_quantiles,1)
+        _num_quantiles  = self.num_quantiles
 
-        self.model = SimpleGCNModule(
+        self.model = GCNModule(
+            hidden_size     = hidden_size,
+            num_layers      = num_layers,
+            dropout_p       = dropout,
+            self_loops      = self_loops,
+            norm_edges      = norm_edges,
+            residuals       = residuals,
+
             num_features    = _num_features,
             num_nodes       = _num_nodes,
-            hidden_size     = hidden_size,
-            emb_size        = emb_size,
-            num_layers      = num_layers,
-            dropout         = dropout,
-            horizon_size    = _horizon_size,
             seq_length      = _seq_length,
-            num_quantiles   = _num_quantiles,
-            self_loops      = self_loops,
-            norm_edges      = norm_edges
-    
+            horizon_size    = _horizon_size,
+            num_quantiles   = _num_quantiles
         ).to(self.device)
 
-        model_hparams_config = {
-            'hidden_size': hidden_size,
-            'num_layers': num_layers,
-            'dropout': dropout
+        self.config_info['model_hparams'] = {
+            'hidden_size':  hidden_size,
+            'num_layers':   num_layers,
+            'dropout':      dropout,
+            'self_loops':   self_loops,
+            'norm_edges':   norm_edges,
+            'residuals' :   residuals
         }
 
-        self.config_info['model_hparams'] = model_hparams_config
         self._update_status('model_hparams_set')

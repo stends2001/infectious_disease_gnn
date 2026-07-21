@@ -5,7 +5,7 @@ from dateutil.relativedelta import relativedelta
 
 from .predictioncollection import PredictionCollection
 
-from ...issues import InvalidPredictionsError
+from .exceptions import InvalidPredictionsError
 from ....dataloading.epidataorchestration.utils.normalization import reverse_log, reverse_minmax, reverse_zscore
 from ....dataloading.epidataorchestration.orchestrator import EpiDataOrchestrator
 from ....dataloading.columnregistration import ColumnRegistry

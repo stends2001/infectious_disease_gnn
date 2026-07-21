@@ -4,8 +4,8 @@ import torch.optim as optim
 from torch.optim.optimizer import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 
-from ...issues import InvalidOptimizerError, InvalidSchedulerError
-from ...utils.loss.losshandler import LossHandler
+from .exceptions import InvalidOptimizerError, InvalidSchedulerError
+from .loss.losshandler import LossHandler
 from ...base.basemodel.statusmixin import ModelStatus
 
 if TYPE_CHECKING:

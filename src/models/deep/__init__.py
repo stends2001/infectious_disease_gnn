@@ -5,4 +5,4 @@
 # from .architectures.gcn2 import GCN2Model
 # from .architectures.decoupled_gcn import DecoupledGCNModel
 
-from .FINALARCHITECTURES import GATModel, GCNModel
+from .architectures import GATModel, GCNModel

@@ -2,7 +2,7 @@ from typing import Optional, Dict, Any, List
 from torch import Tensor as Tensor
 
 from .baseloss import BaseLoss
-from ...issues import InvalidLossError
+from ..exceptions import InvalidLossError
 
 class LossHandler:
     """

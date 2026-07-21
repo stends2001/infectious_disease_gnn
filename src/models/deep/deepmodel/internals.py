@@ -1,9 +1,9 @@
+from typing import TYPE_CHECKING
 import torch 
 from pathlib import Path 
 import os 
 
 from ..strategies.basestrategy import Strategy
-from ...issues import DeviceWarning
 
 class DeepModelInternalsMixin:
     """ 
@@ -19,8 +19,7 @@ class DeepModelInternalsMixin:
         self.device            = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         
         if self.device.type == 'cpu':
-            w = DeviceWarning('device found is CPU')
-            print(w)    
+            print('device found is CPU')
 
     def _set_models_directory(self):
         """sets model directory"""

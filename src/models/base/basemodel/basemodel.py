@@ -6,10 +6,14 @@ from .appearancemixin import ModelAppearanceMixin
 from .presentationmixin import PresentationMixin
 from .statusmixin import ModelStatusMixin
 
-from ...issues import ModelInitError
+from ...utils import ModelInitError
 from ....dataloading.databuilders import DataBuilder, BaseLineDataBuilder, GraphDataBuilder
 
-class BaseModel(Generic[DataBuilder], ModelStatusMixin, PresentationMixin, ModelAppearanceMixin, ForecastDisplayMixin[DataBuilder]):
+class BaseModel(Generic[DataBuilder], 
+                ModelStatusMixin, 
+                PresentationMixin, 
+                ModelAppearanceMixin, 
+                ForecastDisplayMixin[DataBuilder]):
     """ 
     Parent class of ALL models.
     Upon init, all models must supply the following
@@ -86,7 +90,7 @@ class BaseModel(Generic[DataBuilder], ModelStatusMixin, PresentationMixin, Model
 
         # BaseModel in itself may not be initted
         if self.__class__ is BaseModel:
-            raise TypeError("BaseModel cannot be instantiated directly")
+            raise ModelInitError("BaseModel cannot be instantiated directly")
 
         self.name = name
         self._set_dataloader_attributes(dataloadermanager)
@@ -106,7 +110,6 @@ class BaseModel(Generic[DataBuilder], ModelStatusMixin, PresentationMixin, Model
         self.weights_manager            = None
         
         # Configuration - info
-        self.config_info                = {}        
         self.config_info                = {'name': self.name, 'model_class': self.model_class}
 
         self._init_status()

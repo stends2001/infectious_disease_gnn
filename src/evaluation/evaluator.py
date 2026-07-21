@@ -5,7 +5,7 @@ from tqdm import tqdm
 from .containers import EvaluationPredictionsCompilation
 from .metrics import QuantileRegressionMetricsCalculator, PointRegressionMetricsCalculator
 
-from ..utils import DataSetSplit, warning_emoji
+from ..utils import DataSetSplit
 from ..models.base.basemodel import BaseModel
 from ..dataloading.databuilders import DataBuilder
 from ..dataloading.epiconfig import EpiConfig
@@ -80,7 +80,7 @@ class Evaluator:
         # in case prediction compilation already established
         if dataset in self.data_compilation.datasets:
             if horizon_str in self.data_compilation.horizons[dataset]:
-                print(f'{warning_emoji} horizon_{horizon} already exists for {dataset}. Nothing will be added')
+                print(f'Horizon_{horizon} already exists for {dataset}. Nothing will be added')
                 return self 
             
         # if prediction compilation doesn't exist yet

@@ -1,4 +1,4 @@
-from typing import Literal, Self
+from typing import Literal
 
 from ...dataloading.databuilders import BaseLineDataBuilder
 from ...utils import DataSetSplit

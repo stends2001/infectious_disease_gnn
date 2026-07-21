@@ -2,7 +2,6 @@ from typing import Literal
 import pandas as pd 
 import numpy as np
 
-from ..issues import ModelError
 from ...dataloading.databuilders import BaseLineDataBuilder 
 from .baselinemodel import BaseLineModel 
 
@@ -92,4 +91,4 @@ class PersistenceModel(BaseLineModel):
         elif freq == 'm':
             return df[self.epiconfig.temporal_column].dt.month
         else:
-            raise ModelError(f'Invalid temporal frequency found for ClimaScale model: {freq}')        
+            raise ValueError(f'Invalid temporal frequency found for ClimaScale model: {freq}')        
