@@ -1,8 +1,8 @@
 from typing import TYPE_CHECKING, List, assert_never
 import pandas as pd
 
-from .exceptions import InvalidCovariatePath, EpiConfigLimitationError, EpiConfigValidationError
-from ...utils.exceptionreport import ExceptionReport
+from .exceptions import EpiConfigLimitationError, EpiConfigValidationError
+from ...utils import ExceptionReport, PathNotFound
 
 if TYPE_CHECKING:
     from .epiconfig import EpiConfig
@@ -42,7 +42,7 @@ class EpiConfigValidator:
             path_attr = self.epiconfig.path_manager.get(property)
 
             if not path_attr.exists():
-                exceptions.append(InvalidCovariatePath(property, str(path_attr))) 
+                exceptions.append(PathNotFound(path_attr)) 
 
         return exceptions        
     
