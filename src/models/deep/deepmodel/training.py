@@ -188,19 +188,14 @@ class DeepModelTrainMixin:
                                           "v" if val_improved else None,
                                           None if val_improved else f"{patience_counter}/{self.patience}",
                                           True if current_lr != new_lr else None
-                                          )  
-            logger.info("%s", line)
-                   
+                                          ) 
+                     
         self.monitoring_metrics = pd.DataFrame({'train_loss'    : list_train_loss,
                                                 'val_loss'      : list_val_loss,
                                                 'patience'      : list_patience,
                                                 'learning_rate' : list_lr}).reset_index(names='epoch') # index starting from 0
         
-        self.monitoring_metrics['epoch'] = self.monitoring_metrics['epoch'] + 1 # index + 1
-
-        if self.verbose >=1:
-            self.show_monitoring_metrics()
-
+        self.monitoring_metrics['epoch'] = self.monitoring_metrics['epoch'] + 1
         self._update_status('trained')
 
     def show_monitoring_metrics(self) -> None:
