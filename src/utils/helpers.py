@@ -1,48 +1,15 @@
-from typing import Optional, List, Dict, Union 
+from typing import Optional, List, Dict, Union, Any
 from pathlib import Path
 import os
 import numpy as np
 import yaml
 import pickle, json, copy
-from functools import wraps
-import inspect
-from typing import Iterable, Any
 
-from typing import Literal, Callable, List
-import inspect
+from .exceptions import PathNotFound
 
-class MethodNotInRegistry(Exception):
-
-    def __init__(self, method: str, available_methods: List[str]):
-        msg = f'Unknown method {method}. Available methods are: {available_methods}'
-        super().__init__(msg)
-
-
-def registry_method(func: Callable) -> Callable:
-    """
-    Decorator that marks a method as a registered one.
-    Used to create a selection of methods for graph-building
-    and graph-normalization.
-    """
-    setattr(func, '_is_registered_method', True)
-    return func
-
-
-def get_registered_methods(cls: type) -> List[str]:
-    """
-    Returns the names of all methods decorated with @registry_method
-    for a given class.
-    """
-    return [
-        name for name, func in inspect.getmembers(cls, predicate=inspect.isfunction)
-        if getattr(func, '_is_registered_method', False)
-    ]
-
-class UnequalSetsError(Exception):
-
-    def __init__(self, message: str):
-        super().__init__(message)
-
+# ========== #
+#    SETS    #
+# ========== #
 def compare_sets(set1: set, set2: set):
 
     if set1 != set2:
@@ -51,12 +18,6 @@ def compare_sets(set1: set, set2: set):
 
         raise UnequalSetsError(f'missing from set 2 are: {missing}. Leftover in set 1 are: {leftover}')
         
-
-class PathNotFound(Exception):
-
-    def __init__(self, path: Union[str, Path]):
-        super().__init__(f'Path was not found: {path}')
-
 def load_mapping_dict(path: Union[str, Path]) -> Dict[Any, Any]:
 
     if isinstance(path, str):
@@ -93,45 +54,6 @@ def save_mapping_dict(dictionary: Dict[Any,Any], path: Union[str, Path]):
         case _:
             raise ValueError('the only type of files suppported in load_mapping_dict are ".pkl" and "json"')
 
-
-class InvalidDataSetError(Exception):
-    def __init__(self, input: str):
-        super().__init__(f"Invalid value for dataset: {input}. Expected one of ['train','val','test']")    
-
-# function receives arguments for decorator
-def check_dataset(allowed_values: Iterable =("train", "val", "test"), arg_name: str="dataset"):
-    """
-    Decorator that checks if the function argument `arg_name` is in `allowed`
-    Here I specifically use it for datasets which must be either train/val/test
-    """
-    # decorator take functions as input
-    def decorator(func):            
-        # take argument names and argument defaults from the way the function is defined
-        sig = inspect.signature(func)
-
-        # temporarily we create a dummy copy of the original function
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            # convert args and kwargs to dicitonary mapping: argument-name -> value
-            bound = sig.bind(*args, **kwargs)
-            # fills in default values for all unused arguments
-            bound.apply_defaults()
-            # check which value was fed in for argument_name (thus including defaults)
-            value = bound.arguments.get(arg_name)
-
-            if not isinstance(value, str):
-                raise TypeError(f"Expected a string for {arg_name}, got {type(value).__name__}")
-                    
-            if value not in allowed_values:
-                raise InvalidDataSetError(value)
-            return func(*args, **kwargs)
-        return wrapper
-    return decorator
-
-def to_underscore_string(s: str) -> str:
-    """Convert string to underscore format"""
-    return s.replace(' ', '_').replace('-', '_').lower()
-
 def list_files(dir: Path, extension: Optional[str] = None) -> List[str]:
     """List files in directory with optional extension filter"""
     files_list = []
@@ -160,6 +82,15 @@ def reorder_dict(d: dict, elements: List[str]) -> dict:
         if key not in reordered:
             reordered[key] = d[key]
     return reordered
+
+# ========================= #
+# DONT NEED TO BE FUNCTIONS #
+# ========================= #
+
+def to_underscore_string(s: str) -> str:
+    """Convert string to underscore format"""
+    return s.replace(' ', '_').replace('-', '_').lower()
+
 
 def get_wissdaten_env() -> str:
     tmpdir          = os.environ.get('TMPDIR', None)

@@ -1,9 +1,15 @@
 from pathlib import Path
-import os 
 
 class PathManager:
     """ 
-    Main path manager
+    Manages paths in this projects
+
+    Attributes
+    ----------
+    - project_root
+    - data
+    - src
+    - exp_out
     """
     def __init__(self):
         self.project_root   = Path(__file__).resolve().parent.parent.parent 
