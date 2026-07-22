@@ -1,4 +1,4 @@
-from typing import Optional, List, Dict, Tuple 
+from typing import Optional, List, Dict, Tuple, Literal
 import pandas as pd
 import math 
 from scipy.stats import wilcoxon
@@ -29,14 +29,22 @@ class ResultsMixin:
 
     def _set_modelcolors(self):
         self.model_colors = {
-                'climateology'  : "#A6A6A6",
-                'persistence'   : "#4D4D4D",
-                'gcn2graph1'    : "black",
-                'gcn2graph2'    : "#1F78B4",
-                'gcn2graph3'    : "#CE651F",
-                'gcn2graph4'    : "#EBB291",
-                'lstm'          : 'green'
-            }    
+            # baselines
+            'climateology'  : "#A6A6A6",
+            'persistence'   : "#4D4D4D",
+
+            # gcns
+            'gcngraph1'     : "black",
+            'gcngraph2'     : "#1F78B4",
+            'gcngraph3'     : "#CE651F",
+            'gcngraph4'     : "#EBB291",
+
+            # gats
+            'gatgraph1'     : 'black',    
+            'gatgraph2'     : "#1B9E77",# "#C43C5A"
+            'gatgraph3'     : "#6A3D9A",
+            'gatgraph4'     : "#CAB2D6",
+        } 
         
         for ml in self.model_names:
             if ml not in self.model_colors:
@@ -54,12 +62,9 @@ class ResultsMixin:
         summarisation['sem']= summarisation['std'] / math.sqrt(df['node'].nunique())
         return summarisation
 
-    def summarize_graph_advantage(self, metric: str = 'ccc') -> Tuple[pd.DataFrame, pd.DataFrame]:
-        if self.metrics_df is None:
-            raise MetricsException('no attribute metrics_df. Run `compile_metrics()` first.')
-
+    def summarize_graph_advantage(self, metric: str = 'ccc', model_type: str = 'gcn') -> Tuple[pd.DataFrame, pd.DataFrame]:
         df                              = self.metrics_df.copy()
-        graph_models                    = [ml for ml in self.model_names if 'graph' in ml]
+        graph_models                    = [ml for ml in self.model_names if 'graph' in ml and ml.startswith(model_type)]
         baseline                        = next(s for s in graph_models if s.endswith('graph1'))
 
         graph_advantage                 = df[df['model'].isin(graph_models)].reset_index(drop = True)
@@ -76,12 +81,18 @@ class ResultsMixin:
 
         return summarisation, graph_advantage
 
-    def plot_graph_advantage(self, metric: str, stats: bool = True, higher_is_better: bool = True, titles: bool = True):
+    def plot_graph_advantage(self, 
+                                model_type: str,
+                                metric: str, 
+                                stats: bool = True, 
+                                higher_is_better: bool = True, 
+                                titles: bool = True):
         self._set_modelcolors()
 
-        df1, df2        = self.summarize_graph_advantage(metric)
-        graphmodels     = list(df1['model'].unique())
-        baseline        = "gcn2graph1"
+        df1, df2        = self.summarize_graph_advantage(metric, model_type)
+        graphmodels: List[str]     = list(df1['model'].unique())
+        graphmodels     = [gm for gm in graphmodels if gm.startswith(model_type)]
+        baseline        = f"{model_type}graph1"
 
         # DETERMINE STATS #
         if stats:
@@ -132,7 +143,7 @@ class ResultsMixin:
         # Plot lines
         for ml in df1['model'].unique():
             subset = df1[df1['model'] == ml] 
-            sns.lineplot(subset, x = 'hl', y = 'mean', c = self.model_colors[ml], ax = ax, marker = 'o', label = ml.split('gcn2')[1])
+            sns.lineplot(subset, x = 'hl', y = 'mean', c = self.model_colors[ml], ax = ax, marker = 'o', label = ml)
             plt.fill_between(
                 x   =subset['hl'],
                 y1   =subset['mean'] - subset['sem'],
