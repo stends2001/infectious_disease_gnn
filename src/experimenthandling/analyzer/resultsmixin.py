@@ -192,6 +192,70 @@ class ResultsMixin:
         ax.set_xlabel('')
         fig.tight_layout()
 
+    def compare_modeltypes(self, metric: str, graph: str | None = None):
+
+        df = self.summarize_absolute_metric(metric)
+
+        model_types = ['gcn','gat']
+        graphs      = [graph] if graph is not None else ['graph1','graph2','graph3','graph4']
+
+        models = [x + y for x in model_types for y in graphs]
+
+        if graph is None:
+            fig, axes = plt.subplots(1, 2, figsize=(14, 4), sharey=True)
+
+
+            for idx, ax in enumerate(axes):
+
+                model_type = model_types[idx]
+
+                for ml in models:
+                # Plot lines
+                    if ml.startswith(model_type):
+                        subset = df[df['model'] == ml] 
+                        sns.lineplot(subset, x = 'hl', y = 'mean', c = self.model_colors[ml], ax = ax, marker = 'o', label = ml)
+                        ax.errorbar(
+                            x   =subset['hl'],
+                            y   =subset['mean'],
+                            yerr=subset['sem'],
+                            fmt ='none', 
+                            capsize=3,
+                            color = self.model_colors[ml]
+                        )       
+
+                ax.set_title('')
+                ax.set_xlabel("")
+                ax.set_ylabel("")
+                ax.legend()
+                ax.grid()
+
+        if graph is not None:
+            fig, ax = plt.subplots(1,1, figsize = (8,4))
+            ax.grid()
+
+            for ml in models:
+                colors = {models[0]:'#2196F3',
+                        models[1]:'#FF9800'}
+                # Plot lines
+                subset = df[df['model'] == ml] 
+                sns.lineplot(subset, x = 'hl', y = 'mean', c = colors[ml], ax = ax, marker = 'o', label = ml)
+                ax.errorbar(
+                    x   =subset['hl'],
+                    y   =subset['mean'],
+                    yerr=subset['sem'],
+                    fmt ='none', 
+                    capsize=3,
+                    color = colors[ml]
+                )       
+
+                ax.set_title('')
+                ax.set_xlabel("")
+                ax.set_ylabel("")
+                ax.legend()
+
+            plt.tight_layout()
+            plt.show()
+
     def _get_stars(self, p) -> str:
         if p < 0.001:
             return "***"
