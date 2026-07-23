@@ -71,7 +71,7 @@ class EpiDataPreviewer:
         # NOTE wrong timestamp: need to shift by +horizon_leadtime timesteps
         fig, axes       = self._create_fig()
         ax: Axes        = axes.flatten()[0]
-        target_colum    = self.DO.column_registration.get_by_type('target')[1]
+        target_colum    = self.DO.column_registration.get_entries_names_by_type('target')[1]
         timeseries      = self.DO.data_final.data_denorm
         timeseries      = timeseries[timeseries['node'] == self.preview_node]
         timeseries      = timeseries[['timestamp',target_colum,'train','val','test']]
