@@ -9,5 +9,5 @@ class UnexpectedDataShape(Exception):
         super().__init__(message)
 
 class InconsistentDataShape(Exception):
-    def __init__(self, message, code = None, context = None):
+    def __init__(self, message):
         super().__init__(message)    
