@@ -36,14 +36,20 @@ class ResultsMixin:
             # gcns
             'gcngraph1'     : "black",
             'gcngraph2'     : "#1F78B4",
-            'gcngraph3'     : "#CE651F",
-            'gcngraph4'     : "#EBB291",
+
+            'gcngraph3'     : "#8C4312", 
+            'gcngraph4'     : "#B8571A", 
+            'gcngraph5'     : "#D97C38",  
+            'gcngraph6'     : "#E8A97A", 
 
             # gats
             'gatgraph1'     : 'black',    
-            'gatgraph2'     : "#1B9E77",# "#C43C5A"
-            'gatgraph3'     : "#6A3D9A",
-            'gatgraph4'     : "#CAB2D6",
+            'gatgraph2'     : "#1B9E77",
+
+            'gatgraph3'     : "#4A296C",  
+            'gatgraph4'     : "#6A3D9A",  
+            'gatgraph5'     : "#9570B8",  
+            'gatgraph6'     : "#C3AEDC", 
         } 
         
         for ml in self.model_names:
