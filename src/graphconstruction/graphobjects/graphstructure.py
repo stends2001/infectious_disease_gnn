@@ -24,6 +24,8 @@ class GraphStructure:
     - `adjacency_matrix`
     - `edge_index_list`
     - `edge_weight_list`
+    - `density`
+    - `mean_degree`
 
     Downstream use
     ---------------
@@ -56,6 +58,14 @@ class GraphStructure:
     @property
     def edge_weight_list(self) -> List[float]:
         return self.edge_weight.tolist()
+
+    @property
+    def density(self) -> float:
+        return self.num_edges / (self.num_nodes * (self.num_nodes - 1))
+
+    @property
+    def mean_degree(self) -> float:
+        return self.num_edges / self.num_nodes  
 
     def _validate(self):
         if self.edge_index.ndim != 2 or self.edge_index.shape[0] != 2:
