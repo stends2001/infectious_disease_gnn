@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Literal, Dict
 
 from ..utils.temporal_summary import EpiDataTemporalSummary
+from ....utils import Country, AdminLevel
 from ....utils.textformatting import checkmark
 
 
@@ -12,8 +13,8 @@ class ContextEpiData:
     """
 
     """    
-    country:                Literal['germany','netherlands', 'hungary']
-    level:                  Literal['nuts1', 'nuts2', 'nuts3','ggd','lau']
+    country:                Country
+    level:                  AdminLevel
     global_shapedata:       gpd.GeoDataFrame   
     local_shapedata:        gpd.GeoDataFrame     
     population_size:        pd.DataFrame

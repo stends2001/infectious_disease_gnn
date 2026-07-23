@@ -9,20 +9,20 @@ from matplotlib.patches import Patch
 from matplotlib.figure import Figure
 from matplotlib.axes import Axes
 
-from ...utils.types import Level, Country
+from ...utils.types import AdminLevel, Country
 from ..graphobjects import GraphStructure, GraphObject
 
 class GraphViewer:
     """ 
     """
-    level: Level
+    level: AdminLevel
     country: Country
 
     def __init__(self,
                  background_shapedata:  gpd.GeoDataFrame,
                  level_shapedata:       gpd.GeoDataFrame,
                  country:               Country,
-                 level:                 Level):
+                 level:                 AdminLevel):
         
         self.background_shapedata   = background_shapedata
         self.level_shapedata        = level_shapedata

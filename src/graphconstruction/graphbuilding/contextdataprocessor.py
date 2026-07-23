@@ -3,7 +3,7 @@ import pandas as pd
 from typing import Dict, Tuple
 from pathlib import Path
 
-from ...utils import compare_sets, MissingColumnError
+from ...utils import compare_sets, MissingColumnError, AdminLevel
 
 import logging
 logger = logging.getLogger(__name__)
@@ -16,7 +16,7 @@ class GraphContextDataProcessor:
 
     Parameters
     ----------
-    level: str
+    level: AdminLevel
     id_col: str
     token_col: str
     country_data_path: Path
@@ -32,7 +32,7 @@ class GraphContextDataProcessor:
         popsize filter on 2020 -> dynamic
     """
     def __init__(self,
-                 level:             str,
+                 level:             AdminLevel,
                  id_col:            str,
                  token_col:         str,
                  country_data_path: Path

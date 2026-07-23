@@ -9,7 +9,7 @@ from .validator import EpiConfigValidator
 from .exceptions import EpiConfigValidationError, IncompatibleEpiConfigs
 
 from ...utils.exceptions import InvalidExtension
-from ...utils.types import Country, Level
+from ...utils.types import Country, AdminLevel
 from ...utils.textformatting import align, return_header_line
 
 import logging
@@ -28,8 +28,8 @@ class EpiConfig:
     split_valtest:          str = '2019-06-01'
     
     # ============= GEOGRAPHY =============
-    country:                Country = 'germany'
-    level:                  Level   = 'nuts3'
+    country:                Country     = 'germany'
+    level:                  AdminLevel  = 'nuts3'
     
     # ============= TASK =============
     horizon_size:           int = 1

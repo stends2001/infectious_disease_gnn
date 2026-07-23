@@ -9,7 +9,7 @@ from ..graphregistry import GraphRegistry
 from ..graphobjects import GraphObject, GraphStructure, TopKConfig, GraphConfig
 
 from ..utils import GraphType, GraphNormType
-from ...utils import PathManager, Country, Level
+from ...utils import PathManager, Country, AdminLevel
 
 import logging
 logger = logging.getLogger(__name__)
@@ -59,7 +59,7 @@ class GraphManager:
     """
     def __init__(self,                  
                  country:           Country,
-                 level:             Level,
+                 level:             AdminLevel,
                  
                  id_col:            str = 'key',
                  token_col:         str = 'node'):

@@ -4,7 +4,7 @@ import inspect
 from abc import ABC
 
 from ...utils.pathmanager import PathManager
-from ...utils.types import Country, Level
+from ...utils.types import Country, AdminLevel
 
 def registered_property(func: Callable) -> Callable:
     """
@@ -45,7 +45,7 @@ class EpiPathsManager(ABC):
     """
     def __init__(self, 
                  country: Country,
-                 level:   Level):
+                 level:   AdminLevel):
         
         self.properties = get_registered_properties(self.__class__)
         self.country    = country
@@ -99,7 +99,7 @@ class EpiPathsManagerGermany(EpiPathsManager):
 
     def __init__(self,
                  disease: str,
-                 level: Level):
+                 level: AdminLevel):
         
         self.disease = disease
 
@@ -149,7 +149,7 @@ class EpiPathsManagerHungary(EpiPathsManager):
 
     def __init__(self,
                  disease: str,
-                 level: Level):
+                 level: AdminLevel):
         
         self.disease = disease
 

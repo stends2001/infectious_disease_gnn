@@ -1,5 +1,5 @@
 from .pathmanager import PathManager
-from .types import Country, Level, DataSetSplit, ColumnType
+from .types import Country, AdminLevel, DataSetSplit, ColumnType
 from .registries import registry_method, get_registered_methods
 from .colors import blackcolor, traincolor, valcolor, testcolor
 from .io import load_mapping_dict, save_mapping_dict, list_files, write_yaml_file
