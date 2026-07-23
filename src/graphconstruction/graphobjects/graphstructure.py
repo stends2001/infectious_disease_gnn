@@ -44,7 +44,7 @@ class GraphStructure:
         self._validate()
 
     @property
-    def num_edges(self):
+    def num_edges(self) -> int:
         return self.edge_index.shape[1]
     
     @property
@@ -67,7 +67,7 @@ class GraphStructure:
     def mean_degree(self) -> float:
         return self.num_edges / self.num_nodes  
 
-    def _validate(self):
+    def _validate(self) -> None:
         if self.edge_index.ndim != 2 or self.edge_index.shape[0] != 2:
             raise InvalidGraphStructure(f'Expected edge_index shape [2, num_edges] but got {self.edge_index.shape}')
 
