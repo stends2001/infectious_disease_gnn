@@ -16,3 +16,4 @@ class PathManager:
         self.data           = self.project_root / 'data'
         self.src            = self.project_root / 'src'
         self.exp_out        = self.data / 'experiment_outcomes'
+        self.results        = self.project_root / 'results'
