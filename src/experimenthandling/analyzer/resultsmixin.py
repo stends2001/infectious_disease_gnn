@@ -198,7 +198,7 @@ class ResultsMixin:
         ax.set_xlabel('')
         fig.tight_layout()
 
-    def compare_modeltypes(self, metric: str, graph: str | None = None):
+    def compare_modeltypes(self, metric: str, graph: str | None = None, baselines: bool = True):
 
         df = self.summarize_absolute_metric(metric)
 
@@ -208,8 +208,11 @@ class ResultsMixin:
         models = [x + y for x in model_types for y in graphs]
 
         if graph is None:
-            fig, axes = plt.subplots(1, 2, figsize=(14, 4), sharey=True)
 
+            if baselines:
+                models = models + ['persistence', 'climateology']
+
+            fig, axes = plt.subplots(1, 2, figsize=(14, 4), sharey=True)
 
             for idx, ax in enumerate(axes):
 
